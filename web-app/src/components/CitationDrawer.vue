@@ -28,9 +28,11 @@ const snippetSegments = computed(() =>
 );
 
 // 全文中定位 heading_path 末段（最贴近具体小节的标题），首次出现处高亮。
+// 分隔符是后端拼接用的字面量 " > "（chunkers/structure.py），不能按单字符
+// >、/ 切——标题自身可能含这些字符（如 "A/B 测试"）。
 const headingNeedle = computed(() => {
   const path = props.citation?.heading_path ?? "";
-  const parts = path.split(/[>／/]/).map((p) => p.trim()).filter(Boolean);
+  const parts = path.split(" > ").map((p) => p.trim()).filter(Boolean);
   return parts.length ? parts[parts.length - 1] : path;
 });
 
