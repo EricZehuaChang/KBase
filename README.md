@@ -57,6 +57,8 @@ llm:
 - **密钥不落盘配置**：每个 provider 只声明 `api_key_env`（环境变量名），实际密钥由 `.env`（gitignored）在启动前注入到进程环境。
 - **provider 可运行时切换**：查询接口 `POST /api/kb/{id}/query` 接受 `provider` 字段，不传则用 `llm.active`；前端问答页有下拉框，方便同一问题对比不同规模模型的回答。
 
+> **运维提示**：providers 首次启动时从 `config/kbase.yaml` 种子导入数据库，之后以数据库为准（设置页管理），修改 YAML 不再生效。
+
 ## 测试
 
 ```powershell
