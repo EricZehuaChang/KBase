@@ -35,3 +35,11 @@ class ChromaStore:
 
     def delete(self, collection, doc_id):
         self._coll(collection).delete(where={"doc_id": doc_id})
+
+    def get_vectors(self, collection, ids):
+        """按 id 取回存量向量（只读）。用于关键词路独有候选的余弦补算，
+        保证阈值与纯稠密路语义一致。返回 {id: embedding}，缺失 id 不出现在结果中。"""
+        if not ids:
+            return {}
+        res = self._coll(collection).get(ids=ids, include=["embeddings"])
+        return dict(zip(res["ids"], res["embeddings"]))

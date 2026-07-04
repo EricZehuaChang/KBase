@@ -35,6 +35,8 @@ class KeywordIndex:
             s.commit()
 
     def search(self, kb_id: str, query: str, top_k: int = 20) -> list[Hit]:
+        """score = -bm25，无界、越大越好，仅用于路内排序；
+        与稠密余弦不可比，融合走 RRF 按名次。"""
         with self._sf() as s:
             rows = s.execute(text(
                 "SELECT chunk_id, bm25(chunks_fts) AS r FROM chunks_fts "

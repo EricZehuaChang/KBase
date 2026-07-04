@@ -11,6 +11,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from kbase.config import load_config
 from kbase.db import make_session_factory
+from kbase.index.keyword import KeywordIndex
 from kbase.ingest.pipeline import IngestPipeline
 from kbase.models import Document, KnowledgeBase
 from kbase.plugins.registry import registry
@@ -53,9 +54,22 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
     chunker = registry.create("chunker", cfg.chunker.name,
                               chunk_size=cfg.chunker.chunk_size,
                               chunk_overlap=cfg.chunker.chunk_overlap)
+
+    keyword_index = None
+    if cfg.retrieval.hybrid:
+        # jieba 词典默认懒加载（首次分词时才建词典树），若把首次分词留给
+        # 请求期的线程池 worker，多个并发请求可能同时触发构建、产生竞态；
+        # 这里在应用启动阶段（单线程）提前 eager 初始化，避免该竞态。
+        import jieba
+        jieba.initialize()
+        keyword_index = KeywordIndex(sf)
+
     pipeline = IngestPipeline(sf, chunker, embedder, store,
-                              files_dir=cfg.data_dir / "files")
-    retriever = Retriever(sf, embedder, store)
+                              files_dir=cfg.data_dir / "files",
+                              keyword_index=keyword_index)
+    retriever = Retriever(sf, embedder, store, keyword_index=keyword_index,
+                          candidates=cfg.retrieval.candidates,
+                          rrf_k=cfg.retrieval.rrf_k)
 
     _llm_cache: dict = dict(llms or {})
 
