@@ -36,7 +36,7 @@ class Generator:
         调用方必须传入与 answer_stream() 相同的、经 usable_blocks() 过滤后的列表，
         否则引用编号可能与回答正文中的 [n] 标记不一致。
         """
-        return [{"index": i + 1, "doc_name": b.doc_name,
+        return [{"index": i + 1, "doc_id": b.doc_id, "doc_name": b.doc_name,
                  "heading_path": b.heading_path, "snippet": b.snippet,
                  "score": round(b.score, 3)}
                 for i, b in enumerate(blocks)]

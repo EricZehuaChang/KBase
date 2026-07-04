@@ -22,6 +22,9 @@ export interface DocumentContent {
 
 export interface Citation {
   index: number;
+  // 可选：M2 中期才加入 citations 载荷。会话历史里旧助手消息的 citations JSON
+  // 没有该字段，渲染层须优雅降级（无 doc_id 时隐藏"查看文档全文"）。
+  doc_id?: string;
   doc_name: string;
   heading_path: string;
   snippet: string;
