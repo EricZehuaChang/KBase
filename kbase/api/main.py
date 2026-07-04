@@ -5,6 +5,7 @@ import logging
 import shutil
 import time
 import uuid
+from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, UploadFile
@@ -71,6 +72,12 @@ class QueryBody(BaseModel):
     question: str
     provider: str | None = None     # 不传用配置里的 active —— 模型对比入口
     top_k: int = 5
+
+
+class SearchBody(BaseModel):
+    query: str
+    top_k: int = 5
+    debug: bool = False
 
 
 class ConversationCreate(BaseModel):
@@ -416,6 +423,18 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
     @app.post("/api/kb/{kb_id}/query")
     async def query(kb_id: str, body: QueryBody):
         return await _run_query(kb_id, body)
+
+    @app.post("/api/kb/{kb_id}/search")
+    async def search(kb_id: str, body: SearchBody):
+        """检索调试端点：debug=False 只返回 blocks（不含 trace key，向后兼容展示用途）；
+        debug=True 额外返回各阶段 trace（dense/keyword/fused[/reranked]），用于排查召回质量。
+        检索是同步 CPU/IO 混合操作，进线程池避免阻塞事件循环。"""
+        result = await run_in_threadpool(
+            retriever.retrieve, kb_id, body.query, body.top_k, body.debug)
+        if body.debug:
+            return {"blocks": [asdict(b) for b in result.blocks],
+                    "trace": result.trace}
+        return {"blocks": [asdict(b) for b in result]}
 
     @app.post("/api/conversations")
     def create_conversation(body: ConversationCreate):

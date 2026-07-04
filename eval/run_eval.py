@@ -2,6 +2,10 @@
 """检索命中率 + 答案关键词覆盖率评测，支持多 provider 对比。
 用法：
   python eval/run_eval.py --kb <kb_id> --providers qwen-plus,qwen-max
+
+档位对比模式（只做检索命中评测，不生成，快）：
+  python eval/run_eval.py --tiers --kb <kb_id> --questions <questions.jsonl> --out <tiers.md>
+
 输出：eval/report.md（生成产物，不入库）
 """
 import argparse
@@ -12,12 +16,15 @@ from pathlib import Path
 
 from kbase.config import load_config
 from kbase.db import make_session_factory
+from kbase.index.keyword import KeywordIndex
 from kbase.plugins.registry import registry
 from kbase.rag.generator import Generator
 from kbase.rag.retriever import Retriever
 
 
-def build_retriever(cfg):
+def _build_components(cfg):
+    """组装检索所需的公共组件（session factory / embedder / store），
+    三个档位共用同一份，避免重复加载 bge-m3。"""
     import kbase.plugins.embedders.bge_local      # noqa: F401
     import kbase.plugins.llm.openai_compat        # noqa: F401
     import kbase.plugins.vectorstores.chroma_store  # noqa: F401
@@ -25,7 +32,77 @@ def build_retriever(cfg):
     embedder = registry.create("embedder", cfg.embedder.name, model=cfg.embedder.model)
     store = registry.create("vectorstore", cfg.vectorstore.name,
                             persist_dir=str(cfg.data_dir / "chroma"))
+    return sf, embedder, store
+
+
+def build_retriever(cfg):
+    sf, embedder, store = _build_components(cfg)
     return Retriever(sf, embedder, store)
+
+
+def _build_tier_retrievers(cfg):
+    """构造三个 Retriever 变体：纯向量 / 混合 / 混合+重排。
+    重排模型加载失败时该档跳过（返回 None），不阻塞其余档位的评测。
+    返回 dict[档位名, Retriever | None]（None 表示跳过，附带原因见 print）。"""
+    sf, embedder, store = _build_components(cfg)
+    tiers: dict[str, Retriever | None] = {}
+
+    tiers["纯向量"] = Retriever(sf, embedder, store,
+                              candidates=cfg.retrieval.candidates,
+                              rrf_k=cfg.retrieval.rrf_k)
+
+    kw = KeywordIndex(sf)
+    tiers["混合"] = Retriever(sf, embedder, store, keyword_index=kw,
+                            candidates=cfg.retrieval.candidates,
+                            rrf_k=cfg.retrieval.rrf_k)
+
+    try:
+        import kbase.plugins.rerankers.bge_local  # noqa: F401
+        reranker = registry.create("reranker", "bge-local",
+                                   model=cfg.retrieval.rerank.model)
+        tiers["混合+重排"] = Retriever(sf, embedder, store, keyword_index=kw,
+                                    reranker=reranker,
+                                    candidates=cfg.retrieval.candidates,
+                                    rrf_k=cfg.retrieval.rrf_k)
+    except Exception as e:  # noqa: BLE001 —— 重排模型加载失败时该档跳过，不阻塞其余档位
+        print(f"提示：重排模型加载失败，跳过「混合+重排」档位：{e}", file=sys.stderr)
+        tiers["混合+重排"] = None
+
+    return tiers
+
+
+def run_tiers(args):
+    """档位对比模式：只做检索命中评测（retrieval-only），不调用 LLM 生成。"""
+    if args.providers:
+        print("提示：--tiers 模式忽略 --providers（档位对比只评测检索，不生成）",
+              file=sys.stderr)
+    cfg = load_config(args.config)
+    questions = load_questions(args.questions)
+    tiers = _build_tier_retrievers(cfg)
+
+    lines = ["# KBase 检索档位对比", "",
+             f"- 题目数：{len(questions)}，top_k={args.top_k}", "",
+             "| 档位 | 命中率 |", "|---|---|"]
+    detail_lines = ["", "## 逐题命中详情", ""]
+
+    for tier_name, retriever in tiers.items():
+        if retriever is None:
+            lines.append(f"| {tier_name} | 跳过（模型加载失败） |")
+            continue
+        hit_count = 0
+        detail_lines.append(f"### {tier_name}")
+        for q in questions:
+            blocks = retriever.retrieve(args.kb, q["question"], top_k=args.top_k)
+            hit = any(q["expect_doc"] in b.doc_name for b in blocks)
+            hit_count += hit
+            mark = "✓" if hit else "✗"
+            detail_lines.append(f"- {mark} {q['question']}")
+        lines.append(f"| {tier_name} | {hit_count}/{len(questions)} |")
+        detail_lines.append("")
+
+    out = Path(args.out)
+    out.write_text("\n".join(lines + detail_lines), encoding="utf-8")
+    print(f"完成:{out}")
 
 
 def load_questions(path: str) -> list[dict]:
@@ -96,7 +173,15 @@ if __name__ == "__main__":
     ap.add_argument("--config", default="config/kbase.yaml")
     ap.add_argument("--questions", default="eval/questions.jsonl")
     ap.add_argument("--kb", required=True)
-    ap.add_argument("--providers", required=True)
+    ap.add_argument("--providers", required=False)
     ap.add_argument("--top-k", type=int, default=5)
     ap.add_argument("--out", default="eval/report.md")
-    asyncio.run(run(ap.parse_args()))
+    ap.add_argument("--tiers", action="store_true",
+                    help="档位对比模式：纯向量/混合/混合+重排检索命中率对比，忽略 --providers")
+    args = ap.parse_args()
+    if args.tiers:
+        run_tiers(args)
+    else:
+        if not args.providers:
+            ap.error("--providers 为必填（非 --tiers 模式）")
+        asyncio.run(run(args))
