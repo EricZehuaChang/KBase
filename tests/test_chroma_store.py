@@ -24,6 +24,12 @@ def test_filter_by_doc(tmp_path, fake_embedder):
     assert {h.chunk_id for h in hits} == {"c3"}
 
 
+def test_upsert_empty_batch_is_noop(tmp_path):
+    store = ChromaStore(persist_dir=str(tmp_path / "chroma"))
+    store.upsert("kb1", ids=[], vectors=[], metas=[])   # 不应抛异常
+    assert store.search("kb1", [0.0] * 8, top_k=3) == []
+
+
 def test_delete_by_doc(tmp_path, fake_embedder):
     store, vecs = _mk(tmp_path, fake_embedder)
     store.delete("kb1", doc_id="d1")

@@ -18,9 +18,12 @@ class ChromaStore:
             collection, metadata={"hnsw:space": "cosine"})
 
     def upsert(self, collection, ids, vectors, metas):
+        if not ids:
+            return
         self._coll(collection).upsert(ids=ids, embeddings=vectors, metadatas=metas)
 
     def search(self, collection, vector, top_k, filters=None):
+        # score = 1 - cosine_distance = 余弦相似度，取值范围 [-1, 1]（1 完全相同，0 正交，负值反相关）
         res = self._coll(collection).query(
             query_embeddings=[vector], n_results=top_k,
             where=filters or None)
