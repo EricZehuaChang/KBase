@@ -9,6 +9,7 @@ llm:
   active: fake
   providers:
     - {{name: fake, base_url: 'http://x', api_key_env: FAKE_KEY, model: m}}
+    - {{name: fake2, base_url: 'http://x', api_key_env: FAKE2_KEY, model: m}}
 """
 
 MD = "# 补贴办法\n## 第一章 申领条件\n连续工作满两年可申领住房补贴。\n"
@@ -72,3 +73,28 @@ def test_providers_endpoint(tmp_path, fake_embedder):
     r = c.get("/api/providers").json()
     assert r["active"] == "fake"
     assert "fake" in r["providers"]
+
+
+def test_upload_filename_sanitized(tmp_path, fake_embedder):
+    c = _client(tmp_path, fake_embedder)
+    kb_id = c.post("/api/kb", json={"name": "库"}).json()["id"]
+    r = c.post(f"/api/kb/{kb_id}/documents",
+               files=[("files", ("/../../evil.md", MD.encode("utf-8"), "text/markdown"))])
+    assert r.status_code == 200
+    docs = c.get(f"/api/kb/{kb_id}/documents").json()
+    assert docs[0]["filename"] == "evil.md"          # 路径成分被剥掉
+    # data 目录之外不应出现任何文件：uploads 内文件名不含路径分隔符
+    uploads = list((tmp_path / "data" / "uploads").iterdir())
+    assert all(p.parent.name == "uploads" for p in uploads)
+
+
+def test_query_missing_provider_key_returns_503(tmp_path, fake_embedder, monkeypatch):
+    # fake2 在配置里存在但不在注入缓存中，且其密钥环境变量未设置：
+    # 走真实懒创建路径 → OpenAICompatProvider 抛 RuntimeError → 503
+    monkeypatch.delenv("FAKE2_KEY", raising=False)
+    c = _client(tmp_path, fake_embedder)
+    kb_id = c.post("/api/kb", json={"name": "库"}).json()["id"]
+    r = c.post(f"/api/kb/{kb_id}/query",
+               json={"question": "x", "provider": "fake2"})
+    assert r.status_code == 503
+    assert "FAKE2_KEY" in r.json()["detail"]
