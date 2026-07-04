@@ -114,13 +114,11 @@ class IngestPipeline:
         if chunk_size is None and chunk_overlap is None:
             return self._chunker
         # kb 级覆盖：只在配置里显式给了 chunk_size/chunk_overlap 时才新建 chunker，
-        # 缺省的那一项沿用默认 chunker 的构造参数（走 TextSplitter 基类记录的
-        # _chunk_size/_chunk_overlap，见 langchain_text_splitters.base）
+        # 缺省的那一项沿用默认 chunker 的公开构造参数
         if isinstance(self._chunker, StructureChunker):
-            splitter = self._chunker._text_splitter
             return StructureChunker(
-                chunk_size=chunk_size if chunk_size is not None else splitter._chunk_size,
-                chunk_overlap=chunk_overlap if chunk_overlap is not None else splitter._chunk_overlap)
+                chunk_size=chunk_size if chunk_size is not None else self._chunker.chunk_size,
+                chunk_overlap=chunk_overlap if chunk_overlap is not None else self._chunker.chunk_overlap)
         return self._chunker
 
     def _set_status(self, doc_id: str, status: str, error: str | None = None):

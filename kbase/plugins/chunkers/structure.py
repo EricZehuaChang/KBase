@@ -23,6 +23,10 @@ class StructureChunker:
             raise ValueError(
                 f"chunk_overlap ({chunk_overlap}) 必须小于 chunk_size ({chunk_size})，"
                 "请检查配置 chunker.chunk_size / chunker.chunk_overlap")
+        # 公开属性：供 kb 级参数覆盖时读取默认值（见 ingest/pipeline.py 的
+        # _chunker_for），避免耦合 langchain splitter 的私有属性
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
         self._header_splitter = MarkdownHeaderTextSplitter(
             headers_to_split_on=_HEADERS, strip_headers=True
         )
