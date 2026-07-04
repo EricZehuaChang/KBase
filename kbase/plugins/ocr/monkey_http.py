@@ -23,8 +23,8 @@
 **本适配器的选择**：为了拿到结构更完整的 Markdown（与本项目"Markdown 中间
 产物"的摄取假设一致），走 `/parse` + 下载 zip + 解压读 `.md` 这条真实路径，
 而不是计划草稿里假设的"POST /parse 直接拿 markdown 字段"。confidence 字段
-MonkeyOCR 未提供，固定回填 1.0（OCRResult.confidence 的默认值），并在结果
-markdown 开头附一行注释说明这是 MonkeyOCR 输出、无置信度。
+MonkeyOCR 未提供，固定回填 1.0（OCRResult.confidence 的默认值），返回的
+markdown 为解压出的原始文本，不做任何前缀改写。
 """
 import io
 import zipfile
