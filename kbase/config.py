@@ -25,6 +25,7 @@ class ProviderConfig(BaseModel):
     api_key_env: str          # 环境变量名，密钥不进配置文件
     model: str
     max_concurrency: int = 4
+    params: dict = Field(default_factory=dict)   # 每次调用透传给 chat.completions.create 的默认参数（如 extra_body）
 
 
 class LLMConfig(BaseModel):

@@ -40,6 +40,36 @@ llm:
     assert cfg.get_provider("qwen-32b").base_url.startswith("https://dashscope")
 
 
+def test_provider_params_block(tmp_path: Path):
+    """有 params 块时正常解析；没有时默认为 {}。"""
+    cfg_file = tmp_path / "kbase.yaml"
+    cfg_file.write_text(
+        """
+data_dir: ./data
+llm:
+  active: with-params
+  providers:
+    - name: with-params
+      base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      api_key_env: DASHSCOPE_API_KEY
+      model: qwen3-32b
+      max_concurrency: 4
+      params:
+        extra_body:
+          enable_thinking: false
+    - name: without-params
+      base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      api_key_env: DASHSCOPE_API_KEY
+      model: qwen-plus
+""",
+        encoding="utf-8",
+    )
+    cfg = load_config(cfg_file)
+    assert cfg.get_provider("with-params").params == {
+        "extra_body": {"enable_thinking": False}}
+    assert cfg.get_provider("without-params").params == {}
+
+
 def test_get_provider_unknown_raises(tmp_path: Path):
     import pytest
     cfg_file = tmp_path / "kbase.yaml"

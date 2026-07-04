@@ -66,7 +66,7 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
             _llm_cache[pname] = registry.create(
                 "llm", "openai-compat", base_url=p.base_url,
                 api_key_env=p.api_key_env, model=p.model,
-                max_concurrency=p.max_concurrency)
+                max_concurrency=p.max_concurrency, params=p.params)
         return _llm_cache[pname]
 
     app = FastAPI(title="KBase")

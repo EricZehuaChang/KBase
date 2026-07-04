@@ -62,7 +62,7 @@ async def run(args):
         p = cfg.get_provider(pname)
         llm = registry.create("llm", "openai-compat", base_url=p.base_url,
                               api_key_env=p.api_key_env, model=p.model,
-                              max_concurrency=p.max_concurrency)
+                              max_concurrency=p.max_concurrency, params=p.params)
         gen = Generator(llm)
         for q in questions:
             blocks, hit = retrievals[q["question"]]
