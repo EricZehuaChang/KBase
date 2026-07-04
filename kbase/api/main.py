@@ -11,7 +11,7 @@ from pathlib import Path
 from fastapi import BackgroundTasks, FastAPI, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, StrictBool, StrictInt, model_validator
 from sse_starlette.sse import EventSourceResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import Response
@@ -108,6 +108,27 @@ class SearchBody(BaseModel):
 
 class ConversationCreate(BaseModel):
     kb_id: str
+
+
+class EnrichConfigBody(BaseModel):
+    enabled: StrictBool
+
+
+class KBConfigBody(BaseModel):
+    """PUT /api/kb/{kb_id}/config 请求体：只接受已知 key，未知 key 由
+    model_config extra="forbid" 拒绝（422），避免前端笔误的字段被静默丢弃。"""
+    model_config = {"extra": "forbid"}
+
+    chunk_size: StrictInt | None = Field(default=None, ge=64, le=4096)
+    chunk_overlap: StrictInt | None = Field(default=None, ge=0, le=512)
+    enrich: EnrichConfigBody | None = None
+
+    @model_validator(mode="after")
+    def _check_overlap_lt_size(self):
+        if (self.chunk_size is not None and self.chunk_overlap is not None
+                and self.chunk_overlap >= self.chunk_size):
+            raise ValueError("chunk_overlap 必须小于 chunk_size")
+        return self
 
 
 class ProviderCreate(BaseModel):
@@ -329,8 +350,19 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
     @app.get("/api/kb")
     def list_kb():
         with sf() as s:
-            return [{"id": k.id, "name": k.name}
+            return [{"id": k.id, "name": k.name,
+                     "config": json.loads(k.config) if k.config else None}
                     for k in s.query(KnowledgeBase).all()]
+
+    @app.put("/api/kb/{kb_id}/config")
+    def put_kb_config(kb_id: str, body: KBConfigBody):
+        with sf() as s:
+            kb = s.get(KnowledgeBase, kb_id)
+            if kb is None:
+                raise HTTPException(404, f"知识库不存在: {kb_id}")
+            kb.config = json.dumps(body.model_dump(exclude_none=True), ensure_ascii=False)
+            s.commit()
+        return {"ok": True}
 
     @app.post("/api/kb/{kb_id}/documents")
     def upload(kb_id: str, files: list[UploadFile], bg: BackgroundTasks):
