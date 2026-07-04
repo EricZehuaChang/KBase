@@ -1,7 +1,10 @@
 """会话领域逻辑：CRUD 与多轮上下文组装。HTTP 编排在 api/main.py。"""
 import json
+import re
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime
+
+from sqlalchemy import func
 
 from kbase.models import Conversation, Message
 
@@ -28,7 +31,7 @@ def list_conversations(sf, kb_id: str | None = None) -> list[dict]:
 def list_messages(sf, conv_id: str) -> list[dict]:
     with sf() as s:
         msgs = (s.query(Message).filter_by(conv_id=conv_id)
-                .order_by(Message.created_at, Message.id).all())
+                .order_by(Message.seq).all())
         return [{"id": m.id, "role": m.role, "content": m.content,
                  "citations": m.citations, "provider": m.provider} for m in msgs]
 
@@ -36,9 +39,16 @@ def list_messages(sf, conv_id: str) -> list[dict]:
 def build_history(sf, conv_id: str, rounds: int = HISTORY_ROUNDS) -> list[dict]:
     with sf() as s:
         msgs = (s.query(Message).filter_by(conv_id=conv_id)
-                .order_by(Message.created_at.desc(), Message.id.desc())
+                .order_by(Message.seq.desc())
                 .limit(rounds * 2).all())
-    return [{"role": m.role, "content": m.content} for m in reversed(msgs)]
+    out = []
+    for m in reversed(msgs):
+        content = m.content
+        if m.role == "assistant":
+            # 历史中的引用编号与当前轮 sources 编号无关，剥离以免模型串号（存储原文不动）
+            content = re.sub(r"\[\d+\]", "", content)
+        out.append({"role": m.role, "content": content})
+    return out
 
 
 def append_round(sf, conv_id: str, question: str, answer: str,
@@ -49,15 +59,17 @@ def append_round(sf, conv_id: str, question: str, answer: str,
             return
         if not s.query(Message).filter_by(conv_id=conv_id).first():
             conv.title = question[:20]
-        # 两条消息的 created_at 显式错开：同一函数内连续两次 datetime.utcnow()
-        # 常落在同一微秒，若时间戳相同则排序只能靠 Message.id（UUID，随机序），
-        # user/assistant 顺序会不稳定——用 microseconds=1 的间隔保证先后可排序。
+        # 显式序列列根治排序：时间戳在 Windows 上刻度粗（0.5~8ms），连续轮次
+        # 可落在同一刻度导致排序退化为 UUID 随机序。SQLite 单写者串行化，
+        # 同一事务内 max+1 无竞态。
+        base = (s.query(func.max(Message.seq))
+                .filter_by(conv_id=conv_id).scalar() or 0)
         now = datetime.utcnow()
         s.add(Message(id=str(uuid.uuid4()), conv_id=conv_id, role="user",
-                      content=question, created_at=now))
+                      content=question, seq=base + 1, created_at=now))
         s.add(Message(id=str(uuid.uuid4()), conv_id=conv_id, role="assistant",
                       content=answer, provider=provider,
                       citations=json.dumps(citations, ensure_ascii=False),
-                      created_at=now + timedelta(microseconds=1)))
+                      seq=base + 2, created_at=now))
         conv.updated_at = now
         s.commit()

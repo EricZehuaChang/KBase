@@ -7,6 +7,7 @@ _COLUMN_MIGRATIONS = [
     ("knowledge_bases", "config", "TEXT"),
     ("documents", "ocr_confidence", "REAL"),
     ("documents", "source_path", "TEXT"),
+    ("messages", "seq", "INTEGER"),
 ]
 
 _FTS_DDL = (

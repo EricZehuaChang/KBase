@@ -58,6 +58,9 @@ class Message(Base):
     __tablename__ = "messages"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     conv_id: Mapped[str] = mapped_column(ForeignKey("conversations.id"), index=True)
+    # 会话内单调递增的显式序列：消息排序唯一依据。created_at 仅作展示——
+    # Windows 下 utcnow 时钟刻度 0.5~8ms，连续轮次可落在同一刻度，时间戳排序会乱。
+    seq: Mapped[int] = mapped_column(default=0, index=True)
     role: Mapped[str] = mapped_column(String(20))            # user | assistant
     content: Mapped[str] = mapped_column(Text)
     citations: Mapped[str | None] = mapped_column(Text, nullable=True)   # JSON

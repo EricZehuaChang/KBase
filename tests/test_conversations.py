@@ -57,3 +57,40 @@ def test_query_unknown_conversation_404(tmp_path, fake_embedder):
     c, _ = _client(tmp_path, fake_embedder)
     r = c.post("/api/conversations/nope/query", json={"question": "x"})
     assert r.status_code == 404
+
+
+def test_same_tick_rounds_keep_order(tmp_path, fake_embedder, monkeypatch):
+    """冻结时钟到同一时刻，连续多轮的消息顺序仍必须稳定。"""
+    import kbase.conversations as convmod
+    from datetime import datetime
+    frozen = datetime(2026, 7, 5, 12, 0, 0)
+
+    class FrozenDT(datetime):
+        @classmethod
+        def utcnow(cls):
+            return frozen
+
+    monkeypatch.setattr(convmod, "datetime", FrozenDT)
+    c, kb_id = _client(tmp_path, fake_embedder)
+    conv = c.post("/api/conversations", json={"kb_id": kb_id}).json()
+    for i in range(3):
+        with c.stream("POST", f"/api/conversations/{conv['id']}/query",
+                      json={"question": f"问题{i}"}) as r:
+            "".join(r.iter_text())
+    msgs = c.get(f"/api/conversations/{conv['id']}/messages").json()
+    assert [m["role"] for m in msgs] == ["user", "assistant"] * 3
+    assert [m["content"] for m in msgs if m["role"] == "user"] == ["问题0", "问题1", "问题2"]
+
+
+def test_history_strips_citation_markers(tmp_path, fake_embedder):
+    from kbase.conversations import append_round, build_history
+    from kbase.db import make_session_factory
+    sf = make_session_factory(f"sqlite:///{tmp_path}/kb.sqlite")
+    from kbase.models import Conversation
+    with sf() as s:
+        s.add(Conversation(id="cv1", kb_id="kb1"))
+        s.commit()
+    append_round(sf, "cv1", "问", "答案见[1]与[2]。", [], "p")
+    hist = build_history(sf, "cv1")
+    asst = next(m for m in hist if m["role"] == "assistant")
+    assert "[1]" not in asst["content"] and "[2]" not in asst["content"]
