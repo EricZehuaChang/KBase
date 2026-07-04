@@ -101,10 +101,11 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
         upload_dir.mkdir(parents=True, exist_ok=True)
         accepted = []
         for f in files:
-            dest = upload_dir / f"{uuid.uuid4()}-{f.filename}"
+            safe_name = Path(f.filename or "unnamed").name   # 去除路径分隔符，防穿越；兜底 None
+            dest = upload_dir / f"{uuid.uuid4()}-{safe_name}"
             dest.write_bytes(f.file.read())
-            bg.add_task(pipeline.ingest_file, kb_id, dest, f.filename)
-            accepted.append(f.filename)
+            bg.add_task(pipeline.ingest_file, kb_id, dest, safe_name)
+            accepted.append(safe_name)
         return {"accepted": accepted}
 
     @app.get("/api/kb/{kb_id}/documents")
@@ -120,6 +121,8 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
             llm = get_llm(body.provider)
         except KeyError as e:
             raise HTTPException(404, str(e)) from e
+        except RuntimeError as e:      # 环境变量未设置等初始化失败：给前端可读信息
+            raise HTTPException(503, str(e)) from e
         # 检索（含向量化）是同步 CPU/IO 混合操作，进线程池避免阻塞事件循环
         blocks = await run_in_threadpool(
             retriever.retrieve, kb_id, body.question, body.top_k)
