@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { useRoute, useRouter } from "vue-router";
+import { useRoute } from "vue-router";
 import { MessageCircle, Folder, ScanSearch, Settings, Sun, Moon } from "@lucide/vue";
 import { theme, toggleTheme } from "@/lib/theme";
 
 const route = useRoute();
-const router = useRouter();
 
 const navItems = [
   { path: "/", label: "问答", icon: MessageCircle },
@@ -35,19 +34,25 @@ function isActive(path: string): boolean {
 
       <!-- 底部导航 -->
       <nav class="flex flex-col gap-1 border-t border-[var(--border)] p-2">
-        <button
+        <router-link
           v-for="item in navItems"
           :key="item.path"
-          type="button"
-          class="flex items-center gap-2 rounded-[var(--radius-ctl)] px-3 py-2 text-sm transition-colors"
-          :class="isActive(item.path)
-            ? 'bg-[var(--accent-weak)] text-[var(--accent-text)]'
-            : 'text-[var(--text-2)] hover:bg-[var(--surface-2)]'"
-          @click="router.push(item.path)"
+          :to="item.path"
+          custom
+          v-slot="{ navigate }"
         >
-          <component :is="item.icon" class="size-4" />
-          <span>{{ item.label }}</span>
-        </button>
+          <button
+            type="button"
+            class="flex items-center gap-2 rounded-[var(--radius-ctl)] px-3 py-2 text-sm transition-colors"
+            :class="isActive(item.path)
+              ? 'bg-[var(--accent-weak)] text-[var(--accent-text)]'
+              : 'text-[var(--text-2)] hover:bg-[var(--surface-2)]'"
+            @click="navigate"
+          >
+            <component :is="item.icon" class="size-4" />
+            <span>{{ item.label }}</span>
+          </button>
+        </router-link>
 
         <button
           type="button"

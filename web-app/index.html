@@ -5,6 +5,20 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>KBase</title>
+    <script>
+      // FOUC 预绘制：在 body 渲染前同步设好 data-theme，避免默认亮色闪一下再切暗色。
+      // key 名（kbase-theme）与判定逻辑必须和 src/lib/theme.ts 保持一致，
+      // 后者是运行期的唯一真源，这里只是抢在它加载前先定好首屏。
+      (function () {
+        var KEY = "kbase-theme";
+        var stored = localStorage.getItem(KEY);
+        var theme = stored === "light" || stored === "dark"
+          ? stored
+          : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark" : "light");
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>

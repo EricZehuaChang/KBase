@@ -13,6 +13,32 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.responses import Response
+from starlette.types import Scope
+
+
+class SPAStaticFiles(StaticFiles):
+    """SPA 回退路由：真实静态资源正常返回；404 时（如 /kb 这类前端路由深链接）
+    回退到 index.html，交由前端 router 接管——标准 FastAPI SPA 托管模式。
+    该 mount 挂在 "/"，未匹配到任何 API 路由的 /api/* 请求也会落到这里——
+    必须显式排除，否则 /api/nonexistent 会被错误地回退成 200 的 index.html
+    而不是 404，掩盖真正的路由错误。
+    注意：StaticFiles.get_response 未命中时是 raise HTTPException(404)，
+    不是返回 404 响应，所以要 except 而不是检查返回值的状态码。"""
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        # get_path() 用 os.path.join 拼出 path，Windows 上分隔符是反斜杠，
+        # 用 PurePosixPath 统一成 "/" 再判断前缀，避免平台差异漏判。
+        normalized = path.replace("\\", "/")
+        if normalized == "api" or normalized.startswith("api/") or normalized == "healthz":
+            return await super().get_response(path, scope)
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code != 404:
+                raise
+            return await super().get_response("index.html", scope)
 
 from kbase import conversations as conv_store
 from kbase import providers_store
@@ -465,5 +491,5 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
 
     web_dir = Path(__file__).resolve().parents[2] / "web"
     if web_dir.exists():
-        app.mount("/", StaticFiles(directory=str(web_dir), html=True), name="web")
+        app.mount("/", SPAStaticFiles(directory=str(web_dir), html=True), name="web")
     return app
