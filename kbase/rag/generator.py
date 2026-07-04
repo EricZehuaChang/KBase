@@ -41,23 +41,25 @@ class Generator:
                  "score": round(b.score, 3)}
                 for i, b in enumerate(blocks)]
 
-    def _build_messages(self, question: str, blocks: list[ContextBlock]) -> list[dict]:
+    def _build_messages(self, question: str, blocks: list[ContextBlock],
+                        history: list[dict] | None = None) -> list[dict]:
         sources = "\n\n".join(
             f"[{i + 1}] 出处：{b.heading_path}\n{b.text}"
             for i, b in enumerate(blocks))
-        return [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user",
-             "content": USER_TEMPLATE.format(sources=sources, question=question)},
-        ]
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        if history:
+            messages.extend(history)
+        messages.append({"role": "user",
+                         "content": USER_TEMPLATE.format(sources=sources, question=question)})
+        return messages
 
-    async def answer_stream(self, question: str,
-                            blocks: list[ContextBlock]) -> AsyncIterator[str]:
+    async def answer_stream(self, question: str, blocks: list[ContextBlock],
+                            history: list[dict] | None = None) -> AsyncIterator[str]:
         usable = self.usable_blocks(blocks)
         if not usable:
             yield REFUSAL
             return
         # 直接 async for 委托：客户端断开时 GeneratorExit 沿链传播，
         # LLM provider 的信号量随之释放（勿改为手动驱动 __anext__）。
-        async for piece in self._llm.stream(self._build_messages(question, usable)):
+        async for piece in self._llm.stream(self._build_messages(question, usable, history)):
             yield piece

@@ -10,11 +10,12 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
+from kbase import conversations as conv_store
 from kbase.config import load_config
 from kbase.db import make_session_factory
 from kbase.index.keyword import KeywordIndex
 from kbase.ingest.pipeline import IngestPipeline
-from kbase.models import Document, KnowledgeBase
+from kbase.models import Conversation, Document, KnowledgeBase
 from kbase.plugins.registry import registry
 from kbase.rag.generator import Generator
 from kbase.rag.retriever import Retriever
@@ -66,6 +67,10 @@ class QueryBody(BaseModel):
     question: str
     provider: str | None = None     # 不传用配置里的 active —— 模型对比入口
     top_k: int = 5
+
+
+class ConversationCreate(BaseModel):
+    kb_id: str
 
 
 def create_app(config_path="config/kbase.yaml", *, embedder=None,
@@ -164,6 +169,10 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
         return _llm_cache[pname]
 
     app = FastAPI(title="KBase")
+    # 测试注入路径：暴露被注入的 active llm 实例，便于测试直接断言其记录的
+    # last_messages（如 FakeLLM），而不必依赖内部私有变量；生产路径未注入
+    # 任何 llm 时为 None。
+    app.state.test_llm = (llms or {}).get(cfg.llm.active)
 
     @app.get("/healthz")
     def healthz():
@@ -237,8 +246,15 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
             bg.add_task(pipeline.retry_document, doc_id)
         return {"retrying": ids}
 
-    @app.post("/api/kb/{kb_id}/query")
-    async def query(kb_id: str, body: QueryBody):
+    async def _run_query(kb_id: str, body: QueryBody, *,
+                         history: list[dict] | None = None,
+                         on_complete=None):
+        """共享检索+生成编排：会话端点与旧的 /api/kb/{id}/query 端点复用同一份
+        逻辑，保证事件序列（citations→token*→done）与拒答语义完全一致。
+
+        on_complete(answer_text, citations, provider): 流结束（含客户端中断）
+        后调用，用于会话落库；旧端点不传，行为与改造前完全相同。
+        """
         try:
             llm = get_llm(body.provider)
         except KeyError as e:
@@ -252,15 +268,56 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
         # 关键契约：usable_blocks 只算一次，citations 与 answer_stream 用同一份列表，
         # 保证引用编号与答案中的 [n] 标记对齐（拒答时 citations 为空列表）
         usable = gen.usable_blocks(blocks)
+        citations = gen.citations(usable)
 
         async def events():
-            yield {"event": "citations",
-                   "data": json.dumps(gen.citations(usable), ensure_ascii=False)}
-            async for piece in gen.answer_stream(body.question, usable):
-                yield {"event": "token", "data": piece}
-            yield {"event": "done", "data": ""}
+            pieces: list[str] = []
+            try:
+                yield {"event": "citations",
+                       "data": json.dumps(citations, ensure_ascii=False)}
+                async for piece in gen.answer_stream(body.question, usable, history):
+                    pieces.append(piece)
+                    yield {"event": "token", "data": piece}
+                yield {"event": "done", "data": ""}
+            finally:
+                # 客户端中断（GeneratorExit）时也执行：已生成的部分答案（可能为空）
+                # 连同引用一并落库，拒答场景（usable 为空）同样落库。
+                if on_complete is not None:
+                    on_complete("".join(pieces), citations,
+                               getattr(llm, "model", body.provider or cfg.llm.active))
 
         return EventSourceResponse(events())
+
+    @app.post("/api/kb/{kb_id}/query")
+    async def query(kb_id: str, body: QueryBody):
+        return await _run_query(kb_id, body)
+
+    @app.post("/api/conversations")
+    def create_conversation(body: ConversationCreate):
+        return conv_store.create_conversation(sf, body.kb_id)
+
+    @app.get("/api/conversations")
+    def list_conversations(kb_id: str | None = None):
+        return conv_store.list_conversations(sf, kb_id)
+
+    @app.get("/api/conversations/{conv_id}/messages")
+    def list_conversation_messages(conv_id: str):
+        return conv_store.list_messages(sf, conv_id)
+
+    @app.post("/api/conversations/{conv_id}/query")
+    async def query_conversation(conv_id: str, body: QueryBody):
+        with sf() as s:
+            conv = s.get(Conversation, conv_id)
+        if conv is None:
+            raise HTTPException(404, f"会话不存在: {conv_id}")
+        history = conv_store.build_history(sf, conv_id)
+
+        def _persist(answer: str, citations: list[dict], provider: str):
+            conv_store.append_round(sf, conv_id, body.question, answer,
+                                    citations, provider)
+
+        return await _run_query(conv.kb_id, body, history=history,
+                               on_complete=_persist)
 
     web_dir = Path(__file__).resolve().parents[2] / "web"
     if web_dir.exists():
