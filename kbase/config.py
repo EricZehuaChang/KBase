@@ -42,11 +42,26 @@ class LLMConfig(BaseModel):
         return self
 
 
+class RerankConfig(BaseModel):
+    enabled: bool = True
+    model: str = "BAAI/bge-reranker-v2-m3"
+
+
+class RetrievalConfig(BaseModel):
+    hybrid: bool = True
+    candidates: int = 20          # 每路召回数与融合候选数
+    rrf_k: int = 60
+    rerank: RerankConfig = Field(default_factory=RerankConfig)
+    min_score_dense: float = 0.3
+    min_score_rerank: float = 0.35
+
+
 class AppConfig(BaseModel):
     data_dir: Path = Path("./data")
     embedder: EmbedderConfig = Field(default_factory=EmbedderConfig)
     vectorstore: VectorStoreConfig = Field(default_factory=VectorStoreConfig)
     chunker: ChunkerConfig = Field(default_factory=ChunkerConfig)
+    retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
     llm: LLMConfig
 
     def get_provider(self, name: str) -> ProviderConfig:
