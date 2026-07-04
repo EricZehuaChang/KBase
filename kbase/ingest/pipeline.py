@@ -78,6 +78,8 @@ class IngestPipeline:
     def _set_status(self, doc_id: str, status: str, error: str | None = None):
         with self._sf() as s:
             doc = s.get(Document, doc_id)
+            if doc is None:      # 文档已被删除等竞态情况：静默跳过，保住"绝不抛异常"契约
+                return
             doc.status = status
             doc.error = error
             s.commit()
