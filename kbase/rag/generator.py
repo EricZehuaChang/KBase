@@ -3,9 +3,6 @@ from typing import AsyncIterator
 
 from kbase.rag.retriever import ContextBlock
 
-# 相关度阈值（余弦相似度，范围 [-1,1]），低于此值拒答。真实 bge 向量下可按评测调整。
-MIN_SCORE = 0.3
-
 REFUSAL = "知识库中未找到依据，无法回答该问题。请尝试换个问法，或确认相关文档已导入。"
 
 SYSTEM_PROMPT = (
@@ -22,12 +19,16 @@ USER_TEMPLATE = """请依据以下资料回答问题。
 
 
 class Generator:
-    def __init__(self, llm):
+    def __init__(self, llm, min_score: float = 0.3):
         self._llm = llm
+        self._min_score = min_score
 
     def usable_blocks(self, blocks: list[ContextBlock]) -> list[ContextBlock]:
-        """按 MIN_SCORE 过滤出可用于回答/引用的上下文块，保持原有顺序（best-score-first）。"""
-        return [b for b in blocks if b.score >= MIN_SCORE]
+        """按 min_score 过滤出可用于回答/引用的上下文块，保持原有顺序（best-score-first）。
+
+        阈值随检索模式（纯向量 vs 重排后）在构造时传入，不同分数量纲需要不同阈值。
+        """
+        return [b for b in blocks if b.score >= self._min_score]
 
     def citations(self, blocks: list[ContextBlock]) -> list[dict]:
         """将 blocks 按顺序编号为引用列表（index 从 1 开始，对应回答中的 [n] 标记）。

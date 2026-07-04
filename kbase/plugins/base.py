@@ -50,3 +50,8 @@ class LLMProvider(Protocol):
 @runtime_checkable
 class Chunker(Protocol):
     def chunk(self, markdown: str, doc_name: str) -> list[ChunkData]: ...
+
+
+@runtime_checkable
+class Reranker(Protocol):
+    def rerank(self, query: str, texts: list[str]) -> list[float]: ...
