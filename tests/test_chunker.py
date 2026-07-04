@@ -77,3 +77,8 @@ def test_preamble_before_first_heading_kept():
     pre = next((p for p in parents if "文首说明" in p.text), None)
     assert pre is not None
     assert pre.heading_path == "d.md"     # 无标题层级时路径仅为文档名
+
+
+def test_public_chunk_params():
+    c = StructureChunker(chunk_size=123, chunk_overlap=45)
+    assert c.chunk_size == 123 and c.chunk_overlap == 45
