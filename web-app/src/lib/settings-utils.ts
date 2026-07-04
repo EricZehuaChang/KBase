@@ -1,4 +1,12 @@
-// src/lib/settings-utils.ts —— 设置页纯函数（可测，不依赖 DOM/组件实例）。
+// src/lib/settings-utils.ts —— 设置页纯函数与共享类型（可测，不依赖 DOM/组件实例）。
+
+/** 单个 provider 的连通性测试状态（SettingsView 按 provider 名持有，
+ * ProviderCard 据此渲染 spinner / 绿延迟徽章 / 红失败 tooltip）。 */
+export interface ProviderTestState {
+  status: "idle" | "testing" | "ok" | "fail";
+  latencyMs?: number;
+  error?: string;
+}
 
 /** params JSON 校验结果：ok 时 value 为解析后的对象；失败时 error 为中文提示，
  * 供 Dialog 表单在 textarea 下方内联展示。 */
