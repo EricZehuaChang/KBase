@@ -310,6 +310,8 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
 
     @app.delete("/api/settings/providers/{name}")
     def settings_delete_provider(name: str):
+        if providers_store.get_active(sf) == name:
+            raise HTTPException(409, "默认 provider 不可删除，请先切换默认")
         found = providers_store.delete_provider(sf, name)
         if not found:
             raise HTTPException(404, f"provider 不存在: {name}")

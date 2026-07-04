@@ -39,6 +39,17 @@ def test_provider_crud(tmp_path, fake_embedder):
     assert c.get("/api/settings/providers").json()["active"] == "fake2"
 
 
+def test_delete_active_provider_rejected(tmp_path, fake_embedder):
+    c = _client(tmp_path, fake_embedder)
+    assert c.get("/api/settings/providers").json()["active"] == "fake"
+    r = c.delete("/api/settings/providers/fake")
+    assert r.status_code == 409
+    assert "不可删除" in r.json()["detail"]
+    # 切换默认后原 active 即可删除
+    c.put("/api/settings/active-provider", json={"name": "fake2"})
+    assert c.delete("/api/settings/providers/fake").status_code == 200
+
+
 def test_provider_connectivity_test_endpoint(tmp_path, fake_embedder):
     c = _client(tmp_path, fake_embedder)
     r = c.post("/api/settings/providers/fake/test").json()
