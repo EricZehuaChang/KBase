@@ -2,7 +2,7 @@
 // 问答页：顶栏 KB+Provider 下拉；中部消息流；底部输入条；侧栏会话列表
 // 通过 Teleport 注入 AppShell 的 #sidebar-slot（AppShell 与路由视图不在同一
 // 组件树，Teleport 是跨树注入内容的标准 Vue 方案）。
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { Plus } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
@@ -28,8 +28,12 @@ const conversations = ref<Conversation[]>([]);
 const activeConvId = ref<string | null>(null);
 const inputText = ref("");
 
-const { messages, streaming, send, loadConversation, startNewConversation, convId } =
+const { messages, streaming, send, cancel, loadConversation, startNewConversation, convId } =
   useChat(kbId, provider);
+
+// 切换会话/知识库的取消由 loadConversation/startNewConversation 内部处理；
+// 这里兜住离开问答页的场景，避免后台流继续消耗连接。
+onBeforeUnmount(cancel);
 
 const conversationGroups = computed(() => groupByTime(conversations.value));
 

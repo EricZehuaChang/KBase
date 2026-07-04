@@ -195,12 +195,13 @@ export function listMessages(convId: string): Promise<Message[]> {
 }
 
 // SSE 端点：返回原始 Response，调用方自己取 reader 喂给 parseSSE。
-export function queryConv(convId: string, body: QueryBody): Promise<Response> {
-  return fetch(`/api/conversations/${convId}/query`, jsonInit(body));
+// signal 用于中途取消（切换会话/知识库或离开页面时 abort，避免旧流继续写入）。
+export function queryConv(convId: string, body: QueryBody, signal?: AbortSignal): Promise<Response> {
+  return fetch(`/api/conversations/${convId}/query`, { ...jsonInit(body), signal });
 }
 
-export function queryKb(kbId: string, body: QueryBody): Promise<Response> {
-  return fetch(`/api/kb/${kbId}/query`, jsonInit(body));
+export function queryKb(kbId: string, body: QueryBody, signal?: AbortSignal): Promise<Response> {
+  return fetch(`/api/kb/${kbId}/query`, { ...jsonInit(body), signal });
 }
 
 export function listProviders(): Promise<{ active: string | null; providers: string[] }> {
