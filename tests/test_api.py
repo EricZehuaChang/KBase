@@ -26,6 +26,9 @@ class FakeLLM:
         yield "满两年"
         yield "可申领[1]。"
 
+    async def complete(self, messages, **params):
+        return "好"
+
 
 def _client(tmp_path, fake_embedder):
     cfg = tmp_path / "kbase.yaml"
