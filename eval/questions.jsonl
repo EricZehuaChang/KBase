@@ -1,0 +1,3 @@
+{"question": "住房补贴的申领条件是什么？", "expect_doc": "补贴办法", "expect_keywords": ["满两年", "在编在岗"]}
+{"question": "补贴标准是每月多少？", "expect_doc": "补贴办法", "expect_keywords": ["一千元"]}
+{"question": "差旅费报销需要什么凭证？", "expect_doc": "报销制度", "expect_keywords": ["发票", "审批单"]}
