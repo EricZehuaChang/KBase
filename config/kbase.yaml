@@ -10,15 +10,21 @@ chunker:
   chunk_size: 512
   chunk_overlap: 64
 llm:
-  active: qwen-72b
+  # 模型清单为当前 API Key 实测可用集合；qwen2.5 开源系列未开通(403)，如需 36B/72B 对比需在百炼控制台开通或改用其他服务商
+  active: qwen-plus
   providers:
-    - name: qwen-72b
+    - name: qwen-plus
       base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
       api_key_env: DASHSCOPE_API_KEY
-      model: qwen2.5-72b-instruct
+      model: qwen-plus
       max_concurrency: 4
-    - name: qwen-32b
+    - name: qwen-max
       base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
       api_key_env: DASHSCOPE_API_KEY
-      model: qwen2.5-32b-instruct
+      model: qwen-max
+      max_concurrency: 4
+    - name: deepseek-v3
+      base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      api_key_env: DASHSCOPE_API_KEY
+      model: deepseek-v3
       max_concurrency: 4
