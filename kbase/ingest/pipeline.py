@@ -10,12 +10,13 @@ from kbase.plugins.base import Chunker, Embedder, VectorStore
 
 class IngestPipeline:
     def __init__(self, session_factory, chunker: Chunker, embedder: Embedder,
-                 store: VectorStore, files_dir: Path):
+                 store: VectorStore, files_dir: Path, keyword_index=None):
         self._sf = session_factory
         self._chunker = chunker
         self._embedder = embedder
         self._store = store
         self._files_dir = Path(files_dir)
+        self._keyword_index = keyword_index
 
     def ingest_file(self, kb_id: str, path: Path, original_name: str) -> str:
         content_hash = hashlib.sha256(Path(path).read_bytes()).hexdigest()
@@ -74,6 +75,10 @@ class IngestPipeline:
                             next_id=c.next_id, heading_path=c.heading_path,
                             text=c.text, is_leaf=c.parent_id is not None))
             s.commit()
+
+        if self._keyword_index and leaves:
+            self._keyword_index.index(
+                kb_id, [(c.id, doc_id, f"{c.heading_path}\n{c.text}") for c in leaves])
 
     def _set_status(self, doc_id: str, status: str, error: str | None = None):
         with self._sf() as s:

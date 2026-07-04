@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from kbase.db import make_session_factory
+from kbase.index.keyword import KeywordIndex
 from kbase.ingest.pipeline import IngestPipeline
 from kbase.models import Chunk, Document, KnowledgeBase
 from kbase.plugins.chunkers.structure import StructureChunker
@@ -65,3 +66,29 @@ def test_ingest_failure_isolated(tmp_path, fake_embedder):
         doc = s.get(Document, doc_id)
         assert doc.status == "failed"
         assert doc.error                 # 有失败原因，且没有抛异常
+
+
+def test_ingest_indexes_leaves_into_keyword_index(tmp_path, fake_embedder):
+    factory = make_session_factory(f"sqlite:///{tmp_path}/kb.sqlite")
+    with factory() as s:
+        s.add(KnowledgeBase(id="kb1", name="测试库"))
+        s.commit()
+    kw = KeywordIndex(factory)
+    pipeline = IngestPipeline(
+        session_factory=factory,
+        chunker=StructureChunker(chunk_size=200, chunk_overlap=0),
+        embedder=fake_embedder,
+        store=ChromaStore(persist_dir=str(tmp_path / "chroma")),
+        files_dir=tmp_path / "files",
+        keyword_index=kw,
+    )
+    f = tmp_path / "补贴办法.md"
+    f.write_text(MD, encoding="utf-8")
+    doc_id = pipeline.ingest_file("kb1", f, original_name="补贴办法.md")
+
+    with factory() as s:
+        doc = s.get(Document, doc_id)
+        assert doc.status == "ready"
+
+    hits = kw.search("kb1", "住房补贴的申领条件", top_k=3)
+    assert hits
