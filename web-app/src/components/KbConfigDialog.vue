@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // KB 配置 Dialog：chunk_size/chunk_overlap 数字输入 + enrich Switch。
-// 打开时按 props.kb.config 回填（无配置则用后端默认值 500/50/关闭）；保存调用
+// 打开时按 props.kb.config 回填（无配置则用后端默认值 512/64/关闭，见
+// kbase/plugins/chunkers/structure.py StructureChunker 构造函数默认值）；保存调用
 // putKbConfig 并在成功后 emit saved，父组件负责刷新 KB 列表。
 import { ref, watch } from "vue";
 import { toast } from "vue-sonner";
@@ -15,8 +16,8 @@ import { putKbConfig, type Kb } from "@/lib/api";
 const props = defineProps<{ open: boolean; kb: Kb | null }>();
 const emit = defineEmits<{ "update:open": [value: boolean]; saved: [] }>();
 
-const chunkSize = ref(500);
-const chunkOverlap = ref(50);
+const chunkSize = ref(512);
+const chunkOverlap = ref(64);
 const enrichEnabled = ref(false);
 const saving = ref(false);
 
@@ -24,8 +25,8 @@ const saving = ref(false);
 watch(() => props.open, (isOpen) => {
   if (!isOpen) return;
   const cfg = props.kb?.config;
-  chunkSize.value = cfg?.chunk_size ?? 500;
-  chunkOverlap.value = cfg?.chunk_overlap ?? 50;
+  chunkSize.value = cfg?.chunk_size ?? 512;
+  chunkOverlap.value = cfg?.chunk_overlap ?? 64;
   enrichEnabled.value = cfg?.enrich?.enabled ?? false;
 });
 
