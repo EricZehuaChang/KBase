@@ -65,3 +65,33 @@ def test_debug_trace(tmp_path, fake_embedder):
     assert result.trace is not None
     assert set(result.trace) >= {"dense", "keyword", "fused"}
     assert result.blocks is not None
+
+
+def test_topk_counts_parent_blocks_not_leaves(tmp_path, fake_embedder):
+    """top_k 应是父块数：单文档多叶子霸榜时，去重后仍应补足其他来源。"""
+    factory = make_session_factory(f"sqlite:///{tmp_path}/kb.sqlite")
+    with factory() as s:
+        s.add(KnowledgeBase(id="kb1", name="库"))
+        s.commit()
+    store = ChromaStore(persist_dir=str(tmp_path / "chroma"))
+    kw = KeywordIndex(factory)
+    pipeline = IngestPipeline(factory, StructureChunker(chunk_size=20, chunk_overlap=0),
+                              fake_embedder, store, tmp_path / "files", keyword_index=kw)
+    # 文档A：同一章节多个短句叶子（同一父块）；文档B：目标内容
+    doc_a = "# 甲文\n## 一章\n差旅标准一。差旅标准二。差旅标准三。差旅标准四。\n"
+    doc_b = "# 乙文\n## 一章\n差旅住宿标准五百元。\n"
+    (tmp_path / "a.md").write_text(doc_a, encoding="utf-8")
+    (tmp_path / "b.md").write_text(doc_b, encoding="utf-8")
+    pipeline.ingest_file("kb1", tmp_path / "a.md", "a.md")
+    pipeline.ingest_file("kb1", tmp_path / "b.md", "b.md")
+
+    class BiasedReranker:
+        def rerank(self, query, texts):
+            # 甲文叶子全部给高分，乙文给低分——模拟单文档霸榜
+            return [0.9 if "住宿" not in t else 0.5 for t in texts]
+
+    r = Retriever(factory, fake_embedder, store, keyword_index=kw,
+                  reranker=BiasedReranker())
+    blocks = r.retrieve("kb1", "差旅", top_k=2)
+    assert len(blocks) == 2
+    assert {b.doc_name for b in blocks} == {"a.md", "b.md"}

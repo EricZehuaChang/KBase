@@ -98,11 +98,14 @@ class Retriever:
             reranked = sorted(zip(candidate_ids, scores),
                               key=lambda kv: kv[1], reverse=True)
             trace["reranked"] = reranked
-            ordered = [(cid, s) for cid, s in reranked[:top_k]]
+            ordered = list(reranked)
         else:
-            ordered = [(cid, cosine.get(cid, 0.0)) for cid in candidate_ids[:top_k]]
+            ordered = [(cid, cosine.get(cid, 0.0)) for cid in candidate_ids]
 
-        blocks = self._assemble(ordered)
+        # top_k 语义 = 去重后的父块数：全量候选按序喂给组装层，凑满 top_k 个
+        # 不同父块即止。若在叶子层截断，单文档多叶子霸榜时去重会把结果收缩到
+        # 少于 top_k 块，挤掉排位靠后的其他来源。
+        blocks = self._assemble(ordered, top_k)
         if debug:
             return RetrievalResult(blocks=blocks, trace=trace)
         return blocks
@@ -120,14 +123,18 @@ class Retriever:
             leaves = s.query(Chunk).filter(Chunk.id.in_(ids)).all()
             return {c.id: f"{c.heading_path}\n{c.text}" for c in leaves}
 
-    def _assemble(self, ordered: list[tuple[str, float]]) -> list[ContextBlock]:
+    def _assemble(self, ordered: list[tuple[str, float]],
+                  top_k: int) -> list[ContextBlock]:
         """叶子命中 -> 父块上下文组装（small-to-big，M1 既有逻辑）。
         按 ordered 顺序遍历，同一父块下的多个叶子命中去重，只返回一次；
-        score 取 ordered 中该叶子对应的分数（融合/重排/余弦，视管道档位而定）。"""
+        score 取 ordered 中该叶子对应的分数（融合/重排/余弦，视管道档位而定）。
+        凑满 top_k 个不同父块即停（top_k 语义 = 父块数，见 retrieve 注释）。"""
         blocks: list[ContextBlock] = []
         seen_parents: set[str] = set()
         with self._sf() as s:
             for chunk_id, score in ordered:
+                if len(blocks) >= top_k:
+                    break
                 leaf = s.get(Chunk, chunk_id)
                 if leaf is None:
                     continue
