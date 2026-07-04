@@ -120,3 +120,71 @@ def test_query_missing_provider_key_returns_503(tmp_path, fake_embedder, monkeyp
                json={"question": "x", "provider": "fake2"})
     assert r.status_code == 503
     assert "FAKE2_KEY" in r.json()["detail"]
+
+
+class StatefulFakeOCR:
+    """可在测试中途翻转的假 OCR 后端：一开始服务不可达（pending_ocr），
+    之后"服务恢复"，重试即可转 ready。"""
+
+    def __init__(self):
+        self.up = False
+
+    def to_markdown(self, path):
+        from kbase.plugins.base import OCRResult, OCRUnavailable
+        if not self.up:
+            raise OCRUnavailable("service down")
+        return OCRResult(markdown="# 扫描件\n识别出的内容。", confidence=0.9)
+
+
+def _scanned_pdf_bytes() -> bytes:
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (600, 800), "white").save(buf, "PDF")
+    return buf.getvalue()
+
+
+def test_pending_ocr_then_retry_becomes_ready(tmp_path, fake_embedder):
+    ocr = StatefulFakeOCR()
+    cfg = tmp_path / "kbase.yaml"
+    cfg.write_text(CFG.format(data_dir=str(tmp_path / "data").replace("\\", "/")),
+                   encoding="utf-8")
+    app = create_app(config_path=cfg, embedder=fake_embedder,
+                     llms={"fake": FakeLLM()}, reranker=False, ocr_backend=ocr)
+    c = TestClient(app)
+    kb_id = c.post("/api/kb", json={"name": "库"}).json()["id"]
+
+    r = c.post(f"/api/kb/{kb_id}/documents",
+               files=[("files", ("scan.pdf", _scanned_pdf_bytes(), "application/pdf"))])
+    assert r.status_code == 200
+    docs = c.get(f"/api/kb/{kb_id}/documents").json()
+    assert docs[0]["status"] == "pending_ocr"
+    doc_id = docs[0]["id"]
+
+    ocr.up = True     # OCR 服务恢复
+    r = c.post(f"/api/documents/{doc_id}/retry")
+    assert r.status_code == 200
+    assert r.json()["status"] == "ready"
+    docs = c.get(f"/api/kb/{kb_id}/documents").json()
+    assert docs[0]["status"] == "ready"
+
+
+def test_retry_ocr_batch_endpoint(tmp_path, fake_embedder):
+    ocr = StatefulFakeOCR()
+    cfg = tmp_path / "kbase.yaml"
+    cfg.write_text(CFG.format(data_dir=str(tmp_path / "data").replace("\\", "/")),
+                   encoding="utf-8")
+    app = create_app(config_path=cfg, embedder=fake_embedder,
+                     llms={"fake": FakeLLM()}, reranker=False, ocr_backend=ocr)
+    c = TestClient(app)
+    kb_id = c.post("/api/kb", json={"name": "库"}).json()["id"]
+    c.post(f"/api/kb/{kb_id}/documents",
+           files=[("files", ("scan.pdf", _scanned_pdf_bytes(), "application/pdf"))])
+    assert c.get(f"/api/kb/{kb_id}/documents").json()[0]["status"] == "pending_ocr"
+
+    ocr.up = True
+    r = c.post(f"/api/kb/{kb_id}/retry-ocr")
+    assert r.status_code == 200
+    assert len(r.json()["retrying"]) == 1
+    # TestClient 中 BackgroundTasks 在响应后同步执行完毕
+    assert c.get(f"/api/kb/{kb_id}/documents").json()[0]["status"] == "ready"
