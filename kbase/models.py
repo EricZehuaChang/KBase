@@ -26,6 +26,7 @@ class Document(Base):
     status: Mapped[str] = mapped_column(String(20), default="pending")
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # MonkeyOCR 无置信度信号，固定 1.0=未知；后续做质量门控时勿当作高置信
     ocr_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     source_path: Mapped[str | None] = mapped_column(Text, nullable=True)
 
