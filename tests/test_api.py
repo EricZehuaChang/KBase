@@ -88,6 +88,28 @@ def test_upload_filename_sanitized(tmp_path, fake_embedder):
     assert all(p.parent.name == "uploads" for p in uploads)
 
 
+def test_reranker_load_failure_degrades(tmp_path, fake_embedder, monkeypatch):
+    """重排模型加载失败时应降级为不重排，应用照常服务，healthz 标记 degraded。"""
+    from kbase.plugins.registry import registry as _registry
+
+    orig_create = _registry.create
+
+    def raiser(kind, name, **kw):
+        if kind == "reranker":
+            raise RuntimeError("模拟模型加载失败")
+        return orig_create(kind, name, **kw)
+
+    monkeypatch.setattr(_registry, "create", raiser)
+    cfg = tmp_path / "kbase.yaml"
+    cfg.write_text(CFG.format(data_dir=str(tmp_path / "data").replace("\\", "/")),
+                   encoding="utf-8")
+    app = create_app(config_path=cfg, embedder=fake_embedder,
+                     llms={"fake": FakeLLM()})          # reranker=None 走配置加载路径
+    c = TestClient(app)
+    assert c.get("/healthz").json()["reranker"] == "degraded"
+    assert c.post("/api/kb", json={"name": "x"}).status_code == 200
+
+
 def test_query_missing_provider_key_returns_503(tmp_path, fake_embedder, monkeypatch):
     # fake2 在配置里存在但不在注入缓存中，且其密钥环境变量未设置：
     # 走真实懒创建路径 → OpenAICompatProvider 抛 RuntimeError → 503
