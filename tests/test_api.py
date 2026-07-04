@@ -47,6 +47,16 @@ def test_kb_create_and_list(tmp_path, fake_embedder):
     assert any(k["id"] == kb_id for k in c.get("/api/kb").json())
 
 
+def test_spa_deep_link_serves_index(tmp_path, fake_embedder):
+    c = _client(tmp_path, fake_embedder)
+    r = c.get("/kb")
+    # web/ 存在于仓库（构建产物），深链接应回退到 index.html
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+    r2 = c.get("/api/nonexistent")
+    assert r2.status_code == 404          # API 路径不回退
+
+
 def test_upload_and_document_status(tmp_path, fake_embedder):
     c = _client(tmp_path, fake_embedder)
     kb_id = c.post("/api/kb", json={"name": "库"}).json()["id"]
