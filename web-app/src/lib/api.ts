@@ -2,9 +2,20 @@
 // 组件测试间接覆盖）。queryConv/queryKb 返回原始 Response，交给调用方用
 // parseSSE(reader, handler) 消费流（citations→token*→done）。
 
+export interface EnrichConfig {
+  enabled: boolean;
+}
+
+export interface KbConfig {
+  chunk_size?: number;
+  chunk_overlap?: number;
+  enrich?: EnrichConfig;
+}
+
 export interface Kb {
   id: string;
   name: string;
+  config: KbConfig | null;
 }
 
 export interface DocumentItem {
@@ -145,6 +156,10 @@ export function listKbs(): Promise<Kb[]> {
 
 export function createKb(name: string): Promise<Kb> {
   return req("/api/kb", jsonInit({ name }));
+}
+
+export function putKbConfig(kbId: string, config: KbConfig): Promise<{ ok: boolean }> {
+  return req(`/api/kb/${kbId}/config`, jsonInit(config, "PUT"));
 }
 
 export function listDocs(kbId: string): Promise<DocumentItem[]> {

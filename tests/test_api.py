@@ -205,3 +205,35 @@ def test_retry_ocr_batch_endpoint(tmp_path, fake_embedder):
     assert len(r.json()["retrying"]) == 1
     # TestClient 中 BackgroundTasks 在响应后同步执行完毕
     assert c.get(f"/api/kb/{kb_id}/documents").json()[0]["status"] == "ready"
+
+
+def test_kb_config_put_get_and_validation(tmp_path, fake_embedder):
+    c = _client(tmp_path, fake_embedder)
+    kb_id = c.post("/api/kb", json={"name": "库"}).json()["id"]
+
+    # 新建时未设置过 config，GET 列表里该字段为 None
+    listed = c.get("/api/kb").json()
+    assert next(k for k in listed if k["id"] == kb_id)["config"] is None
+
+    body = {"chunk_size": 500, "chunk_overlap": 50, "enrich": {"enabled": True}}
+    r = c.put(f"/api/kb/{kb_id}/config", json=body)
+    assert r.status_code == 200
+
+    listed = c.get("/api/kb").json()
+    assert next(k for k in listed if k["id"] == kb_id)["config"] == body
+
+    # 非法值 422：chunk_size 超范围
+    assert c.put(f"/api/kb/{kb_id}/config",
+                 json={"chunk_size": 32}).status_code == 422
+    # chunk_overlap 必须 < chunk_size
+    assert c.put(f"/api/kb/{kb_id}/config",
+                 json={"chunk_size": 100, "chunk_overlap": 100}).status_code == 422
+    # enrich.enabled 非 bool
+    assert c.put(f"/api/kb/{kb_id}/config",
+                 json={"enrich": {"enabled": "yes"}}).status_code == 422
+    # 未知 key
+    assert c.put(f"/api/kb/{kb_id}/config",
+                 json={"unknown_key": 1}).status_code == 422
+    # 未知 kb
+    assert c.put("/api/kb/not-exist/config",
+                 json={"chunk_size": 300}).status_code == 404
