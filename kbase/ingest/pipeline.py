@@ -1,22 +1,26 @@
-"""摄取：文件 → markitdown → 标准 Markdown → 分块 → 叶子块向量化 → 入库。
+"""摄取：文件 → markitdown → 标准 Markdown → 分块 → [可选]上下文增强 → 叶子块向量化 → 入库。
 单文件失败只标记该文档，不向外抛异常（批次隔离）。"""
 import hashlib
+import json
 import uuid
 from pathlib import Path
 
-from kbase.models import Chunk, Document
+from kbase.models import Chunk, Document, KnowledgeBase
 from kbase.plugins.base import Chunker, Embedder, VectorStore
+from kbase.plugins.chunkers.structure import StructureChunker
 
 
 class IngestPipeline:
     def __init__(self, session_factory, chunker: Chunker, embedder: Embedder,
-                 store: VectorStore, files_dir: Path, keyword_index=None):
+                 store: VectorStore, files_dir: Path, keyword_index=None,
+                 enricher=None):
         self._sf = session_factory
         self._chunker = chunker
         self._embedder = embedder
         self._store = store
         self._files_dir = Path(files_dir)
         self._keyword_index = keyword_index
+        self._enricher = enricher
 
     def ingest_file(self, kb_id: str, path: Path, original_name: str) -> str:
         content_hash = hashlib.sha256(Path(path).read_bytes()).hexdigest()
@@ -54,13 +58,22 @@ class IngestPipeline:
         out_dir.mkdir(parents=True, exist_ok=True)
         (out_dir / "content.md").write_text(markdown, encoding="utf-8")
 
-        chunks = self._chunker.chunk(markdown, doc_name=name)
+        kb_config = self._load_kb_config(kb_id)
+        chunker = self._chunker_for(kb_config)
+        chunks = chunker.chunk(markdown, doc_name=name)
         leaves = [c for c in chunks if c.parent_id is not None]
+
+        if leaves and self._enricher is not None and kb_config.get("enrich", {}).get("enabled"):
+            leaves = self._enricher.enrich(name, markdown, leaves)
+
         if leaves:
             # 只嵌入叶子块；父块仅存 SQLite 供上下文组装。
             # 超长文本会被 embedding 模型静默截断，叶子块 512 字符远低于上限。
+            # enrich_context（若有）作为前缀参与向量化，帮助稠密检索理解片段
+            # 在全文中的定位；lstrip 去掉无增强时开头多余的换行。
             vectors = self._embedder.embed(
-                [f"{c.heading_path}\n{c.text}" for c in leaves])
+                [f"{c.meta.get('enrich_context', '')}\n{c.heading_path}\n{c.text}".lstrip()
+                 for c in leaves])
             self._store.upsert(
                 collection=kb_id,
                 ids=[c.id for c in leaves],
@@ -73,12 +86,42 @@ class IngestPipeline:
                 s.add(Chunk(id=c.id, doc_id=doc_id, kb_id=kb_id,
                             parent_id=c.parent_id, prev_id=c.prev_id,
                             next_id=c.next_id, heading_path=c.heading_path,
-                            text=c.text, is_leaf=c.parent_id is not None))
+                            text=c.text, is_leaf=c.parent_id is not None,
+                            enrich_context=c.meta.get("enrich_context")))
             s.commit()
 
         if self._keyword_index and leaves:
+            # 关键词索引保持索引原始文本（heading_path+text，无 enrich 前缀）：
+            # 增强句是"这段话在讲什么"的摘要，有利于语义向量匹配同义表达；
+            # 但关键词检索要的是文中原样出现的词/编号（如文件号），加增强前缀
+            # 反而会稀释 BM25 对原文关键词的权重，因此这里刻意不用增强后的文本。
             self._keyword_index.index(
                 kb_id, [(c.id, doc_id, f"{c.heading_path}\n{c.text}") for c in leaves])
+
+    def _load_kb_config(self, kb_id: str) -> dict:
+        with self._sf() as s:
+            kb = s.get(KnowledgeBase, kb_id)
+        if kb is None or not kb.config:
+            return {}
+        try:
+            return json.loads(kb.config)
+        except (json.JSONDecodeError, TypeError):
+            return {}
+
+    def _chunker_for(self, kb_config: dict) -> Chunker:
+        chunk_size = kb_config.get("chunk_size")
+        chunk_overlap = kb_config.get("chunk_overlap")
+        if chunk_size is None and chunk_overlap is None:
+            return self._chunker
+        # kb 级覆盖：只在配置里显式给了 chunk_size/chunk_overlap 时才新建 chunker，
+        # 缺省的那一项沿用默认 chunker 的构造参数（走 TextSplitter 基类记录的
+        # _chunk_size/_chunk_overlap，见 langchain_text_splitters.base）
+        if isinstance(self._chunker, StructureChunker):
+            splitter = self._chunker._text_splitter
+            return StructureChunker(
+                chunk_size=chunk_size if chunk_size is not None else splitter._chunk_size,
+                chunk_overlap=chunk_overlap if chunk_overlap is not None else splitter._chunk_overlap)
+        return self._chunker
 
     def _set_status(self, doc_id: str, status: str, error: str | None = None):
         with self._sf() as s:

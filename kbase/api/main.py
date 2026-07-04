@@ -27,6 +27,37 @@ def _load_builtin_plugins():
     import kbase.plugins.llm.openai_compat       # noqa: F401
 
 
+class LazyEnricher:
+    """包一层，把"是否需要 enrich LLM"从"应用启动"推迟到"第一次真正调用 enrich"。
+
+    动机：ContextualEnricher 需要一个 LLM 实例，但构造 LLM（openai-compat）
+    要读 provider 的 api_key 环境变量——如果启动时就急切创建，会让「没有任何
+    kb 开启 enrich」的部署也强制要求配好 enrich provider 的密钥。而是否有 kb
+    真正启用 enrich 只有摄取时才知道（kb 级 config JSON），所以用一个可调用
+    工厂延迟到首次 enrich() 调用时再解析真实的 ContextualEnricher。
+    解析失败（如密钥缺失/provider 不存在）时记录 warning 并原样返回 leaves
+    （等价于未增强），不让摄取失败。
+    """
+
+    def __init__(self, factory):
+        self._factory = factory
+        self._resolved = None
+        self._resolve_failed = False
+
+    def enrich(self, doc_name, markdown, leaves):
+        if self._resolve_failed:
+            return leaves
+        if self._resolved is None:
+            try:
+                self._resolved = self._factory()
+            except Exception as e:  # noqa: BLE001 —— 解析失败不阻塞摄取
+                self._resolve_failed = True
+                logging.getLogger(__name__).warning(
+                    "Enricher 初始化失败，本次摄取跳过上下文增强: %s", e)
+                return leaves
+        return self._resolved.enrich(doc_name, markdown, leaves)
+
+
 class KBCreate(BaseModel):
     name: str
 
@@ -38,10 +69,15 @@ class QueryBody(BaseModel):
 
 
 def create_app(config_path="config/kbase.yaml", *, embedder=None,
-               store=None, llms: dict | None = None, reranker=None) -> FastAPI:
+               store=None, llms: dict | None = None, reranker=None,
+               enricher=None) -> FastAPI:
     """reranker: None=按配置加载（生产默认，失败自动降级）；
     False=显式关闭（测试用哨兵，保持既有分数语义不变）；
-    传实例=直接注入（测试用 fake reranker）。"""
+    传实例=直接注入（测试用 fake reranker）。
+    enricher: None=生产默认，包一层 LazyEnricher 延迟到首次摄取时才解析真实
+    LLM（避免未启用 enrich 的部署也要求配好密钥）；
+    False=显式关闭（测试哨兵，pipeline 不做任何增强）；
+    传实例=直接注入（测试用真实 ContextualEnricher 或 fake，跳过 Lazy 包装）。"""
     _load_builtin_plugins()
     cfg = load_config(config_path)
     cfg.data_dir.mkdir(parents=True, exist_ok=True)
@@ -68,9 +104,24 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
         jieba.initialize()
         keyword_index = KeywordIndex(sf)
 
+    if enricher is None:
+        # 生产路径：延迟解析真实 ContextualEnricher，避免没有任何 kb 启用
+        # enrich 时也强制要求 enrich provider 的密钥就绪（见 LazyEnricher 文档）。
+        # get_llm 在下方定义，这里只是把它捕获进闭包，调用发生在首次 enrich()
+        # 时（即已在 get_llm 定义之后），Python 闭包晚绑定，不存在时序问题。
+        def _build_enricher():
+            import kbase.plugins.enrichers.contextual  # noqa: F401
+            llm = get_llm(cfg.enrich.provider)
+            return registry.create("enricher", "contextual", llm=llm)
+
+        enricher = LazyEnricher(_build_enricher)
+    elif enricher is False:
+        enricher = None    # 显式关闭：测试哨兵
+
     pipeline = IngestPipeline(sf, chunker, embedder, store,
                               files_dir=cfg.data_dir / "files",
-                              keyword_index=keyword_index)
+                              keyword_index=keyword_index,
+                              enricher=enricher)
 
     rerank_degraded = False
     if reranker is False:
