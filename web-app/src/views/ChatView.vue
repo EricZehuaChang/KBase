@@ -12,8 +12,8 @@ import {
 import MessageStream from "@/components/MessageStream.vue";
 import CitationDrawer from "@/components/CitationDrawer.vue";
 import {
-  listKbs, listConvs, listProviders, listDocs,
-  type Kb, type Conversation, type Citation, type DocumentItem,
+  listKbs, listConvs, listProviders,
+  type Kb, type Conversation, type Citation,
 } from "@/lib/api";
 import { groupByTime } from "@/lib/chat-utils";
 import { useChat } from "@/composables/useChat";
@@ -36,20 +36,10 @@ const conversationGroups = computed(() => groupByTime(conversations.value));
 const openCitation = ref<Citation | null>(null);
 const openCitationMessageId = ref<string | null>(null);
 const lastQuestion = ref("");
-// 引用（SSE citations / 会话历史 Message.citations）只带 doc_name，不带
-// doc_id —— Generator.citations() 未回传 ContextBlock.doc_id（后端契约缺口，
-// 已记录）。这里按当前 KB 的文档列表用文件名反查 doc_id，供"查看文档全文"用。
-const docsByName = ref<Map<string, DocumentItem>>(new Map());
 
 async function refreshConversations() {
   if (!kbId.value) return;
   conversations.value = await listConvs(kbId.value);
-}
-
-async function refreshDocsIndex() {
-  if (!kbId.value) return;
-  const docs = await listDocs(kbId.value);
-  docsByName.value = new Map(docs.map((d) => [d.filename, d]));
 }
 
 async function selectConversation(conv: Conversation) {
@@ -70,7 +60,7 @@ watch(convId, (id) => {
 watch(kbId, async (id) => {
   if (!id) return;
   newConversation();
-  await Promise.all([refreshConversations(), refreshDocsIndex()]);
+  await refreshConversations();
 });
 
 async function handleSend() {
@@ -94,10 +84,6 @@ function handleOpenCitation(index: number, messageId: string) {
   openCitation.value = citation;
   openCitationMessageId.value = messageId;
 }
-
-const openCitationDocId = computed(() =>
-  openCitation.value ? docsByName.value.get(openCitation.value.doc_name)?.id ?? null : null,
-);
 
 onMounted(async () => {
   kbs.value = await listKbs();
@@ -154,7 +140,6 @@ onMounted(async () => {
 
   <CitationDrawer
     :citation="openCitation"
-    :doc-id="openCitationDocId"
     :query="lastQuestion"
     @close="openCitation = null; openCitationMessageId = null"
   />

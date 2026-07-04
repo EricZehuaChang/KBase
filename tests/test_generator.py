@@ -34,6 +34,7 @@ async def test_stream_with_citations():
     assert "申领条件是什么" in user_prompt
     cits = gen.citations([_block()])
     assert cits[0]["index"] == 1 and cits[0]["doc_name"] == "补贴办法.docx"
+    assert cits[0]["doc_id"] == "d1"   # 前端"查看文档全文"依赖 doc_id 直取
 
 
 async def test_refusal_when_no_context():

@@ -14,7 +14,6 @@ import { highlightSegments } from "@/lib/chat-utils";
 
 const props = defineProps<{
   citation: Citation | null;
-  docId: string | null;
   query: string;
 }>();
 const emit = defineEmits<{ close: [] }>();
@@ -47,12 +46,15 @@ function fullTextSegments(markdown: string) {
 }
 
 async function openFullText() {
-  if (!props.docId) return;
+  // 旧会话历史里的 citations JSON 无 doc_id（M2 中期才加入载荷）——按钮已按
+  // v-if 隐藏，这里再兜一层防御。
+  const docId = props.citation?.doc_id;
+  if (!docId) return;
   fullTextOpen.value = true;
   fullTextLoading.value = true;
   fullTextError.value = null;
   try {
-    docContent.value = await getDocContent(props.docId);
+    docContent.value = await getDocContent(docId);
   } catch (err) {
     fullTextError.value = err instanceof Error ? err.message : String(err);
   } finally {
@@ -104,10 +106,10 @@ watch(() => props.citation, () => {
       </div>
 
       <Button
+        v-if="citation.doc_id"
         variant="outline"
         size="sm"
         class="mt-4"
-        :disabled="!docId"
         @click="openFullText"
       >
         <FileText class="size-3.5" />
