@@ -1,0 +1,19 @@
+# 内部资料，永不入库
+材料/
+*.rar
+*.pptx
+
+# 服务器交接手册含云资源信息，不入库
+Google_Cloud_GPU_Server_Handoff_Guide_*.md
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 数据与运行时产物
+data/
+*.sqlite
+*.db
+.env
