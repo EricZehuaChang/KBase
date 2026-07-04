@@ -27,8 +27,8 @@ function isActive(path: string): boolean {
         KBase
       </div>
 
-      <!-- 中部插槽：问答页放会话列表 -->
-      <div class="flex-1 overflow-y-auto px-2">
+      <!-- 中部插槽：问答页放会话列表（各 View 通过 Teleport to="#sidebar-slot" 注入） -->
+      <div id="sidebar-slot" class="flex flex-1 flex-col overflow-y-auto px-2">
         <slot />
       </div>
 
