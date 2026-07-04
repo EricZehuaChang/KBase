@@ -56,12 +56,20 @@ class RetrievalConfig(BaseModel):
     min_score_rerank: float = 0.35
 
 
+class EnrichConfig(BaseModel):
+    # 全局开关：kb 是否可以启用上下文增强（真正是否增强由每个 kb 自己的
+    # KnowledgeBase.config JSON 里的 enrich.enabled 决定，见 ingest/pipeline.py）。
+    # provider=None 表示用 llm.active 对应的 provider 做增强调用。
+    provider: str | None = None
+
+
 class AppConfig(BaseModel):
     data_dir: Path = Path("./data")
     embedder: EmbedderConfig = Field(default_factory=EmbedderConfig)
     vectorstore: VectorStoreConfig = Field(default_factory=VectorStoreConfig)
     chunker: ChunkerConfig = Field(default_factory=ChunkerConfig)
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
+    enrich: EnrichConfig = Field(default_factory=EnrichConfig)
     llm: LLMConfig
 
     def get_provider(self, name: str) -> ProviderConfig:

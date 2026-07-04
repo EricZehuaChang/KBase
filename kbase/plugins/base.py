@@ -55,3 +55,9 @@ class Chunker(Protocol):
 @runtime_checkable
 class Reranker(Protocol):
     def rerank(self, query: str, texts: list[str]) -> list[float]: ...
+
+
+@runtime_checkable
+class Enricher(Protocol):
+    def enrich(self, doc_name: str, markdown: str,
+               leaves: list[ChunkData]) -> list[ChunkData]: ...
