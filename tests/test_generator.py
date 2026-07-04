@@ -1,7 +1,9 @@
 import pytest
 
-from kbase.rag.generator import MIN_SCORE, Generator
+from kbase.rag.generator import Generator
 from kbase.rag.retriever import ContextBlock
+
+MIN_SCORE = 0.3   # 与 Generator 默认 min_score 保持一致，供既有用例复用
 
 
 class FakeLLM:

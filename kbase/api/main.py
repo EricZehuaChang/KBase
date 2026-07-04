@@ -1,5 +1,6 @@
 """HTTP 编排层：只做参数校验与调度，业务逻辑在 ingest/rag 模块。"""
 import json
+import logging
 import uuid
 from pathlib import Path
 
@@ -37,7 +38,10 @@ class QueryBody(BaseModel):
 
 
 def create_app(config_path="config/kbase.yaml", *, embedder=None,
-               store=None, llms: dict | None = None) -> FastAPI:
+               store=None, llms: dict | None = None, reranker=None) -> FastAPI:
+    """reranker: None=按配置加载（生产默认，失败自动降级）；
+    False=显式关闭（测试用哨兵，保持既有分数语义不变）；
+    传实例=直接注入（测试用 fake reranker）。"""
     _load_builtin_plugins()
     cfg = load_config(config_path)
     cfg.data_dir.mkdir(parents=True, exist_ok=True)
@@ -67,9 +71,26 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
     pipeline = IngestPipeline(sf, chunker, embedder, store,
                               files_dir=cfg.data_dir / "files",
                               keyword_index=keyword_index)
+
+    rerank_degraded = False
+    if reranker is False:
+        reranker = None                     # 显式关闭：测试哨兵，不走加载/降级逻辑
+    elif reranker is None and cfg.retrieval.rerank.enabled:
+        try:
+            import kbase.plugins.rerankers.bge_local  # noqa: F401
+            reranker = registry.create("reranker", "bge-local",
+                                       model=cfg.retrieval.rerank.model)
+        except Exception as e:  # noqa: BLE001 —— 模型加载失败降级不重排
+            reranker = None
+            rerank_degraded = True
+            logging.getLogger(__name__).warning("重排模型加载失败，已降级: %s", e)
+
     retriever = Retriever(sf, embedder, store, keyword_index=keyword_index,
+                          reranker=reranker,
                           candidates=cfg.retrieval.candidates,
                           rrf_k=cfg.retrieval.rrf_k)
+    gen_min_score = (cfg.retrieval.min_score_rerank if retriever.rerank_active
+                     else cfg.retrieval.min_score_dense)
 
     _llm_cache: dict = dict(llms or {})
 
@@ -87,8 +108,15 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
 
     @app.get("/healthz")
     def healthz():
+        if rerank_degraded:
+            reranker_status = "degraded"
+        elif retriever.rerank_active:
+            reranker_status = "on"
+        else:
+            reranker_status = "off"
         return {"status": "ok", "embedder": type(embedder).__name__,
-                "vectorstore": type(store).__name__}
+                "vectorstore": type(store).__name__,
+                "reranker": reranker_status}
 
     @app.get("/api/providers")
     def providers():
@@ -140,7 +168,7 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
         # 检索（含向量化）是同步 CPU/IO 混合操作，进线程池避免阻塞事件循环
         blocks = await run_in_threadpool(
             retriever.retrieve, kb_id, body.question, body.top_k)
-        gen = Generator(llm)
+        gen = Generator(llm, min_score=gen_min_score)
         # 关键契约：usable_blocks 只算一次，citations 与 answer_stream 用同一份列表，
         # 保证引用编号与答案中的 [n] 标记对齐（拒答时 citations 为空列表）
         usable = gen.usable_blocks(blocks)
