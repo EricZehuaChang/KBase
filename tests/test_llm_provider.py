@@ -18,6 +18,23 @@ def test_init_missing_env_raises(monkeypatch):
                              api_key_env="NO_SUCH_KEY", model="m")
 
 
+def test_default_params_merged(monkeypatch):
+    monkeypatch.setenv("TEST_LLM_KEY", "sk-fake")
+    from kbase.plugins.llm.openai_compat import OpenAICompatProvider
+    p = OpenAICompatProvider(base_url="https://example.com/v1", api_key_env="TEST_LLM_KEY",
+                             model="m", params={"extra_body": {"enable_thinking": False}})
+    assert p._default_params["extra_body"]["enable_thinking"] is False
+
+
+def test_call_site_params_override_defaults(monkeypatch):
+    monkeypatch.setenv("TEST_LLM_KEY", "sk-fake")
+    from kbase.plugins.llm.openai_compat import OpenAICompatProvider
+    p = OpenAICompatProvider(base_url="https://example.com/v1", api_key_env="TEST_LLM_KEY",
+                             model="m", params={"temperature": 0.1})
+    merged = {**p._default_params, **{"temperature": 0.9}}
+    assert merged["temperature"] == 0.9
+
+
 @pytest.mark.external
 async def test_real_stream():
     """需要 DASHSCOPE_API_KEY 环境变量，验证真实端点流式输出。"""
