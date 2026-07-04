@@ -17,3 +17,6 @@ data/
 *.sqlite
 *.db
 .env
+
+# 评测报告（生成产物，不入库）
+eval/report*.md
