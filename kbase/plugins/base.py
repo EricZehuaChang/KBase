@@ -1,4 +1,7 @@
-"""插件契约。内核代码只允许 import 本文件，不得 import 具体实现。"""
+"""插件契约。内核代码只允许 import 本文件，不得 import 具体实现。
+
+runtime_checkable 只校验方法存在，不校验签名。
+"""
 from dataclasses import dataclass, field
 from typing import AsyncIterator, Protocol, runtime_checkable
 
@@ -39,6 +42,7 @@ class VectorStore(Protocol):
 
 @runtime_checkable
 class LLMProvider(Protocol):
+    # 实现可为 async generator（async def + yield），调用方式统一为 async for
     def stream(self, messages: list[dict], **params) -> AsyncIterator[str]: ...
     async def complete(self, messages: list[dict], **params) -> str: ...
 

@@ -50,3 +50,14 @@ def test_get_provider_unknown_raises(tmp_path: Path):
     cfg = load_config(cfg_file)
     with pytest.raises(KeyError):
         cfg.get_provider("nope")
+
+
+def test_active_not_in_providers_raises(tmp_path: Path):
+    import pytest
+    cfg_file = tmp_path / "kbase.yaml"
+    cfg_file.write_text(
+        "data_dir: ./data\nllm:\n  active: nope\n  providers:\n    - {name: a, base_url: 'http://x', api_key_env: K, model: m}\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(Exception, match="nope"):
+        load_config(cfg_file)

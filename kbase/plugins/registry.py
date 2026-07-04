@@ -1,3 +1,6 @@
+"""插件注册表：实现类在模块导入时注册，按 (kind, name) 实例化。"""
+
+
 class PluginRegistry:
     def __init__(self):
         self._plugins: dict[tuple[str, str], type] = {}
