@@ -20,3 +20,6 @@ data/
 
 # 评测报告（生成产物，不入库）
 eval/report*.md
+
+# 前端脚手架（web-app/ 为源码，web/ 为构建产物——两者都入库，仅依赖目录忽略）
+web-app/node_modules/

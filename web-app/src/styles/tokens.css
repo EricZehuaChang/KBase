@@ -1,0 +1,40 @@
+:root {
+  /* 中性暖灰骨架 */
+  --bg: #FAFAF9;
+  --surface: #FFFFFF;
+  --surface-2: #F4F4F2;
+  --border: #E5E4E0;
+  --border-strong: #D0CFC9;
+  --text: #1F1F1E;
+  --text-2: #5F5E5A;
+  --text-3: #8E8D87;
+  /* 单强调色（可主题化：行业主题只覆盖这组） */
+  --accent: #534AB7;
+  --accent-weak: #EEEDFE;
+  --accent-text: #3C3489;
+  /* 语义色 */
+  --ok: #1D9E75;  --ok-weak: #E1F5EE;
+  --warn: #BA7517; --warn-weak: #FAEEDA;
+  --err: #A32D2D;  --err-weak: #FCEBEB;
+  /* 形状与节奏 */
+  --radius-ctl: 8px;
+  --radius-card: 12px;
+  --shadow-drawer: 0 8px 32px rgba(0,0,0,.12);
+}
+[data-theme="dark"] {
+  --bg: #141416;
+  --surface: #1C1C1F;
+  --surface-2: #232327;
+  --border: #2E2E33;
+  --border-strong: #3D3D44;
+  --text: #ECECEA;
+  --text-2: #A5A49E;
+  --text-3: #6F6E68;
+  --accent: #8B83E0;
+  --accent-weak: #2A2650;
+  --accent-text: #CECBF6;
+  --ok: #5DCAA5;  --ok-weak: #0E3A2D;
+  --warn: #EF9F27; --warn-weak: #3D2B0C;
+  --err: #F09595;  --err-weak: #451414;
+}
+body { background: var(--bg); color: var(--text); font-family: system-ui, "Microsoft YaHei", sans-serif; font-size: 15px; line-height: 1.7; }
