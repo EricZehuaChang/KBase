@@ -1,0 +1,24 @@
+# KBase 运行配置。密钥一律走环境变量（api_key_env 指定变量名），本文件可入库。
+data_dir: ./data
+embedder:
+  name: bge-local
+  model: BAAI/bge-m3
+vectorstore:
+  name: chroma
+chunker:
+  name: structure
+  chunk_size: 512
+  chunk_overlap: 64
+llm:
+  active: qwen-72b
+  providers:
+    - name: qwen-72b
+      base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      api_key_env: DASHSCOPE_API_KEY
+      model: qwen2.5-72b-instruct
+      max_concurrency: 4
+    - name: qwen-32b
+      base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      api_key_env: DASHSCOPE_API_KEY
+      model: qwen2.5-32b-instruct
+      max_concurrency: 4
