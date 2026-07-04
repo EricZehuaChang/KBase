@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import RetrievalTrace from "@/components/RetrievalTrace.vue";
 import { listKbs, listDocs, search, type Kb, type SearchResult } from "@/lib/api";
+import { shouldRerunForQuery } from "@/lib/trace-utils";
 
 const route = useRoute();
 
@@ -55,10 +56,8 @@ async function runSearch() {
       result.value = await search(kbId.value, query.value.trim(), { debug: true, topK: 5 });
     }
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    // 后端网关错误（如 502）响应体可能为空文本，err.message 会是空字符串——
-    // 空字符串在模板 v-if 判断中是假值，需要兜底文案避免错误态"消失"。
-    error.value = message || "请求失败，请稍后重试";
+    // 消息非空由 api.ts req() 统一保证（空响应体时兜底状态码文案）
+    error.value = err instanceof Error ? err.message : String(err);
   } finally {
     loading.value = false;
     searched.value = true;
@@ -81,6 +80,16 @@ onMounted(async () => {
 watch(kbId, async (id) => {
   if (id && query.value.trim() && !searched.value && !loading.value) {
     await runSearch();
+  }
+});
+
+// /analysis?q=X → /analysis?q=Y 复用组件实例（router-view 无 :key），
+// onMounted 不会重跑——监听 ?q= 变化补上这条路径（如连续点两条消息的
+// "检索过程"链接）。守卫条件抽为纯函数 shouldRerunForQuery（vitest 覆盖）。
+watch(() => route.query.q, async (q) => {
+  if (shouldRerunForQuery(q, query.value)) {
+    query.value = q;
+    if (kbId.value) await runSearch();
   }
 });
 </script>

@@ -36,3 +36,11 @@ export function rankChanges(
 export function shortChunkId(chunkId: string): string {
   return chunkId.slice(0, 8);
 }
+
+/** ?q= 变化时是否应重新执行检索。newQ 来自 route.query.q（vue-router 类型为
+ * string | string[] | null | undefined，重复 query 参数会成为数组）：仅当它是
+ * 非空字符串且与当前输入框内容不同时才触发——同值导航、清空参数、数组形态
+ * 都不触发。抽成纯函数以便 vitest 直接断言（AnalysisView 的 watch 经由它守卫）。 */
+export function shouldRerunForQuery(newQ: unknown, currentQ: string): newQ is string {
+  return typeof newQ === "string" && newQ !== "" && newQ !== currentQ;
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rankChanges, shortChunkId } from "../trace-utils";
+import { rankChanges, shortChunkId, shouldRerunForQuery } from "../trace-utils";
 
 describe("rankChanges", () => {
   it("按 fused 名次与 reranked 名次的差值标注：新进/上升/下降", () => {
@@ -31,5 +31,16 @@ describe("shortChunkId", () => {
 
   it("短于 8 字符原样返回", () => {
     expect(shortChunkId("ab12")).toBe("ab12");
+  });
+});
+
+describe("shouldRerunForQuery", () => {
+  it("仅新的非空字符串且与当前值不同时才重新检索", () => {
+    expect(shouldRerunForQuery("新问题", "旧问题")).toBe(true);
+    expect(shouldRerunForQuery("同一问题", "同一问题")).toBe(false); // 同值导航
+    expect(shouldRerunForQuery("", "旧问题")).toBe(false); // 清空参数
+    expect(shouldRerunForQuery(undefined, "旧问题")).toBe(false); // 离开 ?q=
+    expect(shouldRerunForQuery(null, "旧问题")).toBe(false);
+    expect(shouldRerunForQuery(["a", "b"], "旧问题")).toBe(false); // 重复参数成数组
   });
 });
