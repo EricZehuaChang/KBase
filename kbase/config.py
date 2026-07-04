@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class EmbedderConfig(BaseModel):
@@ -30,6 +30,15 @@ class ProviderConfig(BaseModel):
 class LLMConfig(BaseModel):
     active: str
     providers: list[ProviderConfig]
+
+    @model_validator(mode="after")
+    def _check_active_in_providers(self) -> "LLMConfig":
+        names = {p.name for p in self.providers}
+        if self.active not in names:
+            raise ValueError(
+                f"llm.active 指向未配置的 provider: {self.active}，"
+                f"已配置: {sorted(names)}")
+        return self
 
 
 class AppConfig(BaseModel):
