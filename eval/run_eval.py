@@ -7,6 +7,7 @@
 import argparse
 import asyncio
 import json
+import sys
 from pathlib import Path
 
 from kbase.config import load_config
@@ -27,12 +28,26 @@ def build_retriever(cfg):
     return Retriever(sf, embedder, store)
 
 
+def load_questions(path: str) -> list[dict]:
+    """逐行解析 JSONL；出错时报告文件名+行号（1-based），避免定位困难。
+    encoding="utf-8-sig" 可同时兼容有/无 BOM 的文件。"""
+    p = Path(path)
+    questions = []
+    for i, line in enumerate(p.read_text(encoding="utf-8-sig").splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            questions.append(json.loads(line))
+        except json.JSONDecodeError as e:
+            print(f"错误：{p}: 第 {i} 行 JSON 解析失败：{e}", file=sys.stderr)
+            sys.exit(1)
+    return questions
+
+
 async def run(args):
     cfg = load_config(args.config)
     retriever = build_retriever(cfg)
-    questions = [json.loads(l) for l in
-                 Path(args.questions).read_text(encoding="utf-8").splitlines()
-                 if l.strip()]
+    questions = load_questions(args.questions)
     providers = args.providers.split(",")
     rows, hit_count = [], 0
 
@@ -67,7 +82,8 @@ async def run(args):
              "|---|---|---|---|---|"]
     for r in rows:
         ans = r["answer"].replace("\n", " ").replace("|", "\\|")
-        lines.append(f"| {r['provider']} | {r['question']} | "
+        q = r["question"].replace("|", "\\|")
+        lines.append(f"| {r['provider']} | {q} | "
                      f"{'✓' if r['retrieval_hit'] else '✗'} | "
                      f"{r['keyword_coverage']} | {ans} |")
     out = Path(args.out)
