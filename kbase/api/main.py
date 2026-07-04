@@ -1,6 +1,8 @@
 """HTTP 编排层：只做参数校验与调度，业务逻辑在 ingest/rag 模块。"""
 import json
 import logging
+import shutil
+import time
 import uuid
 from pathlib import Path
 
@@ -11,11 +13,12 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from kbase import conversations as conv_store
+from kbase import providers_store
 from kbase.config import load_config
 from kbase.db import make_session_factory
 from kbase.index.keyword import KeywordIndex
 from kbase.ingest.pipeline import IngestPipeline
-from kbase.models import Conversation, Document, KnowledgeBase
+from kbase.models import Chunk, Conversation, Document, KnowledgeBase
 from kbase.plugins.registry import registry
 from kbase.rag.generator import Generator
 from kbase.rag.retriever import Retriever
@@ -73,6 +76,27 @@ class ConversationCreate(BaseModel):
     kb_id: str
 
 
+class ProviderCreate(BaseModel):
+    name: str
+    base_url: str
+    api_key_env: str
+    model: str
+    max_concurrency: int = 4
+    params: dict = {}
+
+
+class ProviderUpdate(BaseModel):
+    base_url: str | None = None
+    api_key_env: str | None = None
+    model: str | None = None
+    max_concurrency: int | None = None
+    params: dict | None = None
+
+
+class ActiveProviderBody(BaseModel):
+    name: str
+
+
 def create_app(config_path="config/kbase.yaml", *, embedder=None,
                store=None, llms: dict | None = None, reranker=None,
                enricher=None, ocr_backend=None) -> FastAPI:
@@ -90,6 +114,7 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
     cfg = load_config(config_path)
     cfg.data_dir.mkdir(parents=True, exist_ok=True)
     sf = make_session_factory(f"sqlite:///{cfg.data_dir}/kbase.sqlite")
+    providers_store.seed_from_config(sf, cfg)   # providers 表为空时才导入 YAML，之后 DB 为唯一真源
 
     if embedder is None:   # 测试注入 FakeEmbedder，生产走配置
         # bge_local 依赖 local-embed extra 且加载慢，仅在真正需要时 import 注册
@@ -156,17 +181,32 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
     gen_min_score = (cfg.retrieval.min_score_rerank if retriever.rerank_active
                      else cfg.retrieval.min_score_dense)
 
+    # 测试注入的 llm（按 name）继续短路 DB 懒创建——预置进缓存后，get_llm
+    # 命中缓存直接返回，不会走到下面的 DB provider 查询，保证既有测试不变。
     _llm_cache: dict = dict(llms or {})
 
     def get_llm(name: str | None):
-        pname = name or cfg.llm.active
+        """活跃 provider 解析顺序：显式请求参数 > app_settings.active_provider > 报错。"""
+        pname = name
+        if pname is None:
+            pname = providers_store.get_active(sf)
+            if pname is None:
+                raise KeyError("未设置活跃 provider（app_settings.active_provider 为空）")
         if pname not in _llm_cache:      # 懒创建：请求时在应用事件循环内构建，
-            p = cfg.get_provider(pname)  # 未配密钥的 provider 不影响启动
+            p = providers_store.get_provider_dict(sf, pname)   # 未配密钥的 provider 不影响启动
+            if p is None:
+                raise KeyError(f"LLM provider 未配置: {pname}")
             _llm_cache[pname] = registry.create(
-                "llm", "openai-compat", base_url=p.base_url,
-                api_key_env=p.api_key_env, model=p.model,
-                max_concurrency=p.max_concurrency, params=p.params)
+                "llm", "openai-compat", base_url=p["base_url"],
+                api_key_env=p["api_key_env"], model=p["model"],
+                max_concurrency=p["max_concurrency"], params=p["params"])
         return _llm_cache[pname]
+
+    def _invalidate_llm_cache(name: str) -> None:
+        """PUT/DELETE provider 后使该 name 的缓存失效，下次 get_llm 重新按 DB 最新定义创建。
+        注意：测试注入的 llm（llms 参数预置进缓存）若被同名 PUT/DELETE，也会被这里清掉——
+        这是预期行为：既然通过设置 API 显式改了该 provider，就不应再套用旧的注入实例。"""
+        _llm_cache.pop(name, None)
 
     app = FastAPI(title="KBase")
     # 测试注入路径：暴露被注入的 active llm 实例，便于测试直接断言其记录的
@@ -188,8 +228,58 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
 
     @app.get("/api/providers")
     def providers():
-        return {"active": cfg.llm.active,
-                "providers": [p.name for p in cfg.llm.providers]}
+        # 旧端点（Plan B 前旧前端仍用它）：改读 DB，返回结构保持不变
+        return {"active": providers_store.get_active(sf),
+                "providers": [p["name"] for p in providers_store.list_providers(sf)]}
+
+    @app.get("/api/settings/providers")
+    def settings_list_providers():
+        return {"active": providers_store.get_active(sf),
+                "providers": providers_store.list_providers(sf)}
+
+    @app.post("/api/settings/providers")
+    def settings_create_provider(body: ProviderCreate):
+        if providers_store.get_provider_dict(sf, body.name) is not None:
+            raise HTTPException(409, f"provider 已存在: {body.name}")
+        providers_store.create_provider(sf, body.model_dump())
+        return {"ok": True}
+
+    @app.put("/api/settings/providers/{name}")
+    def settings_update_provider(name: str, body: ProviderUpdate):
+        found = providers_store.update_provider(
+            sf, name, body.model_dump(exclude_unset=True))
+        if not found:
+            raise HTTPException(404, f"provider 不存在: {name}")
+        _invalidate_llm_cache(name)
+        return {"ok": True}
+
+    @app.delete("/api/settings/providers/{name}")
+    def settings_delete_provider(name: str):
+        found = providers_store.delete_provider(sf, name)
+        if not found:
+            raise HTTPException(404, f"provider 不存在: {name}")
+        _invalidate_llm_cache(name)
+        return {"ok": True}
+
+    @app.put("/api/settings/active-provider")
+    def settings_set_active_provider(body: ActiveProviderBody):
+        if providers_store.get_provider_dict(sf, body.name) is None:
+            raise HTTPException(404, f"provider 不存在: {body.name}")
+        providers_store.set_active(sf, body.name)
+        return {"ok": True}
+
+    @app.post("/api/settings/providers/{name}/test")
+    async def settings_test_provider(name: str):
+        if providers_store.get_provider_dict(sf, name) is None:
+            raise HTTPException(404, f"provider 不存在: {name}")
+        try:
+            llm = get_llm(name)
+            start = time.perf_counter()
+            await llm.complete([{"role": "user", "content": "回复：好"}])
+            latency_ms = (time.perf_counter() - start) * 1000
+            return {"ok": True, "latency_ms": latency_ms}
+        except Exception as e:  # noqa: BLE001 —— 连通性探测，任何失败都回报而非 500
+            return {"ok": False, "error": str(e)}
 
     @app.post("/api/kb")
     def create_kb(body: KBCreate):
@@ -224,6 +314,37 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
             docs = s.query(Document).filter_by(kb_id=kb_id).all()
             return [{"id": d.id, "filename": d.filename, "status": d.status,
                      "error": d.error} for d in docs]
+
+    @app.get("/api/documents/{doc_id}/content")
+    def document_content(doc_id: str):
+        with sf() as s:
+            doc = s.get(Document, doc_id)
+        if doc is None:
+            raise HTTPException(404, f"文档不存在: {doc_id}")
+        content_path = cfg.data_dir / "files" / doc_id / "content.md"
+        if not content_path.exists():
+            raise HTTPException(404, f"文档全文不存在: {doc_id}")
+        return {"doc_id": doc.id, "filename": doc.filename,
+                "markdown": content_path.read_text(encoding="utf-8")}
+
+    @app.delete("/api/kb/{kb_id}/documents/{doc_id}")
+    def delete_document(kb_id: str, doc_id: str):
+        with sf() as s:
+            doc = s.get(Document, doc_id)
+            if doc is None or doc.kb_id != kb_id:
+                raise HTTPException(404, f"文档不存在: {doc_id}")
+        # 级联顺序：向量 → 全文索引 → chunk 行 → document 行 → files 目录
+        store.delete(kb_id, doc_id)
+        if keyword_index is not None:
+            keyword_index.delete_doc(doc_id)
+        with sf() as s:
+            s.query(Chunk).filter_by(doc_id=doc_id).delete()
+            doc = s.get(Document, doc_id)
+            if doc is not None:
+                s.delete(doc)
+            s.commit()
+        shutil.rmtree(cfg.data_dir / "files" / doc_id, ignore_errors=True)
+        return {"ok": True}
 
     @app.post("/api/documents/{doc_id}/retry")
     def retry_document(doc_id: str):
