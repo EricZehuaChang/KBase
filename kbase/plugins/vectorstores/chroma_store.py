@@ -1,0 +1,34 @@
+import chromadb
+from chromadb.config import Settings
+
+from kbase.plugins.base import Hit
+from kbase.plugins.registry import registry
+
+
+@registry.register("vectorstore", "chroma")
+class ChromaStore:
+    def __init__(self, persist_dir: str = "./data/chroma"):
+        self._client = chromadb.PersistentClient(
+            path=persist_dir,
+            settings=Settings(anonymized_telemetry=False))
+
+    def _coll(self, collection: str):
+        # cosine 距离，与 normalize 后的 bge 向量匹配
+        return self._client.get_or_create_collection(
+            collection, metadata={"hnsw:space": "cosine"})
+
+    def upsert(self, collection, ids, vectors, metas):
+        self._coll(collection).upsert(ids=ids, embeddings=vectors, metadatas=metas)
+
+    def search(self, collection, vector, top_k, filters=None):
+        res = self._coll(collection).query(
+            query_embeddings=[vector], n_results=top_k,
+            where=filters or None)
+        hits = []
+        for cid, dist, meta in zip(res["ids"][0], res["distances"][0],
+                                   res["metadatas"][0]):
+            hits.append(Hit(chunk_id=cid, score=1 - dist, meta=meta or {}))
+        return hits
+
+    def delete(self, collection, doc_id):
+        self._coll(collection).delete(where={"doc_id": doc_id})
