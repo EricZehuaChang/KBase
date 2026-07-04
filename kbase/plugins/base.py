@@ -61,3 +61,18 @@ class Reranker(Protocol):
 class Enricher(Protocol):
     def enrich(self, doc_name: str, markdown: str,
                leaves: list[ChunkData]) -> list[ChunkData]: ...
+
+
+@dataclass
+class OCRResult:
+    markdown: str
+    confidence: float = 1.0
+
+
+class OCRUnavailable(RuntimeError):
+    """OCR 服务不可达/超时——文档应转 pending_ocr 而非 failed。"""
+
+
+@runtime_checkable
+class OCRBackend(Protocol):
+    def to_markdown(self, path) -> OCRResult: ...

@@ -70,14 +70,17 @@ class QueryBody(BaseModel):
 
 def create_app(config_path="config/kbase.yaml", *, embedder=None,
                store=None, llms: dict | None = None, reranker=None,
-               enricher=None) -> FastAPI:
+               enricher=None, ocr_backend=None) -> FastAPI:
     """reranker: None=按配置加载（生产默认，失败自动降级）；
     False=显式关闭（测试用哨兵，保持既有分数语义不变）；
     传实例=直接注入（测试用 fake reranker）。
     enricher: None=生产默认，包一层 LazyEnricher 延迟到首次摄取时才解析真实
     LLM（避免未启用 enrich 的部署也要求配好密钥）；
     False=显式关闭（测试哨兵，pipeline 不做任何增强）；
-    传实例=直接注入（测试用真实 ContextualEnricher 或 fake，跳过 Lazy 包装）。"""
+    传实例=直接注入（测试用真实 ContextualEnricher 或 fake，跳过 Lazy 包装）。
+    ocr_backend: None=按配置加载（cfg.ocr.enabled 为真时创建 monkey-http 后端，
+    生产默认；未启用则不装 OCR，扫描件/图片直接判 failed）；
+    传实例=直接注入（测试用 FakeOCR，跳过配置读取与真实网络依赖）。"""
     _load_builtin_plugins()
     cfg = load_config(config_path)
     cfg.data_dir.mkdir(parents=True, exist_ok=True)
@@ -118,10 +121,15 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
     elif enricher is False:
         enricher = None    # 显式关闭：测试哨兵
 
+    if ocr_backend is None and cfg.ocr.enabled:
+        import kbase.plugins.ocr.monkey_http  # noqa: F401
+        ocr_backend = registry.create("ocr", cfg.ocr.backend, endpoint=cfg.ocr.endpoint)
+
     pipeline = IngestPipeline(sf, chunker, embedder, store,
                               files_dir=cfg.data_dir / "files",
                               keyword_index=keyword_index,
-                              enricher=enricher)
+                              enricher=enricher,
+                              ocr_backend=ocr_backend)
 
     rerank_degraded = False
     if reranker is False:
@@ -207,6 +215,27 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
             docs = s.query(Document).filter_by(kb_id=kb_id).all()
             return [{"id": d.id, "filename": d.filename, "status": d.status,
                      "error": d.error} for d in docs]
+
+    @app.post("/api/documents/{doc_id}/retry")
+    def retry_document(doc_id: str):
+        with sf() as s:
+            doc = s.get(Document, doc_id)
+        if doc is None:
+            raise HTTPException(404, f"文档不存在: {doc_id}")
+        pipeline.retry_document(doc_id)
+        with sf() as s:
+            doc = s.get(Document, doc_id)
+            return {"id": doc.id, "status": doc.status, "error": doc.error}
+
+    @app.post("/api/kb/{kb_id}/retry-ocr")
+    def retry_kb_ocr(kb_id: str, bg: BackgroundTasks):
+        with sf() as s:
+            pending = s.query(Document).filter_by(
+                kb_id=kb_id, status="pending_ocr").all()
+            ids = [d.id for d in pending]
+        for doc_id in ids:
+            bg.add_task(pipeline.retry_document, doc_id)
+        return {"retrying": ids}
 
     @app.post("/api/kb/{kb_id}/query")
     async def query(kb_id: str, body: QueryBody):

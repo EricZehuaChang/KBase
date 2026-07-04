@@ -63,6 +63,14 @@ class EnrichConfig(BaseModel):
     provider: str | None = None
 
 
+class OCRConfig(BaseModel):
+    # enabled=False（默认）：不创建 OCR 后端，扫描件/图片直接判 failed（M1 行为）。
+    # backend 目前只有 monkey-http 一种实现（kbase/plugins/ocr/monkey_http.py）。
+    enabled: bool = False
+    backend: str = "monkey-http"
+    endpoint: str = "http://localhost:7861"
+
+
 class AppConfig(BaseModel):
     data_dir: Path = Path("./data")
     embedder: EmbedderConfig = Field(default_factory=EmbedderConfig)
@@ -70,6 +78,7 @@ class AppConfig(BaseModel):
     chunker: ChunkerConfig = Field(default_factory=ChunkerConfig)
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
     enrich: EnrichConfig = Field(default_factory=EnrichConfig)
+    ocr: OCRConfig = Field(default_factory=OCRConfig)
     llm: LLMConfig
 
     def get_provider(self, name: str) -> ProviderConfig:

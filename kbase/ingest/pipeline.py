@@ -1,4 +1,4 @@
-"""摄取：文件 → markitdown → 标准 Markdown → 分块 → [可选]上下文增强 → 叶子块向量化 → 入库。
+"""摄取：文件 → markitdown/OCR → 标准 Markdown → 分块 → [可选]上下文增强 → 叶子块向量化 → 入库。
 单文件失败只标记该文档，不向外抛异常（批次隔离）。"""
 import hashlib
 import json
@@ -6,14 +6,27 @@ import uuid
 from pathlib import Path
 
 from kbase.models import Chunk, Document, KnowledgeBase
-from kbase.plugins.base import Chunker, Embedder, VectorStore
+from kbase.plugins.base import Chunker, Embedder, OCRUnavailable, VectorStore
 from kbase.plugins.chunkers.structure import StructureChunker
+
+_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
+
+
+def pdf_has_text_layer(path, sample_pages: int = 3, min_chars_per_page: int = 50) -> bool:
+    """采样前 N 页，平均每页文本字符数达到阈值即认为有文本层（非扫描件）。"""
+    from pypdf import PdfReader
+    reader = PdfReader(str(path))
+    pages = reader.pages[:sample_pages]
+    if not pages:
+        return False
+    chars = sum(len((p.extract_text() or "").strip()) for p in pages)
+    return chars / len(pages) >= min_chars_per_page
 
 
 class IngestPipeline:
     def __init__(self, session_factory, chunker: Chunker, embedder: Embedder,
                  store: VectorStore, files_dir: Path, keyword_index=None,
-                 enricher=None):
+                 enricher=None, ocr_backend=None):
         self._sf = session_factory
         self._chunker = chunker
         self._embedder = embedder
@@ -21,6 +34,7 @@ class IngestPipeline:
         self._files_dir = Path(files_dir)
         self._keyword_index = keyword_index
         self._enricher = enricher
+        self._ocr = ocr_backend
 
     def ingest_file(self, kb_id: str, path: Path, original_name: str) -> str:
         content_hash = hashlib.sha256(Path(path).read_bytes()).hexdigest()
@@ -31,22 +45,53 @@ class IngestPipeline:
                 return dup.id
             doc = Document(id=str(uuid.uuid4()), kb_id=kb_id,
                            filename=original_name, content_hash=content_hash,
-                           status="parsing")
+                           status="parsing", source_path=str(path))
             s.add(doc)
             s.commit()
             doc_id = doc.id
-        try:
-            self._process(kb_id, doc_id, path, original_name)
-            self._set_status(doc_id, "ready")
-        except Exception as e:  # noqa: BLE001 —— 批次隔离，失败落库
-            self._set_status(doc_id, "failed", error=f"{type(e).__name__}: {e}")
+        self._run(kb_id, doc_id, path, original_name)
         return doc_id
 
+    def retry_document(self, doc_id: str) -> None:
+        """对既有文档（通常 pending_ocr/failed）重跑解析。用 Document.source_path
+        找回原始文件，不依赖上传目录反查（上传文件名含 uuid 前缀无法直接推导）。"""
+        with self._sf() as s:
+            doc = s.get(Document, doc_id)
+            if doc is None:
+                return
+            kb_id, path, name = doc.kb_id, doc.source_path, doc.filename
+        if not path or not Path(path).exists():
+            self._set_status(doc_id, "failed", error="原始文件已丢失，无法重试")
+            return
+        self._set_status(doc_id, "parsing")
+        self._run(kb_id, doc_id, Path(path), name)
+
+    def _run(self, kb_id: str, doc_id: str, path: Path, name: str) -> None:
+        try:
+            ocr_confidence = self._process(kb_id, doc_id, path, name)
+            self._set_status(doc_id, "ready", ocr_confidence=ocr_confidence)
+        except OCRUnavailable:
+            # OCR 服务暂时不可达/超时：可重试，不是文档本身的问题
+            self._set_status(doc_id, "pending_ocr")
+        except Exception as e:  # noqa: BLE001 —— 批次隔离，失败落库
+            self._set_status(doc_id, "failed", error=f"{type(e).__name__}: {e}")
+
     def _process(self, kb_id: str, doc_id: str, path: Path, name: str):
-        from markitdown import MarkItDown
-        markdown = MarkItDown(enable_plugins=False).convert(str(path)).text_content
+        suffix = Path(path).suffix.lower()
+        needs_ocr = suffix in _IMAGE_EXTS or (
+            suffix == ".pdf" and not pdf_has_text_layer(path))
+        ocr_confidence = None
+        if needs_ocr:
+            if self._ocr is None:
+                raise ValueError("扫描件/图片需要 OCR，当前未配置 OCR 后端")
+            result = self._ocr.to_markdown(path)      # OCRUnavailable 向上抛，由 _run 捕获
+            markdown = result.markdown
+            ocr_confidence = result.confidence
+        else:
+            from markitdown import MarkItDown
+            markdown = MarkItDown(enable_plugins=False).convert(str(path)).text_content
         if not markdown.strip():
-            raise ValueError("解析结果为空（可能是扫描件，M1 不支持 OCR）")
+            raise ValueError("解析结果为空（可能是扫描件，未正确路由到 OCR）")
         # markitdown 对不认识/损坏的二进制文件会静默降级为纯文本转换器，
         # 逐字节解码后返回"成功"但含有控制字符的乱码（而不是抛异常）。
         # 真实文档解析结果不应包含 NUL 等 C0 控制符（\t\n\r 除外），
@@ -98,6 +143,8 @@ class IngestPipeline:
             self._keyword_index.index(
                 kb_id, [(c.id, doc_id, f"{c.heading_path}\n{c.text}") for c in leaves])
 
+        return ocr_confidence
+
     def _load_kb_config(self, kb_id: str) -> dict:
         with self._sf() as s:
             kb = s.get(KnowledgeBase, kb_id)
@@ -121,11 +168,14 @@ class IngestPipeline:
                 chunk_overlap=chunk_overlap if chunk_overlap is not None else self._chunker.chunk_overlap)
         return self._chunker
 
-    def _set_status(self, doc_id: str, status: str, error: str | None = None):
+    def _set_status(self, doc_id: str, status: str, error: str | None = None,
+                    ocr_confidence: float | None = None):
         with self._sf() as s:
             doc = s.get(Document, doc_id)
             if doc is None:      # 文档已被删除等竞态情况：静默跳过，保住"绝不抛异常"契约
                 return
             doc.status = status
             doc.error = error
+            if ocr_confidence is not None:
+                doc.ocr_confidence = ocr_confidence
             s.commit()
