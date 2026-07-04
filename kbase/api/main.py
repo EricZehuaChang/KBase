@@ -1,4 +1,5 @@
 """HTTP 编排层：只做参数校验与调度，业务逻辑在 ingest/rag 模块。"""
+import asyncio
 import json
 import logging
 import shutil
@@ -275,9 +276,12 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
         try:
             llm = get_llm(name)
             start = time.perf_counter()
-            await llm.complete([{"role": "user", "content": "回复：好"}])
+            await asyncio.wait_for(
+                llm.complete([{"role": "user", "content": "回复：好"}]), timeout=10.0)
             latency_ms = (time.perf_counter() - start) * 1000
             return {"ok": True, "latency_ms": latency_ms}
+        except asyncio.TimeoutError:
+            return {"ok": False, "error": "连通性测试超时(10s)"}
         except Exception as e:  # noqa: BLE001 —— 连通性探测，任何失败都回报而非 500
             return {"ok": False, "error": str(e)}
 
