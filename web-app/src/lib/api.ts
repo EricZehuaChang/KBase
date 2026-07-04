@@ -136,7 +136,9 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       // 非 JSON 响应体，原样用 text 兜底
     }
-    throw new Error(detail ?? text);
+    // 兜底状态码文案：网关错误（如 502）响应体可能为空，空字符串消息的 Error
+    // 在调用方 v-if 判断中是假值，会让错误态"消失"，统一在这里保证消息非空。
+    throw new Error(detail || text || `请求失败 (${res.status})`);
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
