@@ -51,10 +51,38 @@ def _cosine(a: list[float], b: list[float]) -> float:
     return dot / (na * nb)
 
 
+_ELLIPSIS = "…"
+
+
+def _window_parent_text(parent_text: str, leaf_text: str, max_chars: int) -> str:
+    """D6：父块全文超过 max_chars 时，以命中叶子文本在父块中首次出现的位置
+    为中心截一个不超过 max_chars 的窗口，保证返回内容里一定含有命中叶子——
+    否则命中叶子靠后时简单头部截断会把它切掉，答案就丢了关键上下文。
+    截断处加 … 标记（开头/结尾视是否真的被截去而定）。
+    找不到叶子文本（理论上不应发生，防御性兜底）时退化为头部截断。"""
+    if len(parent_text) <= max_chars:
+        return parent_text
+    idx = parent_text.find(leaf_text)
+    if idx == -1:
+        return parent_text[:max_chars] + _ELLIPSIS
+    center = idx + len(leaf_text) // 2
+    half = max_chars // 2
+    start = max(0, center - half)
+    end = min(len(parent_text), start + max_chars)
+    start = max(0, end - max_chars)     # 尾部不够时把窗口往前挪，窗口宽度尽量吃满
+    windowed = parent_text[start:end]
+    if start > 0:
+        windowed = _ELLIPSIS + windowed
+    if end < len(parent_text):
+        windowed = windowed + _ELLIPSIS
+    return windowed
+
+
 class Retriever:
     def __init__(self, session_factory, embedder: Embedder, store: VectorStore,
                  keyword_index=None, reranker=None,
-                 candidates: int = 20, rrf_k: int = 60):
+                 candidates: int = 20, rrf_k: int = 60,
+                 max_parent_chars: int = 4000):
         self._sf = session_factory
         self._embedder = embedder
         self._store = store
@@ -62,6 +90,7 @@ class Retriever:
         self._reranker = reranker
         self._candidates = candidates
         self._rrf_k = rrf_k
+        self._max_parent_chars = max_parent_chars
 
     @property
     def rerank_active(self) -> bool:
@@ -128,7 +157,10 @@ class Retriever:
         """叶子命中 -> 父块上下文组装（small-to-big，M1 既有逻辑）。
         按 ordered 顺序遍历，同一父块下的多个叶子命中去重，只返回一次；
         score 取 ordered 中该叶子对应的分数（融合/重排/余弦，视管道档位而定）。
-        凑满 top_k 个不同父块即停（top_k 语义 = 父块数，见 retrieve 注释）。"""
+        凑满 top_k 个不同父块即停（top_k 语义 = 父块数，见 retrieve 注释）。
+        父块全文超过 max_parent_chars 时按命中叶子的位置截窗（D6，见
+        _window_parent_text），避免超长父块把 prompt 撑爆或稀释掉真正相关
+        的叶子内容。"""
         blocks: list[ContextBlock] = []
         seen_parents: set[str] = set()
         with self._sf() as s:
@@ -143,11 +175,12 @@ class Retriever:
                     continue
                 seen_parents.add(parent.id)
                 doc = s.get(Document, leaf.doc_id)
+                text = _window_parent_text(parent.text, leaf.text, self._max_parent_chars)
                 blocks.append(ContextBlock(
                     doc_id=leaf.doc_id,
                     doc_name=doc.filename if doc else "未知文档",
                     heading_path=parent.heading_path,
-                    text=parent.text,
+                    text=text,
                     snippet=leaf.text,
                     score=score,
                 ))
