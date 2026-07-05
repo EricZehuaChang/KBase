@@ -84,6 +84,38 @@ class AppSetting(Base):
     value: Mapped[str] = mapped_column(Text)
 
 
+class User(Base):
+    __tablename__ = "users"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    username: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(200))
+    role: Mapped[str] = mapped_column(String(20))            # admin | editor | viewer
+    disabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ApiKey(Base):
+    __tablename__ = "api_keys"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    prefix: Mapped[str] = mapped_column(String(20), index=True)   # 前8字符明文，列表展示用
+    key_hash: Mapped[str] = mapped_column(String(64), index=True)  # sha256 hex
+    role: Mapped[str] = mapped_column(String(20))
+    revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    actor: Mapped[str] = mapped_column(String(100))          # 用户名或 api key name
+    action: Mapped[str] = mapped_column(String(100))
+    resource: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)   # JSON，截断
+    ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
 class Job(Base):
     __tablename__ = "jobs"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
