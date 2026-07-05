@@ -50,15 +50,20 @@ def test_assemble_different_headings_increment_global_number():
     assert "[2] 乙.docx › 乙.docx > 一" in md
 
 
-def test_assemble_citation_index_out_of_range_left_as_is():
-    """正文引用的编号超出该节 citations 列表范围 → 防御性保留原样，不重映射。"""
+def test_assemble_citation_index_out_of_range_stripped():
+    """正文引用的编号超出该节 citations 列表范围 → 剥离该标记（成品文档不留
+    悬空引用），同节有效编号照常重映射。"""
     sections_out = [
-        {"title": "第一章", "text": "参见[3]的说明。",
+        {"title": "第一章", "text": "依据甲文件[1]，另参见[3]的说明。",
          "citations": [{"doc_name": "甲.docx", "heading_path": "甲.docx > 一",
                         "snippet": "甲文件内容"}]},
     ]
     md = assemble("方案", sections_out)
-    assert "参见[3]的说明。" in md
+    # 有效 [1] 正常重映射为全局 [1]
+    assert "依据甲文件[1]，" in md
+    # 越界 [3] 被剥离：标记消失、前后文字保持连续
+    assert "另参见的说明。" in md
+    assert "[3]" not in md
 
 
 def test_assemble_appendix_heading_present():
