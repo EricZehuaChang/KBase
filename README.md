@@ -21,10 +21,10 @@ Get-Content -Encoding utf8 .env | ForEach-Object {
 }
 
 # 4. 启动服务（首次启动需加载 bge-m3 模型，约 60~120 秒）
-.venv\Scripts\uvicorn --factory kbase.api.main:create_app --port 8000
+.venv\Scripts\uvicorn --factory kbase.api.main:create_app --port 8100
 ```
 
-浏览器打开 http://localhost:8000 即可使用知识库管理与问答页面。`/healthz` 可查看各插件加载状态。
+浏览器打开 http://localhost:8100 即可使用知识库管理与问答页面。`/healthz` 可查看各插件加载状态。
 
 ## 配置
 
@@ -58,6 +58,36 @@ llm:
 - **provider 可运行时切换**：查询接口 `POST /api/kb/{id}/query` 接受 `provider` 字段，不传则用 `llm.active`；前端问答页有下拉框，方便同一问题对比不同规模模型的回答。
 
 > **运维提示**：providers 首次启动时从 `config/kbase.yaml` 种子导入数据库，之后以数据库为准（设置页管理），修改 YAML 不再生效。
+
+## 前端开发
+
+前端（`web-app/`）是独立的 Vite + Vue3 + TypeScript + shadcn-vue 项目，构建产物输出到 `web/`，由 FastAPI 静态托管（`create_app` 的 `web_dir` 逻辑不变）。
+
+```powershell
+# 开发模式：先启动后端（见上方“快速开始”，端口 8100），另开一个终端：
+cd web-app
+npm install
+npm run dev          # dev server 默认 5173，vite.config.ts 已把 /api 与 /healthz 代理到 http://localhost:8100
+
+# 构建：产物写入 ../web（即仓库根目录的 web/），供 FastAPI 直接托管
+npm run build
+
+# 测试（vitest，纯函数 + 组合式函数单测，无需启动后端）
+npm run test
+```
+
+> **`web/` 是构建产物，不要直接编辑**：修改前端一律改 `web-app/src/` 下的源码，然后 `npm run build` 重新生成 `web/`，再把 `web/` 的变更一并提交入库（私有化交付环境通常不装 Node，因此构建产物需要入库，而不是靠 `.gitignore` 排除）。直接手改 `web/` 里的文件会在下次构建时被覆盖丢失。
+
+### 四页功能简介
+
+- **问答**（`/`）：左侧会话列表（按更新时间分组：今天/7 天内/更早）+ 右侧流式问答区，回答中的引用角标 `[n]` 可点击打开引用抽屉（片段高亮、相关度分数、跳转全文预览）。
+- **知识库管理**（`/kb`）：知识库卡片网格 + 文档表格（状态徽章、失败重试、批量重试 OCR、拖拽上传、分块参数配置）。
+- **检索分析**（`/analysis`）：输入查询后展示稠密路/关键词路/RRF 融合三栏对比，若启用重排还会显示重排后名次变化。
+- **设置**（`/settings`）：LLM Provider 卡片管理（增删改、设为默认、连通性测试）、系统健康面板、亮/暗主题切换。
+
+### 主题定制
+
+配色、圆角、阴影等设计令牌全部集中在 `web-app/src/styles/tokens.css`，以 CSS 变量形式定义（`:root` 为亮色，`[data-theme="dark"]` 覆盖为暗色）。定制主题（例如行业配色）只需覆盖 `--accent` / `--accent-weak` / `--accent-text` 这一组强调色变量，其余中性色与语义色（`--ok`/`--warn`/`--err`）建议保持不变以维持可读性对比度；shadcn-vue 组件通过 `main.css` 里的映射（`--primary: var(--accent)` 等）统一吃同一套令牌，无需单独改组件样式。
 
 ## 测试
 
