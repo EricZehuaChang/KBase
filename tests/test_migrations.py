@@ -1,6 +1,7 @@
 from sqlalchemy import inspect, text
 
 from kbase.db import make_session_factory
+from kbase.migrations import run_migrations
 
 
 def test_migrations_add_columns_and_tables(tmp_path):
@@ -107,3 +108,117 @@ def test_existing_m1_db_upgrades(tmp_path):
     with factory() as s:
         insp = inspect(s.get_bind())
         assert "enrich_context" in {c["name"] for c in insp.get_columns("chunks")}
+
+
+# ---- M4-2 H3：方言感知分支（纯逻辑单测，无需真实 PG 连接） -------------------
+#
+# run_migrations 内部按 engine.dialect.name 分派到 _run_sqlite_migrations /
+# _run_postgresql_migrations。真连 PG 需要活的服务器（见 test_keyword_pg.py
+# 的 @pytest.mark.pg 集成测试），这里只验证「选对了哪条路径、拼出了哪些
+# DDL」——用一个假 engine/connection 记录被执行的 SQL 文本，不需要网络。
+
+class _FakeDialect:
+    def __init__(self, name):
+        self.name = name
+
+
+class _FakeConnection:
+    def __init__(self):
+        self.executed: list[str] = []
+
+    def execute(self, stmt, *args, **kwargs):
+        self.executed.append(str(stmt))
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class _FakeInspector:
+    def __init__(self, tables, columns):
+        self._tables = tables
+        self._columns = columns
+
+    def get_table_names(self):
+        return self._tables
+
+    def get_columns(self, table):
+        return [{"name": c} for c in self._columns.get(table, [])]
+
+
+class _FakeEngine:
+    """伪造 engine：只满足 run_migrations 用到的接口面
+    （.dialect.name、.begin() 返回连接、inspect() 走 get_table_names/get_columns）。
+    不建立任何真实网络连接，纯 Python 对象。"""
+    def __init__(self, dialect_name, tables=(), columns=None):
+        self.dialect = _FakeDialect(dialect_name)
+        self._tables = list(tables)
+        self._columns = columns or {}
+        self.conn = _FakeConnection()
+
+    def begin(self):
+        return self.conn
+
+
+def _patch_inspect(monkeypatch, engine):
+    import kbase.migrations as mig
+    fake_insp = _FakeInspector(engine._tables, engine._columns)
+    monkeypatch.setattr(mig, "inspect", lambda e: fake_insp)
+
+
+def test_run_migrations_sqlite_dialect_creates_fts5_virtual_table(monkeypatch):
+    engine = _FakeEngine("sqlite", tables=["documents"],
+                         columns={"documents": ["id", "kb_id", "content_hash",
+                                                  "created_at"]})
+    _patch_inspect(monkeypatch, engine)
+    run_migrations(engine)
+    sql = "\n".join(engine.conn.executed)
+    assert "fts5" in sql.lower()
+    assert "tsvector" not in sql.lower()
+
+
+def test_run_migrations_postgresql_dialect_skips_fts5_and_uses_gin(monkeypatch):
+    engine = _FakeEngine("postgresql", tables=["documents"],
+                         columns={"documents": ["id", "kb_id", "content_hash",
+                                                  "created_at"]})
+    _patch_inspect(monkeypatch, engine)
+    run_migrations(engine)
+    sql = "\n".join(engine.conn.executed)
+    assert "fts5" not in sql.lower()
+    assert "tsvector" in sql.lower()
+    assert "gin" in sql.lower()
+
+
+def test_run_migrations_postgresql_dedup_uses_ctid_not_rowid(monkeypatch):
+    """PostgreSQL 没有 rowid，去重查询须改用 ctid 做并列 tiebreaker。"""
+    engine = _FakeEngine("postgresql", tables=["documents"],
+                         columns={"documents": ["id", "kb_id", "content_hash",
+                                                  "created_at"]})
+    _patch_inspect(monkeypatch, engine)
+    run_migrations(engine)
+    sql = "\n".join(engine.conn.executed)
+    assert "rowid" not in sql.lower()
+    assert "ctid" in sql.lower()
+
+
+def test_run_migrations_postgresql_column_guard_uses_inspector_columns(monkeypatch):
+    """列缺失守卫复用 SQLAlchemy inspector（底层走 information_schema.columns），
+    两种方言共用同一段判断逻辑，不需要方言专属的列探测代码。"""
+    engine = _FakeEngine("postgresql", tables=["chunks"],
+                         columns={"chunks": ["id", "doc_id", "kb_id"]})
+    _patch_inspect(monkeypatch, engine)
+    run_migrations(engine)
+    sql = "\n".join(engine.conn.executed)
+    assert "alter table chunks add column enrich_context" in sql.lower()
+
+
+def test_run_migrations_postgresql_unique_index_ddl_is_pg_compatible(monkeypatch):
+    engine = _FakeEngine("postgresql", tables=["documents"],
+                         columns={"documents": ["id", "kb_id", "content_hash",
+                                                  "created_at"]})
+    _patch_inspect(monkeypatch, engine)
+    run_migrations(engine)
+    sql = "\n".join(engine.conn.executed)
+    assert "create unique index if not exists uq_doc_kb_hash" in sql.lower()

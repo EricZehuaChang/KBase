@@ -10,6 +10,13 @@ class EmbedderConfig(BaseModel):
     endpoint: str | None = None   # name="tei" 时必填：TEI 服务地址
 
 
+class DBConfig(BaseModel):
+    # {data_dir} 占位符由 create_app 替换成实际路径，保持 sqlite 默认语义
+    # 与改造前的 f"sqlite:///{cfg.data_dir}/kbase.sqlite" 字节级一致；
+    # postgresql+psycopg:// 等其他 URL 原样透传，不做占位替换。
+    url: str = "sqlite:///{data_dir}/kbase.sqlite"
+
+
 class VectorStoreConfig(BaseModel):
     name: str = "chroma"
     endpoint: str | None = None   # name="qdrant" 时必填：Qdrant 服务地址
@@ -95,6 +102,7 @@ class OCRConfig(BaseModel):
 
 class AppConfig(BaseModel):
     data_dir: Path = Path("./data")
+    db: DBConfig = Field(default_factory=DBConfig)
     embedder: EmbedderConfig = Field(default_factory=EmbedderConfig)
     vectorstore: VectorStoreConfig = Field(default_factory=VectorStoreConfig)
     chunker: ChunkerConfig = Field(default_factory=ChunkerConfig)

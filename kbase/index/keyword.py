@@ -1,13 +1,13 @@
 """关键词索引：SQLite FTS5 + jieba。写入与查询用同一分词器，
-FTS 侧 tokenize=unicode61 只按空格切预分词结果。"""
+FTS 侧 tokenize=unicode61 只按空格切预分词结果。
+
+_tokenize 从 kbase.index.tokenize 导入（共享实现，PGKeywordIndex 同款），
+两种后端分词语义保持一致，见该模块的模块级 docstring。"""
 import jieba
 from sqlalchemy import text
 
+from kbase.index.tokenize import _tokenize
 from kbase.plugins.base import Hit
-
-
-def _tokenize(s: str) -> str:
-    return " ".join(t.strip() for t in jieba.cut_for_search(s) if t.strip())
 
 
 def _fts_query(s: str) -> str:
