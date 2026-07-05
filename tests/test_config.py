@@ -92,3 +92,42 @@ def test_active_not_in_providers_raises(tmp_path: Path):
     )
     with pytest.raises(Exception, match="nope"):
         load_config(cfg_file)
+
+
+def test_embedder_and_rerank_endpoint_default_to_none(tmp_path: Path):
+    """M4-2 H1：新增字段默认不填，向后兼容既有 lite 配置。"""
+    cfg_file = tmp_path / "kbase.yaml"
+    cfg_file.write_text(
+        "data_dir: ./data\nllm:\n  active: a\n  providers:\n    - {name: a, base_url: 'http://x', api_key_env: K, model: m}\n",
+        encoding="utf-8",
+    )
+    cfg = load_config(cfg_file)
+    assert cfg.embedder.endpoint is None
+    assert cfg.retrieval.rerank.name == "bge-local"
+    assert cfg.retrieval.rerank.endpoint is None
+
+
+def test_embedder_and_rerank_tei_endpoint_parses(tmp_path: Path):
+    cfg_file = tmp_path / "kbase.yaml"
+    cfg_file.write_text(
+        """
+data_dir: ./data
+embedder:
+  name: tei
+  endpoint: http://tei-embed:80
+retrieval:
+  rerank:
+    name: tei
+    endpoint: http://tei-rerank:80
+llm:
+  active: a
+  providers:
+    - {name: a, base_url: 'http://x', api_key_env: K, model: m}
+""",
+        encoding="utf-8",
+    )
+    cfg = load_config(cfg_file)
+    assert cfg.embedder.name == "tei"
+    assert cfg.embedder.endpoint == "http://tei-embed:80"
+    assert cfg.retrieval.rerank.name == "tei"
+    assert cfg.retrieval.rerank.endpoint == "http://tei-rerank:80"

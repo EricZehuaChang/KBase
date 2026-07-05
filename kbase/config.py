@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, model_validator
 class EmbedderConfig(BaseModel):
     name: str = "bge-local"
     model: str = "BAAI/bge-m3"
+    endpoint: str | None = None   # name="tei" 时必填：TEI 服务地址
 
 
 class VectorStoreConfig(BaseModel):
@@ -44,7 +45,9 @@ class LLMConfig(BaseModel):
 
 class RerankConfig(BaseModel):
     enabled: bool = True
+    name: str = "bge-local"
     model: str = "BAAI/bge-reranker-v2-m3"
+    endpoint: str | None = None   # name="tei" 时必填：TEI 服务地址
 
 
 class RewriteConfig(BaseModel):
