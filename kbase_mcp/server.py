@@ -96,6 +96,8 @@ async def ask_knowledge_base_impl(c: KBaseClient, kb_id: str, question: str,
 
 def build_mcp(client: KBaseClient | None = None) -> FastMCP:
     mcp = FastMCP("kbase")
+    # 默认 client 有意随进程存活（不 aclose）：MCP Server 生命周期＝进程生命周期，
+    # 连接与套接字在进程退出时由操作系统统一回收；测试注入的 client 由测试自管。
     c = client or KBaseClient(httpx.AsyncClient(base_url=DEFAULT_API))
 
     @mcp.tool()
