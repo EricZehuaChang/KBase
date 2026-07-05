@@ -45,7 +45,8 @@ def _client(tmp_path, fake_embedder, llm=None):
     cfg.write_text(CFG.format(data_dir=str(tmp_path / "data").replace("\\", "/")),
                    encoding="utf-8")
     app = create_app(config_path=cfg, embedder=fake_embedder,
-                     llms={"fake": llm or ProgrammableFakeLLM()}, reranker=False)
+                     llms={"fake": llm or ProgrammableFakeLLM()}, reranker=False,
+                     auth="off")
     return app, TestClient(app)
 
 

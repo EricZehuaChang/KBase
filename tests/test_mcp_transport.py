@@ -50,7 +50,7 @@ async def test_ask_knowledge_base_populates_structured_content(tmp_path, fake_em
     cfg.write_text(CFG.format(data_dir=str(tmp_path / "data").replace("\\", "/")),
                    encoding="utf-8")
     app = create_app(config_path=cfg, embedder=fake_embedder,
-                     llms={"fake": FakeLLM()}, reranker=False)
+                     llms={"fake": FakeLLM()}, reranker=False, auth="off")
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport,
