@@ -78,6 +78,7 @@ def _load_builtin_plugins():
     """import 触发注册。新增插件实现时在此登记。"""
     import kbase.plugins.chunkers.structure      # noqa: F401
     import kbase.plugins.vectorstores.chroma_store  # noqa: F401
+    import kbase.plugins.vectorstores.qdrant_store  # noqa: F401
     import kbase.plugins.llm.openai_compat       # noqa: F401
 
 
@@ -289,8 +290,15 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
             embedder = registry.create("embedder", cfg.embedder.name,
                                        model=cfg.embedder.model)
     if store is None:
-        store = registry.create("vectorstore", cfg.vectorstore.name,
-                                persist_dir=str(cfg.data_dir / "chroma"))
+        if cfg.vectorstore.name == "qdrant":
+            if not cfg.vectorstore.endpoint:
+                raise ValueError("vectorstore.name=qdrant 但未配置 vectorstore.endpoint")
+            store = registry.create("vectorstore", "qdrant",
+                                    endpoint=cfg.vectorstore.endpoint,
+                                    api_key=cfg.vectorstore.api_key)
+        else:
+            store = registry.create("vectorstore", cfg.vectorstore.name,
+                                    persist_dir=str(cfg.data_dir / "chroma"))
     chunker = registry.create("chunker", cfg.chunker.name,
                               chunk_size=cfg.chunker.chunk_size,
                               chunk_overlap=cfg.chunker.chunk_overlap)

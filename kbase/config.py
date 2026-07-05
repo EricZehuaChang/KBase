@@ -12,6 +12,8 @@ class EmbedderConfig(BaseModel):
 
 class VectorStoreConfig(BaseModel):
     name: str = "chroma"
+    endpoint: str | None = None   # name="qdrant" 时必填：Qdrant 服务地址
+    api_key: str | None = None    # Qdrant Cloud 等需要鉴权的部署可选填
 
 
 class ChunkerConfig(BaseModel):
