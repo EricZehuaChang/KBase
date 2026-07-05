@@ -680,8 +680,9 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
                 raise HTTPException(422, "proposal job 缺少必需参数：topic/outline")
         with sf() as s:
             kb = s.get(KnowledgeBase, body.kb_id)
-        if kb is None:
-            raise HTTPException(404, f"知识库不存在: {body.kb_id}")
+            if kb is None:
+                raise HTTPException(404, f"知识库不存在: {body.kb_id}")
+            kb_name = kb.name
         try:
             llm = get_llm(body.provider)
         except KeyError as e:
@@ -702,7 +703,7 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
             steps = build_digest_steps(
                 sf, llm, kb_id=body.kb_id, doc_ids=body.params.get("doc_ids"),
                 job_id=job["id"], files_dir=cfg.data_dir / "files",
-                jobs_dir=jobs_dir, kb_name=kb.name)
+                jobs_dir=jobs_dir, kb_name=kb_name)
 
         bg.add_task(run_job, sf, job["id"], steps)
         return {"id": job["id"]}
