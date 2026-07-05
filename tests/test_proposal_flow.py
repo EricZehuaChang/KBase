@@ -180,3 +180,51 @@ def test_full_proposal_flow_produces_artifact_with_global_citations(tmp_path):
     assert "住房补贴按连续工龄核算[1]。" in md
     assert "## 引用文献" in md
     assert "[1] 政策.docx › 政策.docx > 第一章" in md
+
+
+class PartiallyFailingRetriever:
+    """检索按 query 前缀分流：第一章的检索抛异常（模拟下游服务不可用），
+    其余节检索正常返回可用块——用于固定"某节生成失败、其余节正常"的场景。"""
+
+    def __init__(self, blocks):
+        self.blocks = blocks
+
+    def retrieve(self, kb_id, query, top_k=5):
+        if "第一章" in query:
+            raise RuntimeError("检索服务不可用")
+        return self.blocks
+
+
+def test_full_proposal_flow_section_failure_gets_placeholder_and_done_with_errors(tmp_path):
+    """一节检索抛异常 -> 该步 failed，但 results 仍收到该节的无依据占位，
+    最终产物包含该节标题 + 占位文本，job 整体状态 done_with_errors（其余步骤
+    仍成功、有产出）——固定这一已被 ad-hoc 验证过的失败隔离路径为回归测试。"""
+    sf = _sf(tmp_path)
+    job = create_job(sf, kb_id="kb1", type="proposal",
+                      params={"topic": "住房保障方案"}, provider=None)
+
+    retriever = PartiallyFailingRetriever([_block()])
+    llm = FakeLLM("住房补贴按连续工龄核算[1]。")
+    outline = [{"title": "第一章 背景", "brief": "说明背景"},
+               {"title": "第二章 依据", "brief": "说明政策依据"}]
+    jobs_dir = tmp_path / "jobs"
+
+    steps = build_proposal_steps(sf, retriever, llm, kb_id="kb1",
+                                 topic="住房保障方案", outline=outline,
+                                 job_id=job["id"], jobs_dir=jobs_dir)
+    run_job(sf, job["id"], steps)
+
+    got = get_job(sf, job["id"])
+    assert got["status"] == "done_with_errors"
+    assert got["artifact_path"]
+
+    steps_state = got["progress"]["steps"]
+    statuses = {s["name"]: s["status"] for s in steps_state}
+    assert statuses["生成节：第一章 背景"] == "failed"
+    assert statuses["生成节：第二章 依据"] == "done"
+
+    md = open(got["artifact_path"], encoding="utf-8").read()
+    assert "## 第一章 背景" in md
+    assert "（知识库中无相关依据，本节未生成）" in md
+    assert "## 第二章 依据" in md
+    assert "住房补贴按连续工龄核算[1]。" in md
