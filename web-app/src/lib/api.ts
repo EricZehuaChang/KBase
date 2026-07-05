@@ -171,9 +171,23 @@ export interface JobCreateBody {
   params: Record<string, unknown>;
 }
 
-async function req<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, init);
+// 401 拦截钩子：router 守卫在启动时注册一个回调（跳转 /login），api.ts 不
+// 直接 import router——避免 api.ts ↔ router.ts 循环依赖。未注册时（如单测）
+// 拦截器仅清缓存、不做跳转。登录接口本身的 401（用户名/密码错）不走这条
+// 拦截逻辑，由 LoginView 自己捕获展示错误——见 login() 用 skipAuthRedirect。
+let onUnauthorized: (() => void) | null = null;
+
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  onUnauthorized = handler;
+}
+
+async function req<T>(path: string, init?: RequestInit, opts?: { skipAuthRedirect?: boolean }): Promise<T> {
+  const res = await fetch(path, { credentials: "include", ...init });
   if (!res.ok) {
+    if (res.status === 401 && !opts?.skipAuthRedirect) {
+      clearSessionCache();
+      onUnauthorized?.();
+    }
     const text = await res.text();
     let detail: string | undefined;
     try {
@@ -270,12 +284,14 @@ export function listMessages(convId: string): Promise<Message[]> {
 
 // SSE 端点：返回原始 Response，调用方自己取 reader 喂给 parseSSE。
 // signal 用于中途取消（切换会话/知识库或离开页面时 abort，避免旧流继续写入）。
+// credentials: "include" 让会话 Cookie 随请求发出——鉴权开启后这两个端点
+// 也需要走 Cookie 会话，和 req() 保持一致。
 export function queryConv(convId: string, body: QueryBody, signal?: AbortSignal): Promise<Response> {
-  return fetch(`/api/conversations/${convId}/query`, { ...jsonInit(body), signal });
+  return fetch(`/api/conversations/${convId}/query`, { ...jsonInit(body), credentials: "include", signal });
 }
 
 export function queryKb(kbId: string, body: QueryBody, signal?: AbortSignal): Promise<Response> {
-  return fetch(`/api/kb/${kbId}/query`, { ...jsonInit(body), signal });
+  return fetch(`/api/kb/${kbId}/query`, { ...jsonInit(body), credentials: "include", signal });
 }
 
 export function listProviders(): Promise<{ active: string | null; providers: string[] }> {
@@ -337,4 +353,47 @@ export function getJob(id: string): Promise<Job> {
 // 不经 fetch+blob）。
 export function artifactUrl(id: string, format: "md" | "docx"): string {
   return `/api/jobs/${id}/artifact?format=${format}`;
+}
+
+// ---- 认证（M4-1 G5）----
+
+export interface Me {
+  username: string;
+  role: string;
+}
+
+export function login(username: string, password: string): Promise<Me> {
+  // skipAuthRedirect：登录失败也是 401，但那是"密码错"不是"会话过期"，不该
+  // 触发全局跳转 /login（本来就在 /login 页）——由 LoginView 捕获异常自己展示。
+  return req("/api/auth/login", jsonInit({ username, password }), { skipAuthRedirect: true });
+}
+
+export async function logout(): Promise<{ ok: boolean }> {
+  const r = await req<{ ok: boolean }>("/api/auth/logout", { method: "POST" });
+  clearSessionCache();
+  return r;
+}
+
+export function me(): Promise<Me> {
+  return req("/api/auth/me");
+}
+
+// 会话探测结果模块级缓存：路由守卫每次导航都要确认"有没有会话"，但不该每次
+// 都打一发 /api/auth/me——同一个会话生命周期内缓存结果，登出/401 时清空
+// （见 setUnauthorizedHandler 拦截器与 clearSessionCache 调用点）。
+let sessionCache: Promise<Me | null> | null = null;
+
+/** 探测当前会话：命中缓存直接返回；未命中时调用 /api/auth/me 并缓存结果
+ * （含"确认无会话"的 null，避免连续未登录状态下的重复探测请求）。 */
+export function getSession(): Promise<Me | null> {
+  if (sessionCache === null) {
+    sessionCache = me().catch(() => null);
+  }
+  return sessionCache;
+}
+
+/** 清空会话缓存：401 拦截器与 logout() 成功后调用，强制下次 getSession()
+ * 重新探测。 */
+export function clearSessionCache(): void {
+  sessionCache = null;
 }
