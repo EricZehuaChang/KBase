@@ -19,13 +19,20 @@ def create_conversation(sf, kb_id: str) -> dict:
     return {"id": conv.id, "kb_id": conv.kb_id, "title": conv.title}
 
 
-def list_conversations(sf, kb_id: str | None = None) -> list[dict]:
+def list_conversations(sf, kb_id: str | None = None, *,
+                       limit: int = 30, offset: int = 0) -> dict:
+    """按 updated_at desc 分页；返回 {items, total}——total 为过滤后（按 kb_id）
+    的总数，供前端判断是否还有更多可加载。"""
     with sf() as s:
-        q = s.query(Conversation).order_by(Conversation.updated_at.desc())
+        q = s.query(Conversation)
         if kb_id:
             q = q.filter_by(kb_id=kb_id)
-        return [{"id": c.id, "kb_id": c.kb_id, "title": c.title,
-                 "updated_at": c.updated_at.isoformat()} for c in q.all()]
+        total = q.count()
+        rows = (q.order_by(Conversation.updated_at.desc())
+                .limit(limit).offset(offset).all())
+        items = [{"id": c.id, "kb_id": c.kb_id, "title": c.title,
+                 "updated_at": c.updated_at.isoformat()} for c in rows]
+        return {"items": items, "total": total}
 
 
 def list_messages(sf, conv_id: str) -> list[dict]:

@@ -15,16 +15,19 @@ import {
   listKbs, listConvs, listProviders,
   type Kb, type Conversation, type Citation,
 } from "@/lib/api";
-import { groupByTime } from "@/lib/chat-utils";
+import { groupByTime, appendConversationPage } from "@/lib/chat-utils";
 import { useChat } from "@/composables/useChat";
 
 const route = useRoute();
+
+const CONV_PAGE_SIZE = 30;
 
 const kbs = ref<Kb[]>([]);
 const kbId = ref<string | undefined>(undefined);
 const providers = ref<string[]>([]);
 const provider = ref<string | undefined>(undefined);
 const conversations = ref<Conversation[]>([]);
+const hasMoreConvs = ref(false);
 const activeConvId = ref<string | null>(null);
 const inputText = ref("");
 
@@ -43,7 +46,20 @@ const lastQuestion = ref("");
 
 async function refreshConversations() {
   if (!kbId.value) return;
-  conversations.value = await listConvs(kbId.value);
+  const page = await listConvs({ kbId: kbId.value, limit: CONV_PAGE_SIZE, offset: 0 });
+  const acc = appendConversationPage([], page);
+  conversations.value = acc.items;
+  hasMoreConvs.value = acc.hasMore;
+}
+
+async function loadMoreConversations() {
+  if (!kbId.value) return;
+  const page = await listConvs({
+    kbId: kbId.value, limit: CONV_PAGE_SIZE, offset: conversations.value.length,
+  });
+  const acc = appendConversationPage(conversations.value, page);
+  conversations.value = acc.items;
+  hasMoreConvs.value = acc.hasMore;
 }
 
 async function selectConversation(conv: Conversation) {
@@ -170,6 +186,16 @@ onMounted(async () => {
           {{ conv.title ?? "新会话" }}
         </button>
       </div>
+
+      <Button
+        v-if="hasMoreConvs"
+        variant="ghost"
+        size="sm"
+        class="justify-start text-[var(--text-3)]"
+        @click="loadMoreConversations"
+      >
+        加载更多
+      </Button>
     </div>
   </Teleport>
 </template>

@@ -68,6 +68,11 @@ export interface Conversation {
   updated_at?: string;
 }
 
+export interface ConversationPage {
+  items: Conversation[];
+  total: number;
+}
+
 export interface Message {
   id: string;
   role: "user" | "assistant";
@@ -160,6 +165,10 @@ export function createKb(name: string): Promise<Kb> {
   return req("/api/kb", jsonInit({ name }));
 }
 
+export function deleteKb(kbId: string): Promise<{ ok: boolean }> {
+  return req(`/api/kb/${kbId}`, { method: "DELETE" });
+}
+
 export function putKbConfig(kbId: string, config: KbConfig): Promise<{ ok: boolean }> {
   return req(`/api/kb/${kbId}/config`, jsonInit(config, "PUT"));
 }
@@ -198,9 +207,17 @@ export function search(
   }));
 }
 
-export function listConvs(kbId?: string): Promise<Conversation[]> {
-  const qs = kbId ? `?kb_id=${encodeURIComponent(kbId)}` : "";
-  return req(`/api/conversations${qs}`);
+export function listConvs(opts?: {
+  kbId?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<ConversationPage> {
+  const params = new URLSearchParams();
+  if (opts?.kbId) params.set("kb_id", opts.kbId);
+  if (opts?.limit !== undefined) params.set("limit", String(opts.limit));
+  if (opts?.offset !== undefined) params.set("offset", String(opts.offset));
+  const qs = params.toString();
+  return req(`/api/conversations${qs ? `?${qs}` : ""}`);
 }
 
 export function createConv(kbId: string): Promise<Conversation> {

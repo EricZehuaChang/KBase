@@ -8,7 +8,7 @@ import uuid
 from dataclasses import asdict
 from pathlib import Path
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException, UploadFile
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, StrictBool, StrictInt, model_validator
@@ -46,7 +46,7 @@ from kbase.config import load_config
 from kbase.db import make_session_factory
 from kbase.index.keyword import KeywordIndex
 from kbase.ingest.pipeline import IngestPipeline
-from kbase.models import Chunk, Conversation, Document, KnowledgeBase
+from kbase.models import Chunk, Conversation, Document, KnowledgeBase, Message
 from kbase.plugins.registry import registry
 from kbase.rag.generator import Generator
 from kbase.rag.retriever import Retriever
@@ -408,6 +408,34 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
                      "config": json.loads(k.config) if k.config else None}
                     for k in s.query(KnowledgeBase).all()]
 
+    @app.delete("/api/kb/{kb_id}")
+    def delete_kb(kb_id: str):
+        with sf() as s:
+            kb = s.get(KnowledgeBase, kb_id)
+            if kb is None:
+                raise HTTPException(404, f"知识库不存在: {kb_id}")
+            doc_ids = [d.id for d in s.query(Document).filter_by(kb_id=kb_id).all()]
+            conv_ids = [c.id for c in s.query(Conversation).filter_by(kb_id=kb_id).all()]
+        # 级联顺序：向量集合 → 全文索引 → files 目录 → chunks/documents 行
+        # → conversations/messages 行 → kb 行
+        store.delete_collection(kb_id)
+        if keyword_index is not None:
+            keyword_index.delete_kb(kb_id)
+        for doc_id in doc_ids:
+            shutil.rmtree(cfg.data_dir / "files" / doc_id, ignore_errors=True)
+        with sf() as s:
+            s.query(Chunk).filter_by(kb_id=kb_id).delete()
+            s.query(Document).filter_by(kb_id=kb_id).delete()
+            if conv_ids:
+                s.query(Message).filter(Message.conv_id.in_(conv_ids)).delete(
+                    synchronize_session=False)
+            s.query(Conversation).filter_by(kb_id=kb_id).delete()
+            kb = s.get(KnowledgeBase, kb_id)
+            if kb is not None:
+                s.delete(kb)
+            s.commit()
+        return {"ok": True}
+
     @app.put("/api/kb/{kb_id}/config")
     def put_kb_config(kb_id: str, body: KBConfigBody):
         with sf() as s:
@@ -558,8 +586,10 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
         return conv_store.create_conversation(sf, body.kb_id)
 
     @app.get("/api/conversations")
-    def list_conversations(kb_id: str | None = None):
-        return conv_store.list_conversations(sf, kb_id)
+    def list_conversations(kb_id: str | None = None,
+                           limit: int = Query(default=30, ge=1, le=100),
+                           offset: int = Query(default=0, ge=0)):
+        return conv_store.list_conversations(sf, kb_id, limit=limit, offset=offset)
 
     @app.get("/api/conversations/{conv_id}/messages")
     def list_conversation_messages(conv_id: str):

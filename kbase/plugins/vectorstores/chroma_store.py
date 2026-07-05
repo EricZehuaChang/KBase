@@ -36,6 +36,14 @@ class ChromaStore:
     def delete(self, collection, doc_id):
         self._coll(collection).delete(where={"doc_id": doc_id})
 
+    def delete_collection(self, collection):
+        """删除整个集合（知识库级联删除用）。集合不存在时容错，不抛异常——
+        知识库从未摄取过任何文档时不会创建集合，此时删除应是 no-op。"""
+        try:
+            self._client.delete_collection(collection)
+        except Exception:  # noqa: BLE001 —— chromadb 版本间"不存在"异常类型不稳定，统一吞掉
+            pass
+
     def get_vectors(self, collection, ids):
         """按 id 取回存量向量（只读）。用于关键词路独有候选的余弦补算，
         保证阈值与纯稠密路语义一致。返回 {id: embedding}，缺失 id 不出现在结果中。"""

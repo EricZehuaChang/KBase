@@ -27,6 +27,23 @@ export function renderWithChips(text: string): ChipSegment[] {
   return segments;
 }
 
+/** 分页累加结果：items 为累加后的完整列表，hasMore 表示是否还有更多可加载
+ * （items.length < total）。侧栏"加载更多"按钮据此决定是否显示。 */
+export interface AppendedPage<T> {
+  items: T[];
+  hasMore: boolean;
+}
+
+/** 将新一页会话追加到已有列表之后（分页"加载更多"用的纯累加函数，不做
+ * 去重——offset 分页调用方保证不重叠）。首次加载时 existing 传空数组。 */
+export function appendConversationPage<T>(
+  existing: T[],
+  page: { items: T[]; total: number },
+): AppendedPage<T> {
+  const items = [...existing, ...page.items];
+  return { items, hasMore: items.length < page.total };
+}
+
 /** 会话分组标签。 */
 export type TimeGroup = "今天" | "7天内" | "更早";
 
