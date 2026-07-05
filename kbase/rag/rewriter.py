@@ -60,6 +60,7 @@ class QueryRewriter:
                 timeout=self._max_wait)
             out = (out or "").strip()
             if out:
+                logger.info("查询改写：%r → %r", question, out)
                 return RewriteResult(query=out, triggered=True, rewritten=True)
         except Exception as e:  # noqa: BLE001 —— 改写永不阻塞主链路
             logger.warning("查询改写失败，回退原问题: %s", e)
