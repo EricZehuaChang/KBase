@@ -16,6 +16,30 @@ _FTS_DDL = (
     "tokenize='unicode61')"
 )
 
+# D4：documents 表按 (kb_id, content_hash) 去重的唯一索引——防止并发摄取
+# 同一文件产生重复行（pipeline.ingest_file 的"先查后插"在两个线程之间存在
+# 竞态窗口，唯一约束是最终一致性的兜底）。
+_DEDUP_INDEX_DDL = (
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_doc_kb_hash "
+    "ON documents(kb_id, content_hash)"
+)
+
+# 建唯一索引前先幂等清理历史重复行（保留 created_at 最早的一条，
+# created_at 相同则以更小的 rowid——即更早插入——为准兜底）。
+# 否则老库若已有重复 (kb_id, content_hash) 会导致 CREATE UNIQUE INDEX 报错。
+_DEDUP_ROWS_SQL = (
+    "DELETE FROM documents WHERE rowid NOT IN ("
+    "  SELECT rowid FROM ("
+    "    SELECT rowid, kb_id, content_hash,"
+    "           ROW_NUMBER() OVER ("
+    "             PARTITION BY kb_id, content_hash"
+    "             ORDER BY created_at ASC, rowid ASC"
+    "           ) AS rn"
+    "    FROM documents"
+    "  ) WHERE rn = 1"
+    ")"
+)
+
 
 def run_migrations(engine) -> None:
     insp = inspect(engine)
@@ -27,3 +51,6 @@ def run_migrations(engine) -> None:
                     conn.execute(text(
                         f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}"))
         conn.execute(text(_FTS_DDL))
+        if "documents" in insp.get_table_names():
+            conn.execute(text(_DEDUP_ROWS_SQL))
+            conn.execute(text(_DEDUP_INDEX_DDL))

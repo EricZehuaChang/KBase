@@ -5,6 +5,8 @@ import json
 import uuid
 from pathlib import Path
 
+from sqlalchemy.exc import IntegrityError
+
 from kbase.models import Chunk, Document, KnowledgeBase
 from kbase.plugins.base import Chunker, Embedder, OCRUnavailable, VectorStore
 from kbase.plugins.chunkers.structure import StructureChunker
@@ -47,7 +49,21 @@ class IngestPipeline:
                            filename=original_name, content_hash=content_hash,
                            status="parsing", source_path=str(path))
             s.add(doc)
-            s.commit()
+            try:
+                s.commit()
+            except IntegrityError:
+                # D4：并发摄取同一文件时，两个线程都通过了上面的查重（竞态
+                # 窗口），第二个 commit 撞 uq_doc_kb_hash 唯一约束。这不是
+                # 真正的失败——另一线程已经在插入相同内容的文档，这里回滚
+                # 后在一个全新 session 里重查，返回那一行的 id 即可，不再
+                # 跑一遍解析/摄取。
+                s.rollback()
+                with self._sf() as s2:
+                    existing = s2.query(Document).filter_by(
+                        kb_id=kb_id, content_hash=content_hash).first()
+                    if existing is not None:
+                        return existing.id
+                raise
             doc_id = doc.id
         self._run(kb_id, doc_id, path, original_name)
         return doc_id

@@ -38,6 +38,7 @@ llm:
     assert cfg.llm.active == "qwen-72b"
     assert cfg.llm.providers[1].model == "qwen2.5-32b-instruct"
     assert cfg.get_provider("qwen-32b").base_url.startswith("https://dashscope")
+    assert cfg.ingest.workers == 2      # D5：默认并行度
 
 
 def test_provider_params_block(tmp_path: Path):

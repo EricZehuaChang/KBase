@@ -5,6 +5,7 @@ import logging
 import shutil
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from pathlib import Path
 
@@ -270,7 +271,8 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
     retriever = Retriever(sf, embedder, store, keyword_index=keyword_index,
                           reranker=reranker,
                           candidates=cfg.retrieval.candidates,
-                          rrf_k=cfg.retrieval.rrf_k)
+                          rrf_k=cfg.retrieval.rrf_k,
+                          max_parent_chars=cfg.retrieval.max_parent_chars)
     gen_min_score = (cfg.retrieval.min_score_rerank if retriever.rerank_active
                      else cfg.retrieval.min_score_dense)
 
@@ -446,17 +448,30 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
             s.commit()
         return {"ok": True}
 
+    def _ingest_batch(kb_id: str, items: list[tuple[Path, str]]) -> None:
+        """单入口 bg task：ThreadPoolExecutor 并行摄取本批次所有文件（D5）。
+        map 是惰性迭代器，必须消费完（list()）才会真正拉起所有任务并等待
+        结果；executor 用 with 块在函数返回前 shutdown(wait=True)，保证
+        TestClient 的同步 BackgroundTasks 语义下，响应返回时全部文件已经
+        摄取完毕（否则测试断言文档状态会在 executor 还没跑完时就检查）。"""
+        with ThreadPoolExecutor(max_workers=cfg.ingest.workers) as executor:
+            list(executor.map(
+                lambda item: pipeline.ingest_file(kb_id, item[0], item[1]),
+                items))
+
     @app.post("/api/kb/{kb_id}/documents")
     def upload(kb_id: str, files: list[UploadFile], bg: BackgroundTasks):
         upload_dir = cfg.data_dir / "uploads"
         upload_dir.mkdir(parents=True, exist_ok=True)
         accepted = []
+        items: list[tuple[Path, str]] = []
         for f in files:
             safe_name = Path(f.filename or "unnamed").name   # 去除路径分隔符，防穿越；兜底 None
             dest = upload_dir / f"{uuid.uuid4()}-{safe_name}"
             dest.write_bytes(f.file.read())
-            bg.add_task(pipeline.ingest_file, kb_id, dest, safe_name)
+            items.append((dest, safe_name))
             accepted.append(safe_name)
+        bg.add_task(_ingest_batch, kb_id, items)
         return {"accepted": accepted}
 
     @app.get("/api/kb/{kb_id}/documents")
@@ -508,15 +523,20 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
             doc = s.get(Document, doc_id)
             return {"id": doc.id, "status": doc.status, "error": doc.error}
 
+    def _retry_ocr_batch(doc_ids: list[str]) -> None:
+        """单入口顺序处理：一个 bg task 内部依次重跑，而不是每个文档各挂一个
+        task——避免大批量 pending_ocr 同时并发压垮 OCR 后端（D3）。"""
+        for doc_id in doc_ids:
+            pipeline.retry_document(doc_id)
+
     @app.post("/api/kb/{kb_id}/retry-ocr")
     def retry_kb_ocr(kb_id: str, bg: BackgroundTasks):
         with sf() as s:
             pending = s.query(Document).filter_by(
                 kb_id=kb_id, status="pending_ocr").all()
             ids = [d.id for d in pending]
-        for doc_id in ids:
-            bg.add_task(pipeline.retry_document, doc_id)
-        return {"retrying": ids}
+        bg.add_task(_retry_ocr_batch, ids)
+        return {"queued": len(ids)}
 
     async def _run_query(kb_id: str, body: QueryBody, *,
                          history: list[dict] | None = None,

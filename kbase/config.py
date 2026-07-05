@@ -74,6 +74,11 @@ class EnrichConfig(BaseModel):
     provider: str | None = None
 
 
+class IngestConfig(BaseModel):
+    # D5：上传路由用 ThreadPoolExecutor 并行摄取多个文件，workers 控制并发度。
+    workers: int = 2
+
+
 class OCRConfig(BaseModel):
     # enabled=False（默认）：不创建 OCR 后端，扫描件/图片直接判 failed（M1 行为）。
     # backend 目前只有 monkey-http 一种实现（kbase/plugins/ocr/monkey_http.py）。
@@ -90,6 +95,7 @@ class AppConfig(BaseModel):
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
     enrich: EnrichConfig = Field(default_factory=EnrichConfig)
     ocr: OCRConfig = Field(default_factory=OCRConfig)
+    ingest: IngestConfig = Field(default_factory=IngestConfig)
     llm: LLMConfig
 
     def get_provider(self, name: str) -> ProviderConfig:

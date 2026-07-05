@@ -69,6 +69,60 @@ def test_upload_and_document_status(tmp_path, fake_embedder):
     assert docs[0]["status"] == "ready"
 
 
+def test_upload_multiple_files_all_ready_parallel(tmp_path, fake_embedder):
+    """D5：一次上传 3 个文件，摄取路由收集 (dest, safe_name) 列表后用一个
+    bg task 内的 ThreadPoolExecutor 并行处理；TestClient 的同步 bg 语义要求
+    executor 必须在 task 内部 shutdown(wait=True)，所以响应返回后三份文档
+    应该已经全部转为 ready（而不是仍在后台线程池里跑）。"""
+    c = _client(tmp_path, fake_embedder)
+    kb_id = c.post("/api/kb", json={"name": "库"}).json()["id"]
+    files = [
+        ("files", ("a.md", (MD + "第一份").encode("utf-8"), "text/markdown")),
+        ("files", ("b.md", (MD + "第二份").encode("utf-8"), "text/markdown")),
+        ("files", ("c.md", (MD + "第三份").encode("utf-8"), "text/markdown")),
+    ]
+    r = c.post(f"/api/kb/{kb_id}/documents", files=files)
+    assert r.status_code == 200
+    assert set(r.json()["accepted"]) == {"a.md", "b.md", "c.md"}
+    docs = c.get(f"/api/kb/{kb_id}/documents").json()
+    assert len(docs) == 3
+    assert all(d["status"] == "ready" for d in docs)
+
+
+def test_upload_uses_thread_pool_executor_for_ingest(tmp_path, fake_embedder, monkeypatch):
+    """D5 白盒验证：上传路由必须真正把 ingest_file 调度到
+    ThreadPoolExecutor（而不是循环里逐个 bg.add_task），断言处理 3 个文件时
+    确有 >1 个不同的 worker 线程参与——纯黑盒无法区分并行与顺序实现。"""
+    import threading
+
+    c = _client(tmp_path, fake_embedder)
+    kb_id = c.post("/api/kb", json={"name": "库"}).json()["id"]
+
+    from kbase.ingest.pipeline import IngestPipeline
+    orig_ingest_file = IngestPipeline.ingest_file
+    seen_threads: set[int] = set()
+    lock = threading.Lock()
+
+    def spy_ingest_file(self, *args, **kwargs):
+        with lock:
+            seen_threads.add(threading.get_ident())
+        return orig_ingest_file(self, *args, **kwargs)
+
+    monkeypatch.setattr(IngestPipeline, "ingest_file", spy_ingest_file)
+
+    files = [
+        ("files", ("a.md", (MD + "第一份").encode("utf-8"), "text/markdown")),
+        ("files", ("b.md", (MD + "第二份").encode("utf-8"), "text/markdown")),
+        ("files", ("c.md", (MD + "第三份").encode("utf-8"), "text/markdown")),
+    ]
+    r = c.post(f"/api/kb/{kb_id}/documents", files=files)
+    assert r.status_code == 200
+    # 主线程不应直接跑 ingest_file（应转交线程池 worker），且 worker 数 >1
+    # （workers 默认 2，3 个任务至少用到 2 个不同线程）证明确实并行调度。
+    assert threading.get_ident() not in seen_threads
+    assert len(seen_threads) >= 2
+
+
 def test_query_sse_stream(tmp_path, fake_embedder):
     c = _client(tmp_path, fake_embedder)
     kb_id = c.post("/api/kb", json={"name": "库"}).json()["id"]
@@ -153,11 +207,14 @@ class StatefulFakeOCR:
         return OCRResult(markdown="# 扫描件\n识别出的内容。", confidence=0.9)
 
 
-def _scanned_pdf_bytes() -> bytes:
+def _scanned_pdf_bytes(variant: int = 0) -> bytes:
+    """variant 用于产出内容不同（因而 content_hash 不同）的假扫描件，
+    避免 D4 的去重约束把测试里"多份不同文档"的场景折叠成一份。"""
     import io
     from PIL import Image
     buf = io.BytesIO()
-    Image.new("RGB", (600, 800), "white").save(buf, "PDF")
+    color = (255 - variant, 255, 255) if variant else "white"
+    Image.new("RGB", (600, 800), color).save(buf, "PDF")
     return buf.getvalue()
 
 
@@ -202,9 +259,45 @@ def test_retry_ocr_batch_endpoint(tmp_path, fake_embedder):
     ocr.up = True
     r = c.post(f"/api/kb/{kb_id}/retry-ocr")
     assert r.status_code == 200
-    assert len(r.json()["retrying"]) == 1
+    assert r.json() == {"queued": 1}
     # TestClient 中 BackgroundTasks 在响应后同步执行完毕
     assert c.get(f"/api/kb/{kb_id}/documents").json()[0]["status"] == "ready"
+
+
+def test_retry_ocr_batch_single_worker(tmp_path, fake_embedder, monkeypatch):
+    """3 个 pending_ocr 文档：一次批量重试全部转 ready，且底层只调用一次
+    BackgroundTasks.add_task（单入口顺序处理，而不是每个文档各挂一个任务）。"""
+    ocr = StatefulFakeOCR()
+    cfg = tmp_path / "kbase.yaml"
+    cfg.write_text(CFG.format(data_dir=str(tmp_path / "data").replace("\\", "/")),
+                   encoding="utf-8")
+    app = create_app(config_path=cfg, embedder=fake_embedder,
+                     llms={"fake": FakeLLM()}, reranker=False, ocr_backend=ocr)
+    c = TestClient(app)
+    kb_id = c.post("/api/kb", json={"name": "库"}).json()["id"]
+    for i, name in enumerate(("scan1.pdf", "scan2.pdf", "scan3.pdf")):
+        c.post(f"/api/kb/{kb_id}/documents",
+               files=[("files", (name, _scanned_pdf_bytes(i), "application/pdf"))])
+    docs = c.get(f"/api/kb/{kb_id}/documents").json()
+    assert len(docs) == 3
+    assert all(d["status"] == "pending_ocr" for d in docs)
+
+    ocr.up = True
+    from fastapi import BackgroundTasks
+    calls = {"n": 0}
+    orig_add_task = BackgroundTasks.add_task
+
+    def counting_add_task(self, *args, **kwargs):
+        calls["n"] += 1
+        return orig_add_task(self, *args, **kwargs)
+
+    monkeypatch.setattr(BackgroundTasks, "add_task", counting_add_task)
+    r = c.post(f"/api/kb/{kb_id}/retry-ocr")
+    assert r.status_code == 200
+    assert r.json() == {"queued": 3}
+    assert calls["n"] == 1        # 单入口：整批只挂一个 bg task
+    docs = c.get(f"/api/kb/{kb_id}/documents").json()
+    assert all(d["status"] == "ready" for d in docs)
 
 
 def test_kb_config_put_get_and_validation(tmp_path, fake_embedder):
