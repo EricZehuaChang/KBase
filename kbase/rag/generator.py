@@ -19,16 +19,23 @@ USER_TEMPLATE = """请依据以下资料回答问题。
 
 
 class Generator:
-    def __init__(self, llm, min_score: float = 0.3):
+    def __init__(self, llm, min_score: float = 0.3, min_include_score: float = 0.1):
         self._llm = llm
         self._min_score = min_score
+        self._min_include_score = min_include_score
 
     def usable_blocks(self, blocks: list[ContextBlock]) -> list[ContextBlock]:
-        """按 min_score 过滤出可用于回答/引用的上下文块，保持原有顺序（best-score-first）。
+        """拒答门与收录底线分离，保持原有顺序（best-score-first）。
 
+        拒答看最高分：max(score) < min_score → 返回空列表（拒答语义不变）。
+        收录看底线：一旦最高分过了拒答门，所有 score >= min_include_score 的块
+        都收录——检索已精选 top-k，低分但过底线的块可能载有冲突/佐证信息
+        （如同一政策的新旧两版标准），按块砍掉会让模型失去辨析材料，交给模型辨析。
         阈值随检索模式（纯向量 vs 重排后）在构造时传入，不同分数量纲需要不同阈值。
         """
-        return [b for b in blocks if b.score >= self._min_score]
+        if not blocks or max(b.score for b in blocks) < self._min_score:
+            return []
+        return [b for b in blocks if b.score >= self._min_include_score]
 
     def citations(self, blocks: list[ContextBlock]) -> list[dict]:
         """将 blocks 按顺序编号为引用列表（index 从 1 开始，对应回答中的 [n] 标记）。

@@ -563,7 +563,8 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
         # 检索（含向量化）是同步 CPU/IO 混合操作，进线程池避免阻塞事件循环
         blocks = await run_in_threadpool(
             retriever.retrieve, kb_id, query_text, body.top_k)
-        gen = Generator(llm, min_score=gen_min_score)
+        gen = Generator(llm, min_score=gen_min_score,
+                        min_include_score=cfg.retrieval.min_include_score)
         # 关键契约：usable_blocks 只算一次，citations 与 answer_stream 用同一份列表，
         # 保证引用编号与答案中的 [n] 标记对齐（拒答时 citations 为空列表）
         usable = gen.usable_blocks(blocks)

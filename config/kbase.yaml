@@ -9,6 +9,8 @@ chunker:
   name: structure
   chunk_size: 512
   chunk_overlap: 64
+# retrieval 各键默认值见 kbase/config.py RetrievalConfig，按需在此覆盖。
+# 注意：rewrite.mode 必须带引号（"off" 不加引号会被 YAML 解析为布尔 False，启动时报校验错误）。
 llm:
   # 模型清单为当前 API Key 实测可用集合；qwen2.5 开源系列未开通(403)，如需 36B/72B 对比需在百炼控制台开通或改用其他服务商。
   # qwen3-32b 需通过 params.extra_body 关闭 thinking（否则首 token 延迟 ~11.6s），代表 32B 开源可私有化部署档位
