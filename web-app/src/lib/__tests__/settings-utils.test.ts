@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { validateParamsJson, paramsSummary, healthDot } from "../settings-utils";
+import {
+  validateParamsJson, paramsSummary, healthDot, licenseBannerInfo, isLastEnabledAdmin,
+} from "../settings-utils";
 
 describe("validateParamsJson", () => {
   it("空字符串视为空对象", () => {
@@ -60,5 +62,57 @@ describe("healthDot", () => {
 
   it("空字符串兜底灰色占位", () => {
     expect(healthDot("")).toEqual({ label: "—", class: "bg-[var(--text-3)]" });
+  });
+});
+
+describe("licenseBannerInfo", () => {
+  it("valid 状态不展示横幅", () => {
+    expect(licenseBannerInfo({ status: "valid" })).toBeNull();
+  });
+
+  it("trial 状态展示提示色横幅", () => {
+    const info = licenseBannerInfo({ status: "trial" });
+    expect(info).not.toBeNull();
+    expect(info?.tone).toBe("info");
+    expect(info?.message).toContain("试用");
+  });
+
+  it("expired 状态展示警告色横幅并带到期日", () => {
+    const info = licenseBannerInfo({ status: "expired", org: "acme", expires: "2026-01-01" });
+    expect(info?.tone).toBe("warn");
+    expect(info?.message).toContain("2026-01-01");
+  });
+
+  it("invalid 状态展示警告色横幅", () => {
+    const info = licenseBannerInfo({ status: "invalid" });
+    expect(info?.tone).toBe("warn");
+    expect(info?.message).toContain("无效");
+  });
+});
+
+describe("isLastEnabledAdmin", () => {
+  const users = [
+    { id: "1", username: "admin", role: "admin", disabled: false, created_at: "" },
+    { id: "2", username: "alice", role: "editor", disabled: false, created_at: "" },
+  ];
+
+  it("唯一启用中的 admin 判定为 true", () => {
+    expect(isLastEnabledAdmin(users, "1")).toBe(true);
+  });
+
+  it("非 admin 用户判定为 false", () => {
+    expect(isLastEnabledAdmin(users, "2")).toBe(false);
+  });
+
+  it("存在另一个启用中的 admin 时判定为 false", () => {
+    const withSecondAdmin = [...users,
+      { id: "3", username: "admin2", role: "admin", disabled: false, created_at: "" }];
+    expect(isLastEnabledAdmin(withSecondAdmin, "1")).toBe(false);
+  });
+
+  it("已禁用的其他 admin 不计入在场——仍判定为 true", () => {
+    const withDisabledAdmin = [...users,
+      { id: "3", username: "admin2", role: "admin", disabled: true, created_at: "" }];
+    expect(isLastEnabledAdmin(withDisabledAdmin, "1")).toBe(true);
   });
 });

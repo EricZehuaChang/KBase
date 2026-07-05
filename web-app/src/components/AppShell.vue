@@ -1,21 +1,27 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { MessageCircle, Folder, ScanSearch, FileText, Settings, Sun, Moon, LogOut } from "@lucide/vue";
 import { theme, toggleTheme } from "@/lib/theme";
-import { getSession, logout, type Me } from "@/lib/api";
-import { roleLabel, roleBadgeClass } from "@/lib/auth-utils";
+import { getSession, logout, getLicense, currentRole, type Me } from "@/lib/api";
+import { roleLabel, roleBadgeClass, canAdminister } from "@/lib/auth-utils";
+import { licenseBannerInfo } from "@/lib/settings-utils";
 
 const route = useRoute();
 const router = useRouter();
 
-const navItems = [
+const ALL_NAV_ITEMS = [
   { path: "/", label: "问答", icon: MessageCircle },
   { path: "/kb", label: "知识库", icon: Folder },
   { path: "/analysis", label: "检索分析", icon: ScanSearch },
   { path: "/generate", label: "生成", icon: FileText },
   { path: "/settings", label: "设置", icon: Settings },
 ] as const;
+
+// 设置入口仅 admin 可见（editor/viewer 均隐藏——后端 settings/* 与用户管理
+// 端点都是 require_admin，这里隐藏只是防呆，不替代后端校验）。
+const navItems = computed(() =>
+  ALL_NAV_ITEMS.filter((item) => item.path !== "/settings" || canAdminister(currentRole.value ?? "")));
 
 function isActive(path: string): boolean {
   return path === "/" ? route.path === "/" : route.path.startsWith(path);
@@ -26,6 +32,18 @@ function isActive(path: string): boolean {
 const me = ref<Me | null>(null);
 onMounted(async () => {
   me.value = await getSession();
+});
+
+// 许可证横幅：trial/expired/invalid 时顶部细条提示（不锁功能，spec §6）。
+// dismiss 不持久化——每次刷新/重进都重新展示，纯信息性提醒。
+const bannerInfo = ref<ReturnType<typeof licenseBannerInfo>>(null);
+const bannerDismissed = ref(false);
+onMounted(async () => {
+  try {
+    bannerInfo.value = licenseBannerInfo(await getLicense());
+  } catch {
+    // 许可证探测失败（如接口异常）不阻塞应用主流程，静默忽略
+  }
 });
 
 async function handleLogout() {
@@ -108,8 +126,29 @@ async function handleLogout() {
       </div>
     </aside>
 
-    <main class="h-full min-w-0 flex-1 overflow-y-auto">
-      <router-view />
-    </main>
+    <div class="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
+      <!-- 许可证横幅：trial=提示色、expired/invalid=警告色（tokens 语义色） -->
+      <div
+        v-if="bannerInfo && !bannerDismissed"
+        class="flex shrink-0 items-center justify-between gap-3 px-4 py-1.5 text-xs"
+        :class="bannerInfo.tone === 'warn'
+          ? 'bg-[var(--warn-weak)] text-[var(--warn)]'
+          : 'bg-[var(--accent-weak)] text-[var(--accent-text)]'"
+      >
+        <span>{{ bannerInfo.message }}</span>
+        <button
+          type="button"
+          class="shrink-0 rounded-[var(--radius-ctl)] px-1.5 py-0.5 hover:bg-black/5"
+          aria-label="关闭提示"
+          @click="bannerDismissed = true"
+        >
+          ×
+        </button>
+      </div>
+
+      <main class="min-h-0 flex-1 overflow-y-auto">
+        <router-view />
+      </main>
+    </div>
   </div>
 </template>

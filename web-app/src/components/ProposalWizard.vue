@@ -12,7 +12,7 @@ import OutlineEditor from "@/components/OutlineEditor.vue";
 import JobProgress from "@/components/JobProgress.vue";
 import { generateOutline, createJob, type OutlineSection } from "@/lib/api";
 
-const props = defineProps<{ kbId: string; providers: string[] }>();
+const props = defineProps<{ kbId: string; providers: string[]; canManage?: boolean }>();
 const emit = defineEmits<{ jobCreated: [] }>();
 
 const step = ref<1 | 2 | 3>(1);
@@ -92,7 +92,10 @@ function backToStep1() {
 
       <p v-if="outlineError" class="text-sm text-[var(--err)]">⚠️ {{ outlineError }}</p>
 
-      <Button class="self-start" :disabled="outlineLoading || !topic.trim()" @click="handleGenerateOutline">
+      <Button
+        v-if="canManage ?? true"
+        class="self-start" :disabled="outlineLoading || !topic.trim()" @click="handleGenerateOutline"
+      >
         {{ outlineLoading ? "生成中…" : "生成大纲" }}
       </Button>
     </div>
@@ -100,7 +103,7 @@ function backToStep1() {
     <div v-else-if="step === 2" class="flex flex-col gap-4 max-w-2xl">
       <OutlineEditor v-model="sections" />
       <p v-if="createError" class="text-sm text-[var(--err)]">⚠️ {{ createError }}</p>
-      <div class="flex gap-2">
+      <div v-if="canManage ?? true" class="flex gap-2">
         <Button variant="outline" @click="backToStep1">上一步</Button>
         <Button :disabled="!sections.length" @click="handleStartGenerate">开始生成</Button>
       </div>

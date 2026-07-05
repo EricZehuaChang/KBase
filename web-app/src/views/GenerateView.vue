@@ -13,8 +13,13 @@ import { Badge } from "@/components/ui/badge";
 import ProposalWizard from "@/components/ProposalWizard.vue";
 import DigestPanel from "@/components/DigestPanel.vue";
 import JobProgress from "@/components/JobProgress.vue";
-import { listKbs, listJobs, listProviders, type Kb, type Job } from "@/lib/api";
+import { listKbs, listJobs, listProviders, currentRole, type Kb, type Job } from "@/lib/api";
 import { jobStatusBadge, jobTypeLabel, jobHasArtifact } from "@/lib/generate-utils";
+import { canManageContent } from "@/lib/auth-utils";
+
+// viewer 可查看生成页（任务历史等）但隐藏发起生成的操作（后端 require_editor
+// 强制校验，这里只是防呆）。
+const canManage = computed(() => canManageContent(currentRole.value ?? ""));
 
 const kbs = ref<Kb[]>([]);
 const kbId = ref<string | undefined>(undefined);
@@ -75,10 +80,13 @@ const currentKbName = computed(() => kbs.value.find((k) => k.id === kbId.value)?
           </TabsList>
 
           <TabsContent value="proposal" class="mt-4">
-            <ProposalWizard :key="kbId" :kb-id="kbId" :providers="providers" @job-created="loadJobs" />
+            <ProposalWizard
+              :key="kbId" :kb-id="kbId" :providers="providers" :can-manage="canManage"
+              @job-created="loadJobs"
+            />
           </TabsContent>
           <TabsContent value="digest" class="mt-4">
-            <DigestPanel :key="kbId" :kb-id="kbId" @job-created="loadJobs" />
+            <DigestPanel :key="kbId" :kb-id="kbId" :can-manage="canManage" @job-created="loadJobs" />
           </TabsContent>
         </Tabs>
 

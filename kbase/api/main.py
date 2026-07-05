@@ -223,6 +223,18 @@ class ApiKeyCreate(BaseModel):
     role: str
 
 
+class UserCreate(BaseModel):
+    username: str
+    role: str
+    password: str
+
+
+class UserUpdate(BaseModel):
+    role: str | None = None
+    disabled: bool | None = None
+    password: str | None = None
+
+
 def create_app(config_path="config/kbase.yaml", *, embedder=None,
                store=None, llms: dict | None = None, reranker=None,
                enricher=None, ocr_backend=None, rewriter=None,
@@ -475,6 +487,65 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
             row.revoked = True
             s.commit()
         return {"ok": True}
+
+    def _user_out(u: User) -> dict:
+        # 从不返回 password_hash——列表/创建/更新的响应体统一走这个投影。
+        return {"id": u.id, "username": u.username, "role": u.role,
+                "disabled": u.disabled, "created_at": u.created_at.isoformat()}
+
+    @router.get("/users", dependencies=[require_admin])
+    def list_users():
+        with sf() as s:
+            rows = s.query(User).order_by(User.created_at.asc()).all()
+            return [_user_out(u) for u in rows]
+
+    @router.post("/users", dependencies=[require_admin, audit_mutation])
+    def create_user(body: UserCreate):
+        with sf() as s:
+            if s.query(User).filter_by(username=body.username).first() is not None:
+                raise HTTPException(409, f"用户名已存在: {body.username}")
+            user = User(id=str(uuid.uuid4()), username=body.username,
+                       password_hash=security.hash_password(body.password),
+                       role=body.role, disabled=False)
+            s.add(user)
+            s.commit()
+            s.refresh(user)
+            return _user_out(user)
+
+    @router.put("/users/{user_id}", dependencies=[require_admin, audit_mutation])
+    def update_user(user_id: str, body: UserUpdate):
+        with sf() as s:
+            user = s.get(User, user_id)
+            if user is None:
+                raise HTTPException(404, f"用户不存在: {user_id}")
+
+            # 不变量：不能让"启用中的 admin"数量降到 0——无论是禁用最后一个
+            # 启用 admin，还是把最后一个启用 admin 降级成非 admin。用变更后
+            # 的假想状态计算启用 admin 数，而不是分别判断字段，这样两种触发
+            # 路径（disabled=True 或 role=非admin）共用同一条校验。
+            would_be_role = body.role if body.role is not None else user.role
+            would_be_disabled = (body.disabled if body.disabled is not None
+                                 else user.disabled)
+            is_admin_now = user.role == "admin" and not user.disabled
+            would_remain_admin = would_be_role == "admin" and not would_be_disabled
+            if is_admin_now and not would_remain_admin:
+                other_enabled_admins = (
+                    s.query(User)
+                    .filter(User.id != user_id, User.role == "admin",
+                           User.disabled == False)  # noqa: E712
+                    .count())
+                if other_enabled_admins == 0:
+                    raise HTTPException(422, "不能禁用/降级最后一个管理员")
+
+            if body.role is not None:
+                user.role = body.role
+            if body.disabled is not None:
+                user.disabled = body.disabled
+            if body.password is not None:
+                user.password_hash = security.hash_password(body.password)
+            s.commit()
+            s.refresh(user)
+            return _user_out(user)
 
     @router.get("/license", dependencies=[require_viewer])
     def get_license():

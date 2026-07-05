@@ -11,11 +11,16 @@ import {
 } from "@/components/ui/dialog";
 import ProviderCard from "@/components/ProviderCard.vue";
 import ProviderFormDialog from "@/components/ProviderFormDialog.vue";
+import UserManagementCard from "@/components/UserManagementCard.vue";
+import ApiKeyCard from "@/components/ApiKeyCard.vue";
+import LicenseCard from "@/components/LicenseCard.vue";
 import {
   settingsListProviders, deleteProvider, setActiveProvider, testProvider, healthz,
+  currentRole,
   type Provider, type HealthzResponse,
 } from "@/lib/api";
 import { healthDot, type ProviderTestState } from "@/lib/settings-utils";
+import { canAdminister } from "@/lib/auth-utils";
 import { theme, setTheme } from "@/lib/theme";
 
 const providers = ref<Provider[]>([]);
@@ -161,6 +166,20 @@ onMounted(async () => {
         </div>
       </div>
     </section>
+
+    <!-- 管理员专属：用户管理 / API Key / 许可证状态。后端已用 require_admin
+         强制校验，这里的 v-if 只是 UX 防呆——非 admin 理论上进不到这个路由
+         （AppShell 隐藏了设置入口），双重防御。 -->
+    <template v-if="canAdminister(currentRole ?? '')">
+      <section class="mt-8">
+        <h2 class="mb-3 text-sm font-medium text-[var(--text-2)]">管理</h2>
+        <div class="flex flex-col gap-4">
+          <UserManagementCard />
+          <ApiKeyCard />
+          <LicenseCard />
+        </div>
+      </section>
+    </template>
 
     <!-- 主题切换 -->
     <section class="mt-8">

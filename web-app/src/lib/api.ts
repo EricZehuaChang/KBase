@@ -1,6 +1,7 @@
 // src/lib/api.ts —— 全端点 typed 客户端。声明式代码，不单测（由使用它的
 // 组件测试间接覆盖）。queryConv/queryKb 返回原始 Response，交给调用方用
 // parseSSE(reader, handler) 消费流（citations→token*→done）。
+import { ref } from "vue";
 
 export interface EnrichConfig {
   enabled: boolean;
@@ -383,17 +384,106 @@ export function me(): Promise<Me> {
 // （见 setUnauthorizedHandler 拦截器与 clearSessionCache 调用点）。
 let sessionCache: Promise<Me | null> | null = null;
 
+// 全局响应式当前角色（M4-1 G6 角色门控用）：AppShell/各 View 据此隐藏入口。
+// 后端已用 require_role 强制校验，这是纯 UX 防呆；未登录或探测失败时为 null，
+// 门控函数（canManageContent/canAdminister）对 null 视同无权限。
+export const currentRole = ref<string | null>(null);
+
 /** 探测当前会话：命中缓存直接返回；未命中时调用 /api/auth/me 并缓存结果
  * （含"确认无会话"的 null，避免连续未登录状态下的重复探测请求）。 */
 export function getSession(): Promise<Me | null> {
   if (sessionCache === null) {
     sessionCache = me().catch(() => null);
+    sessionCache.then((session) => {
+      currentRole.value = session?.role ?? null;
+    });
   }
   return sessionCache;
 }
 
 /** 清空会话缓存：401 拦截器与 logout() 成功后调用，强制下次 getSession()
- * 重新探测。 */
+ * 重新探测。同时清空 currentRole——门控 UI 应立即隐藏而不是等下次探测。 */
 export function clearSessionCache(): void {
   sessionCache = null;
+  currentRole.value = null;
+}
+
+// ---- 用户管理（M4-1 G6，admin）----
+
+export interface UserItem {
+  id: string;
+  username: string;
+  role: string;
+  disabled: boolean;
+  created_at: string;
+}
+
+export interface UserCreateBody {
+  username: string;
+  role: string;
+  password: string;
+}
+
+export interface UserUpdateBody {
+  role?: string;
+  disabled?: boolean;
+  password?: string;
+}
+
+export function listUsers(): Promise<UserItem[]> {
+  return req("/api/users");
+}
+
+export function createUser(body: UserCreateBody): Promise<UserItem> {
+  return req("/api/users", jsonInit(body));
+}
+
+export function updateUser(id: string, body: UserUpdateBody): Promise<UserItem> {
+  return req(`/api/users/${id}`, jsonInit(body, "PUT"));
+}
+
+// ---- API Key 管理（M4-1 G6，admin）----
+
+export interface ApiKeyItem {
+  id: string;
+  name: string;
+  prefix: string;
+  role: string;
+  revoked: boolean;
+  created_at: string;
+}
+
+export interface ApiKeyCreateBody {
+  name: string;
+  role: string;
+}
+
+export interface ApiKeyCreated extends ApiKeyItem {
+  key: string; // 完整 key，仅创建时返回一次
+}
+
+export function listApiKeys(): Promise<ApiKeyItem[]> {
+  return req("/api/settings/api-keys");
+}
+
+export function createApiKey(body: ApiKeyCreateBody): Promise<ApiKeyCreated> {
+  return req("/api/settings/api-keys", jsonInit(body));
+}
+
+export function revokeApiKey(id: string): Promise<{ ok: boolean }> {
+  return req(`/api/settings/api-keys/${id}`, { method: "DELETE" });
+}
+
+// ---- 许可证（M4-1 G6）----
+
+export type LicenseStatus = "trial" | "valid" | "expired" | "invalid";
+
+export interface LicenseInfo {
+  status: LicenseStatus;
+  org?: string;
+  expires?: string;
+}
+
+export function getLicense(): Promise<LicenseInfo> {
+  return req("/api/license");
 }
