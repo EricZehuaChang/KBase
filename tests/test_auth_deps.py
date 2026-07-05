@@ -168,6 +168,18 @@ def test_require_role_viewer_blocked_from_editor_and_admin(client, sf):
     assert client.get("/admin-only").status_code == 403
 
 
+def test_require_role_unknown_role_forbidden_not_500(client, sf):
+    """纵深防御：DB 里若存在伪角色（API 层严格校验加固之前落库的脏数据），
+    require_role 必须一律 403，绝不能因 _ROLE_RANK 缺键抛未捕获 KeyError 而 500。
+    伪角色 rank 视为低于任何合法角色，连最低的 viewer 端点都进不去。"""
+    _add_user(sf, username="ghost", role="bogus")
+    token = security.create_session_token("ghost", "bogus", secret=SECRET)
+    client.cookies.set("kbase_session", token)
+    assert client.get("/viewer-ok").status_code == 403
+    assert client.get("/editor-only").status_code == 403
+    assert client.get("/admin-only").status_code == 403
+
+
 # ---- origin guard middleware ----
 
 def test_origin_guard_allows_matching_origin(client):

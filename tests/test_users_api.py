@@ -125,6 +125,22 @@ def test_can_disable_admin_when_another_admin_remains(tmp_path, fake_embedder, m
     assert r.json()["disabled"] is True
 
 
+def test_create_user_invalid_role_422(tmp_path, fake_embedder, monkeypatch):
+    """伪角色（如 superadmin）应被 pydantic Literal 校验拒为 422——而不是落库后
+    让每个 require_role 请求在 deps 处 500。"""
+    app, c = _login_admin(tmp_path, fake_embedder, monkeypatch)
+    r = c.post("/api/users", json={"username": "mallory", "role": "superadmin",
+                                   "password": "pw123456"})
+    assert r.status_code == 422
+
+
+def test_update_user_invalid_role_422(tmp_path, fake_embedder, monkeypatch):
+    app, c = _login_admin(tmp_path, fake_embedder, monkeypatch)
+    created = _create_user(c, username="alice", role="viewer").json()
+    r = c.put(f"/api/users/{created['id']}", json={"role": "root"})
+    assert r.status_code == 422
+
+
 def test_users_api_admin_only_editor_403(tmp_path, fake_embedder, monkeypatch):
     app, c = _login_admin(tmp_path, fake_embedder, monkeypatch)
     _create_user(c, username="alice", role="editor", password="editorpw123")

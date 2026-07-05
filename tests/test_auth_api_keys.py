@@ -83,6 +83,14 @@ def test_api_key_full_lifecycle_create_use_revoke_401(tmp_path, fake_embedder, m
     assert revoked.status_code == 401
 
 
+def test_create_api_key_invalid_role_422(tmp_path, fake_embedder, monkeypatch):
+    """伪角色应被 pydantic Literal 校验拒为 422——否则伪角色写进 api_keys 后，
+    Bearer 通道 actor 的 role 会在 deps 的 _ROLE_RANK 下标处 500。"""
+    app, c = _login_admin(tmp_path, fake_embedder, monkeypatch)
+    r = c.post("/api/settings/api-keys", json={"name": "bad-key", "role": "x"})
+    assert r.status_code == 422
+
+
 def test_api_key_role_propagates_to_require_role(tmp_path, fake_embedder, monkeypatch):
     """Bearer actor 的角色来自 key 的 role——viewer key 打设置端点应 403，
     admin key 应放行（探测 G2/G3 wiring：actor dict 的 role 必须真的来自

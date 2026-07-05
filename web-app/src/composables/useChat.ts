@@ -4,7 +4,10 @@
 // 非 2xx 错误把错误文本写入助手消息（⚠️ 前缀）；cancel() 中止进行中的流
 // （切换会话/知识库/离开页面时调用），AbortError 静默收尾不写警示。
 import { reactive, ref, type Ref } from "vue";
-import { createConv, listMessages, queryConv, type Citation, type Message } from "@/lib/api";
+import {
+  createConv, listMessages, queryConv, handleUnauthorized,
+  type Citation, type Message,
+} from "@/lib/api";
 import { parseSSE } from "@/lib/sse";
 
 export interface ChatMessage {
@@ -110,6 +113,11 @@ export function useChat(kbId: Ref<string | undefined>, provider: Ref<string | un
         top_k: 5,
       }, ac.signal);
       if (!res.ok) {
+        // SSE 走手工 fetch，绕过 api.ts 的 req() 401 拦截——这里补上：会话中途
+        // 失效（如 Cookie 过期）时同样触发全局登出跳转，而不是只在气泡里留一条
+        // ⚠️。有已注册的处理器时页面即将跳登录页，气泡冗余故不再写；无处理器
+        // （单测/未注册）时保留气泡兜底，避免错误无声消失。
+        if (res.status === 401 && handleUnauthorized()) return;
         const text = await res.text();
         let detail: string | undefined;
         try {
