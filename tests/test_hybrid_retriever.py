@@ -95,3 +95,25 @@ def test_topk_counts_parent_blocks_not_leaves(tmp_path, fake_embedder):
     blocks = r.retrieve("kb1", "差旅", top_k=2)
     assert len(blocks) == 2
     assert {b.doc_name for b in blocks} == {"a.md", "b.md"}
+
+
+class FailingReranker:
+    def rerank(self, query, texts):
+        raise RuntimeError("TEI reranker 服务不可达（模拟查询期间瞬时掉线）")
+
+
+def test_rerank_failure_degrades_to_fused_order(tmp_path, fake_embedder):
+    """H1 review：重排调用中途失败（TEI 服务瞬时不可达）不应让整次查询变成
+    未处理异常/500——应静默降级为融合排序（reranker=None 时的既有路径），
+    正常返回 blocks。debug trace 里不应出现 "reranked"（说明确实没走重排
+    分支），但仍应有 dense/keyword/fused（降级前的双路召回与融合结果）。"""
+    factory, emb, store, kw = _setup(tmp_path, fake_embedder)
+    r = Retriever(factory, emb, store, keyword_index=kw, reranker=FailingReranker())
+
+    blocks = r.retrieve("kb1", "新兵办发〔2014〕76号", top_k=3)
+    assert blocks   # 没有抛异常，正常拿到融合排序结果
+
+    result = r.retrieve("kb1", "新兵办发〔2014〕76号", top_k=3, debug=True)
+    assert "reranked" not in result.trace
+    assert set(result.trace) >= {"dense", "keyword", "fused"}
+    assert result.blocks
