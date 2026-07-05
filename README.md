@@ -59,6 +59,26 @@ llm:
 
 > **运维提示**：providers 首次启动时从 `config/kbase.yaml` 种子导入数据库，之后以数据库为准（设置页管理），修改 YAML 不再生效。
 
+### 多轮查询改写（QueryRewrite）
+
+会话问答中，像"那司局级呢？"这类依赖上一轮上下文的追问，字面检索往往召回不到相关内容而被拒答。`retrieval.rewrite` 在检索前用 LLM 把这类追问改写为语义完整、可独立检索的问题，仅影响检索这一步——生成回答与会话落库仍固定使用用户原文，界面上看到的问题和历史记录不受影响。
+
+```yaml
+retrieval:
+  rewrite:
+    mode: conditional   # off | conditional | always，默认 conditional
+    provider: null      # 不填则用 llm.active 对应的 provider 做改写调用
+    max_wait_s: 5.0
+```
+
+三态说明：
+
+- `off`：从不改写，检索直接用用户原文（等价于 M2 行为）。
+- `conditional`（默认）：启发式判断触发——追问较短、含指代词（那/这/它/该……），或与历史几乎无字符重叠（疑似省略主语的换话题追问）才改写；自包含的完整问题不会被误改写。
+- `always`：只要会话已有历史就改写（即使问题本身已经完整），适合对话轮次普遍简短的场景。
+
+改写失败（LLM 超时/报错/空输出）一律静默回退为用户原文，不阻塞主查询链路；触发改写的详细文本会以 `INFO` 级别记录在 `kbase.rag.rewriter` logger（`原文 → 改写后`），便于排查召回质量问题时确认改写是否生效、改写结果是否合理。
+
 ## 前端开发
 
 前端（`web-app/`）是独立的 Vite + Vue3 + TypeScript + shadcn-vue 项目，构建产物输出到 `web/`，由 FastAPI 静态托管（`create_app` 的 `web_dir` 逻辑不变）。
