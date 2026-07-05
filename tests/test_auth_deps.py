@@ -8,7 +8,9 @@ from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
 from kbase.auth import security
-from kbase.auth.deps import make_get_current_actor, make_origin_guard_middleware, require_role
+from kbase.auth.deps import (ANONYMOUS_ACTOR_NAME, make_get_current_actor,
+                             make_origin_guard_middleware,
+                             make_synthetic_admin_actor_dependency, require_role)
 from kbase.db import make_session_factory
 from kbase.models import ApiKey, User
 
@@ -23,16 +25,20 @@ def _make_app(sf):
     def whoami(actor=Depends(get_current_actor)):
         return {"name": actor["name"], "role": actor["role"]}
 
-    @app.get("/viewer-ok")
-    def viewer_ok(actor=Depends(require_role(get_current_actor, "viewer"))):
+    # require_role 只读 request.state.actor，不再自己发起鉴权——路由必须
+    # 先 Depends(get_current_actor)（它把 actor 写进 request.state），
+    # 再 Depends(require_role(min_role)) 做角色序校验。这与生产 create_app
+    # 里 router 级 actor 依赖 + 各路由 require_role 依赖的组合方式一致。
+    @app.get("/viewer-ok", dependencies=[Depends(get_current_actor)])
+    def viewer_ok(actor=Depends(require_role("viewer"))):
         return {"ok": True}
 
-    @app.get("/editor-only")
-    def editor_only(actor=Depends(require_role(get_current_actor, "editor"))):
+    @app.get("/editor-only", dependencies=[Depends(get_current_actor)])
+    def editor_only(actor=Depends(require_role("editor"))):
         return {"ok": True}
 
-    @app.get("/admin-only")
-    def admin_only(actor=Depends(require_role(get_current_actor, "admin"))):
+    @app.get("/admin-only", dependencies=[Depends(get_current_actor)])
+    def admin_only(actor=Depends(require_role("admin"))):
         return {"ok": True}
 
     app.middleware("http")(make_origin_guard_middleware())
@@ -183,3 +189,26 @@ def test_origin_guard_allows_no_origin_header(client):
 def test_origin_guard_does_not_check_get_requests(client):
     r = client.get("/whoami", headers={"Origin": "http://evil.example.com"})
     assert r.status_code != 403     # 401（无凭据）而不是被 origin guard 拦成 403
+
+
+# ---- synthetic admin actor（auth="off" 角色矩阵无操作）----
+
+def _make_off_mode_app():
+    """模拟 create_app(auth="off") 的路由装配：路由级依赖是
+    synthetic_admin_actor 而不是 get_current_actor，per-route 仍挂
+    require_role——验证这个组合下角色矩阵不拦截任何请求。"""
+    app = FastAPI()
+    synthetic_actor = make_synthetic_admin_actor_dependency()
+
+    @app.get("/admin-only", dependencies=[Depends(synthetic_actor)])
+    def admin_only(actor=Depends(require_role("admin"))):
+        return {"actor": actor}
+
+    return app
+
+
+def test_synthetic_admin_actor_passes_admin_only_route_without_credentials():
+    client = TestClient(_make_off_mode_app())
+    r = client.get("/admin-only")     # 没带任何 Cookie/Bearer
+    assert r.status_code == 200
+    assert r.json()["actor"] == {"name": ANONYMOUS_ACTOR_NAME, "role": "admin"}

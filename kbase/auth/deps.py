@@ -3,6 +3,14 @@ require_role（角色序校验）、Origin 同源中间件（CSRF 防护）。
 
 actor 统一表示为 {"name": str, "role": str}：Cookie 通道 name=用户名，
 Bearer 通道 name=API Key 的 name（供审计落 actor 字段，G3 用）。
+
+G3 角色矩阵：get_current_actor 解析出 actor 后会把它写进
+request.state.actor（副作用），require_role(min_role) 不再自己发起鉴权，
+而是读 request.state.actor——这样它可以在路由级按需 Depends，且能配合
+auth="off" 模式下的 synthetic_admin_actor 依赖（见 make_synthetic_admin_actor_dependency）
+一起工作：off 模式下不校验凭据，直接把 request.state.actor 设成一个
+rank 最高的合成 admin，令所有 require_role 检查天然放行（角色矩阵在
+off 模式下是无操作，行为与鉴权改造前一致）。
 """
 from fastapi import Depends, HTTPException, Request
 
@@ -11,6 +19,9 @@ from kbase.models import ApiKey, User
 
 SESSION_COOKIE_NAME = "kbase_session"
 API_KEY_HEADER_PREFIX = "Bearer "
+
+# off 模式下审计要落的 actor 名——不是真实用户，只是标注"鉴权关闭"。
+ANONYMOUS_ACTOR_NAME = "anonymous"
 
 # 角色序：admin > editor > viewer。数值越大权限越高。
 _ROLE_RANK = {"viewer": 0, "editor": 1, "admin": 2}
@@ -24,7 +35,10 @@ def _unauthorized() -> HTTPException:
 
 def make_get_current_actor(sf, secret: str):
     """返回一个可用作 FastAPI Depends 的函数，绑定给定的 session factory 与
-    JWT secret（生产路径下由 create_app 在应用启动时解析一次并闭包捕获）。"""
+    JWT secret（生产路径下由 create_app 在应用启动时解析一次并闭包捕获）。
+
+    解析出的 actor 会先写入 request.state.actor 再返回——下游的
+    require_role 依赖（及 G3 审计钩子）读这个 state，不重复解析鉴权。"""
 
     def get_current_actor(request: Request) -> dict:
         cookie_token = request.cookies.get(SESSION_COOKIE_NAME)
@@ -38,7 +52,9 @@ def make_get_current_actor(sf, secret: str):
                 user = s.query(User).filter_by(username=username).first()
             if user is None or user.disabled:
                 raise _unauthorized()
-            return {"name": user.username, "role": user.role}
+            actor = {"name": user.username, "role": user.role}
+            request.state.actor = actor
+            return actor
 
         auth_header = request.headers.get("Authorization")
         if auth_header and auth_header.startswith(API_KEY_HEADER_PREFIX):
@@ -48,19 +64,49 @@ def make_get_current_actor(sf, secret: str):
                 row = s.query(ApiKey).filter_by(key_hash=key_hash).first()
             if row is None or row.revoked:
                 raise _unauthorized()
-            return {"name": row.name, "role": row.role}
+            actor = {"name": row.name, "role": row.role}
+            request.state.actor = actor
+            return actor
 
         raise _unauthorized()
 
     return get_current_actor
 
 
-def require_role(get_current_actor, min_role: str):
-    """工厂：返回一个依赖，要求 actor 角色 >= min_role（admin>editor>viewer）。
-    403 detail 用中文，前端可直接展示。"""
+def make_synthetic_admin_actor_dependency():
+    """auth="off" 用的路由级依赖：不做任何凭据校验，直接把 request.state.actor
+    设成一个 rank 最高的合成 actor（name=ANONYMOUS_ACTOR_NAME, role="admin"）。
+
+    两个目的一次达成：
+    - role 矩阵无操作——所有 require_role(min_role) 检查读到 admin rank，
+      永远放行，off 模式下的既有功能测试行为不变；
+    - 审计钩子仍能读到 request.state.actor，落到审计表的 actor 字段是
+      ANONYMOUS_ACTOR_NAME，而不是错误地显示为 "admin" 这个真实用户名。
+    """
+
+    def _set_synthetic_actor(request: Request) -> dict:
+        actor = {"name": ANONYMOUS_ACTOR_NAME, "role": "admin"}
+        request.state.actor = actor
+        return actor
+
+    return _set_synthetic_actor
+
+
+def require_role(min_role: str):
+    """工厂：返回一个依赖，要求 request.state.actor 的角色 >= min_role
+    （admin>editor>viewer）。403 detail 用中文，前端可直接展示。
+
+    依赖 request.state.actor 已由路由级的 get_current_actor（auth="on"）
+    或 synthetic_admin_actor（auth="off"）写入——require_role 本身不发起
+    鉴权，只做角色序比较，因此可以在两种模式下用同一套路由级声明。"""
     min_rank = _ROLE_RANK[min_role]
 
-    def _check(actor: dict = Depends(get_current_actor)) -> dict:
+    def _check(request: Request) -> dict:
+        actor = getattr(request.state, "actor", None)
+        if actor is None:
+            # 理论上不会发生：路由级鉴权依赖总是先于 require_role 执行并
+            # 写好 request.state.actor；保留此分支只是防御性兜底。
+            raise _unauthorized()
         if _ROLE_RANK[actor["role"]] < min_rank:
             raise HTTPException(status_code=403, detail="权限不足：当前角色无法执行此操作")
         return actor
