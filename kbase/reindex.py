@@ -30,13 +30,13 @@ def _main() -> None:
     parser.add_argument("--config", default="config/kbase.yaml", help="配置文件路径")
     args = parser.parse_args()
 
-    from kbase.config import load_config
+    from kbase.config import load_config, resolve_db_url
     from kbase.db import make_session_factory
     from kbase.index.factory import make_keyword_index
     from kbase.plugins.registry import registry
 
     cfg = load_config(args.config)
-    sf = make_session_factory(cfg.db.url.format(data_dir=cfg.data_dir))
+    sf = make_session_factory(resolve_db_url(cfg))
     with sf() as _s:
         dialect = _s.get_bind().dialect.name
     kw = make_keyword_index(sf, dialect=dialect)

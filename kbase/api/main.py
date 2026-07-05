@@ -57,7 +57,7 @@ from kbase.auth import security
 from kbase.auth.bootstrap import ensure_admin
 from kbase.auth.deps import (make_get_current_actor, make_origin_guard_middleware,
                              make_synthetic_admin_actor_dependency, require_role)
-from kbase.config import load_config
+from kbase.config import load_config, resolve_db_url
 from kbase.db import make_session_factory
 from kbase.index.factory import make_keyword_index
 from kbase.ingest.pipeline import IngestPipeline
@@ -274,7 +274,7 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
     _load_builtin_plugins()
     cfg = load_config(config_path)
     cfg.data_dir.mkdir(parents=True, exist_ok=True)
-    sf = make_session_factory(cfg.db.url.format(data_dir=cfg.data_dir))
+    sf = make_session_factory(resolve_db_url(cfg))
     providers_store.seed_from_config(sf, cfg)   # providers 表为空时才导入 YAML，之后 DB 为唯一真源
 
     if embedder is None:   # 测试注入 FakeEmbedder，生产走配置
