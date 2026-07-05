@@ -39,3 +39,12 @@ llm:
       params:
         extra_body:
           enable_thinking: false
+# OCR：扫描件/图片摄取时调用 MonkeyOCR 服务转 Markdown（kbase/plugins/ocr/monkey_http.py）。
+# endpoint 当前指向开发期 GPU 服务器的 SSH 隧道（本机 7861 转发到远端 MonkeyOCR），
+# 生产部署应把 endpoint 换成生产环境自己的 MonkeyOCR 服务地址。
+# enabled=false 或服务不可达时，扫描件摄取会优雅降级为 pending_ocr（不阻塞其余文档），
+# 不会导致摄取流程报错。
+ocr:
+  enabled: true
+  backend: monkey-http
+  endpoint: "http://localhost:7861"

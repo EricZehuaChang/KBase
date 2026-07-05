@@ -214,12 +214,80 @@ claude mcp add kbase -- python -m kbase_mcp
 }
 ```
 
+## 安全与部署
+
+KBase 默认以 `auth="on"` 启动（`create_app` 的默认值），全部 `/api` 路由（除登录本身外）都要求有效的会话 Cookie 或 API Key；下面是私有化部署前需要过一遍的安全清单。
+
+### 首启管理员（bootstrap）
+
+首次启动、`users` 表为空时会自动创建一个 `admin` 账号：
+
+- 设置了环境变量 `KBASE_ADMIN_PASSWORD`：用该值作为初始密码（部署脚本可预设，便于自动化）。
+- 未设置：随机生成一个 16 位密码，以 `WARNING` 级别打印到启动日志（`kbase.auth.bootstrap` logger）——**请在首次启动后立即查日志、登录、并考虑改密**。
+
+密码本身从不落库明文，只存 bcrypt 哈希。`users` 表非空之后这套引导逻辑幂等跳过（不会覆盖已有账号）。
+
+### 三级角色与能力矩阵
+
+| 能力 | viewer | editor | admin |
+|---|:---:|:---:|:---:|
+| 查看知识库/文档列表、检索、问答（含会话） | ✅ | ✅ | ✅ |
+| 建库、上传/删除文档、重试解析/OCR、生成任务 | ❌ | ✅ | ✅ |
+| Provider 管理、用户管理、API Key 管理、审计日志查询 | ❌ | ❌ | ✅ |
+
+角色是严格序（`viewer < editor < admin`），路由级用 `require_role(min_role)` 声明最低角色；未知/非法角色一律按低于 viewer 处理（拒绝而非放行）。用户由 admin 在设置页的「用户管理」创建，或调用 `POST /api/users {username, password, role}`；系统不允许把最后一个启用中的 admin 禁用或降级，避免自锁。
+
+### API Key 与 MCP 鉴权
+
+管理员可在设置页「API Key」卡片创建一把 key（`POST /api/settings/api-keys {name, role}`），完整 key（形如 `kbase_ak_...`）**只在创建的那一刻返回一次**，之后只能看到 `prefix` 用于辨识；数据库只存 sha256 哈希，吊销（`DELETE /api/settings/api-keys/{id}`）后 Bearer 通道立即拒绝该 key。
+
+`kbase_mcp/` 通过 HTTP 反调这套鉴权后的 API：把创建好的完整 key 设成环境变量 `KBASE_API_KEY`，MCP Server 会自动在每次反调请求上加 `Authorization: Bearer <key>`（详见上方「MCP Server」一节）。角色按 MCP 客户端的实际用途选择——纯问答/检索场景给 viewer 即可，需要建库/上传的自动化流程给 editor。
+
+### 许可证（轻量校验）
+
+`GET /api/license` 返回 `{"status": "trial"|"valid"|"expired"|"invalid", ...}`；未放置证书文件时状态为 `trial`（v1 不锁功能，仅作展示，不拦截任何业务请求）。
+
+签发证书：
+
+```powershell
+.venv\Scripts\python scripts\gen_license.py --org "客户名称" --expires 2027-07-06 `
+  --private-key D:\Claude Code\kbase-license-private.pem --out license.json
+```
+
+- 私钥（`--private-key` 指向的 `.pem`）**必须放在仓库之外**（约定路径 `D:\Claude Code\kbase-license-private.pem`），绝不能提交到 git；首次运行会自动生成密钥对并把公钥打印到终端，需要手工同步进 `kbase/license.py` 的 `_PUBLIC_KEY_B64` 常量。
+- 生成的 `license.json` 默认放仓库根目录（已 gitignore）；也可用环境变量 `KBASE_LICENSE_FILE` 指向任意路径（如客户机器上的固定位置）。
+
+### KBASE_SECRET_KEY（会话签名密钥）
+
+会话 Cookie 是一个 HS256 JWT，签名密钥解析顺序：环境变量 `KBASE_SECRET_KEY` 优先；未设置则首次调用时生成一个随机密钥并持久化到 `app_settings` 表。**生产环境应显式设置 `KBASE_SECRET_KEY`**——否则每次重新部署（新容器/新机器，`app_settings` 未随 DB 一起迁移时）都会生成新密钥，导致所有已登录会话的 Cookie 一夜之间全部失效，用户被迫重新登录。
+
+### TLS（生产强制）
+
+**生产部署必须在 KBase 前面挂 TLS（反向代理终结 HTTPS，如 Nginx/Caddy/云负载均衡）**。登录请求把密码明文放在请求体、会话 Cookie 默认只设了 `httponly`/`samesite=lax`（未设 `Secure`），裸 HTTP 部署下密码与会话凭证都会在网络上明文传输，可被中间人窃取。上生产前请：
+
+- 反向代理终结 TLS，KBase 自身继续跑 HTTP（内网/容器间通信）；
+- 在反向代理层给 `kbase_session` Cookie 补加 `Secure` 属性（或在代理转发时改写响应头），确保浏览器只在 HTTPS 连接上发送该 Cookie。
+
+### OCR 服务（MonkeyOCR）
+
+扫描件/图片文档摄取时，`config/kbase.yaml` 的 `ocr` 块决定是否调用 MonkeyOCR 做版面识别转 Markdown：
+
+```yaml
+ocr:
+  enabled: true
+  backend: monkey-http
+  endpoint: "http://localhost:7861"
+```
+
+- `enabled: false`（或服务不可达）时，扫描件/图片摄取优雅降级为 `pending_ocr` / `failed`，不阻塞同批次其余文档，可在 OCR 服务就绪后用「批量重试 OCR」或 `POST /api/documents/{id}/retry` 补跑。
+- 仓库当前提交的 `endpoint` 指向开发期一台 GPU 服务器的 SSH 隧道转发地址（本机 7861 转发到远端实际跑 MonkeyOCR 的 GPU 机器），方便开箱即用地演示 OCR 流程；**生产部署必须把它换成生产环境自己的 MonkeyOCR 服务地址**，不能依赖这条开发期隧道。
+
 ## 架构
 
 内核只依赖抽象接口，具体实现（Embedder/VectorStore/LLMProvider/Chunker）在插件层注册、YAML 配置选择；完整设计（分块策略、混合检索、性能设计、部署 profile、Roadmap）见 [`docs/superpowers/specs/2026-07-04-kbase-knowledge-base-design.md`](docs/superpowers/specs/2026-07-04-kbase-knowledge-base-design.md)，M1 阶段的实施拆解见 [`docs/superpowers/plans/`](docs/superpowers/plans/) 下对应计划文档。
 
 ## 已知限制（M1）
 
-- **扫描件 PDF 无 OCR**：摄取管道目前只处理有文本层的文档，纯图片扫描件会被标记为 `failed`（OCR 插槽计划在后续版本接入，详见设计文档 5.1 节）。
+- **OCR 依赖外部 MonkeyOCR 服务**：`config/kbase.yaml` 的 `ocr.enabled=true` 时扫描件/图片会调用 MonkeyOCR 转 Markdown（见「安全与部署」一节），未配置或服务不可达时优雅降级为 `pending_ocr`/`failed`，不阻塞其余文档摄取。
 - **qwen2.5 开源系列（32B/72B）暂不可用于规模对比**：当前 API Key 未在百炼控制台开通该系列（403），需先开通或改用其他服务商端点才能补齐"36B vs 72B"级别的模型对比。
 - **单实例 lite 部署形态**：SQLite + Chroma 嵌入式 + 进程内 bge-m3，适合演示与小规模验证；面向 100+ 并发的生产部署（PostgreSQL + Qdrant + TEI + vLLM）见设计文档第 4 节 standard profile。
