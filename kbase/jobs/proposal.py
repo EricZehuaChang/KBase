@@ -111,8 +111,9 @@ def assemble(topic: str, sections_out: list[dict]) -> str:
 
     全局引用表按 (doc_name, heading_path) 去重编号（先到先得，按各节出现顺序），
     每节正文中的 [n] 正则替换为该节 citations[n-1] 对应的全局编号；n 超出该节
-    citations 范围时防御性保留原样（不重映射、不报错——生成阶段的模型偶发编号
-    越界不应该拖垮整份文档的汇整）。
+    citations 范围时直接剥离该标记（不报错——生成阶段的模型偶发编号越界不应该
+    拖垮整份文档的汇整；成品文档里悬空的 [n] 没有对应引用条目，读起来像错误，
+    删掉才是正确的产品行为）。
     """
     global_index: dict[tuple[str, str], int] = {}
     global_order: list[tuple[str, str]] = []
@@ -132,7 +133,7 @@ def assemble(topic: str, sections_out: list[dict]) -> str:
         def _remap(m: re.Match) -> str:
             n = int(m.group(1))
             if n < 1 or n > len(citations):
-                return m.group(0)
+                return ""  # 越界标记剥离：悬空引用在成品文档中只会造成困惑
             cit = citations[n - 1]
             g = _global_number(cit["doc_name"], cit["heading_path"])
             return f"[{g}]"
