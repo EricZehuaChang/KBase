@@ -82,3 +82,19 @@ class AppSetting(Base):
     __tablename__ = "app_settings"
     key: Mapped[str] = mapped_column(String(100), primary_key=True)
     value: Mapped[str] = mapped_column(Text)
+
+
+class Job(Base):
+    __tablename__ = "jobs"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    kb_id: Mapped[str] = mapped_column(String(36), index=True)
+    type: Mapped[str] = mapped_column(String(20))            # proposal | digest
+    # pending -> running -> done | done_with_errors | failed
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    params: Mapped[str] = mapped_column(Text)                 # JSON
+    progress: Mapped[str | None] = mapped_column(Text, nullable=True)      # JSON
+    artifact_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    provider: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
