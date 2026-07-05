@@ -60,7 +60,8 @@ from kbase.jobs.export_docx import markdown_to_docx
 from kbase.jobs.proposal import build_proposal_steps, generate_outline
 from kbase.jobs.runner import run_job
 from kbase.jobs.store import create_job, get_job, list_jobs
-from kbase.models import Chunk, Conversation, Document, KnowledgeBase, Message, User
+from kbase.license import check_license
+from kbase.models import ApiKey, Chunk, Conversation, Document, KnowledgeBase, Message, User
 from kbase.plugins.registry import registry
 from kbase.rag.generator import Generator
 from kbase.rag.retriever import Retriever
@@ -210,6 +211,11 @@ class JobCreate(BaseModel):
     kb_id: str
     provider: str | None = None
     params: dict = {}
+
+
+class ApiKeyCreate(BaseModel):
+    name: str
+    role: str
 
 
 def create_app(config_path="config/kbase.yaml", *, embedder=None,
@@ -421,6 +427,42 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
     def audit_list(limit: int = Query(default=50, ge=1, le=200),
                   offset: int = Query(default=0, ge=0)):
         return list_audit(sf, limit=limit, offset=offset)
+
+    @router.post("/settings/api-keys", dependencies=[require_admin, audit_mutation])
+    def create_api_key(body: ApiKeyCreate):
+        full_key, prefix, key_hash = security.generate_api_key()
+        row = ApiKey(id=str(uuid.uuid4()), name=body.name, prefix=prefix,
+                    key_hash=key_hash, role=body.role, revoked=False)
+        with sf() as s:
+            s.add(row)
+            s.commit()
+        return {"id": row.id, "name": row.name, "role": row.role, "key": full_key}
+
+    @router.get("/settings/api-keys", dependencies=[require_admin])
+    def list_api_keys():
+        # 完整 key 与 key_hash 都不返回——hash 不该暴露给客户端，完整 key
+        # 只在创建的那一刻返回一次（见 create_api_key）。
+        with sf() as s:
+            rows = s.query(ApiKey).order_by(ApiKey.created_at.desc()).all()
+            return [{"id": r.id, "name": r.name, "prefix": r.prefix,
+                     "role": r.role, "revoked": r.revoked,
+                     "created_at": r.created_at.isoformat()} for r in rows]
+
+    @router.delete("/settings/api-keys/{key_id}", dependencies=[require_admin, audit_mutation])
+    def revoke_api_key(key_id: str):
+        # 软删除：吊销后 Bearer 通道立即拒绝（get_current_actor 校验 revoked
+        # 字段，见 kbase/auth/deps.py），但保留行本身供审计/历史查询。
+        with sf() as s:
+            row = s.get(ApiKey, key_id)
+            if row is None:
+                raise HTTPException(404, f"API Key 不存在: {key_id}")
+            row.revoked = True
+            s.commit()
+        return {"ok": True}
+
+    @router.get("/license", dependencies=[require_viewer])
+    def get_license():
+        return check_license()
 
     @app.get("/healthz")
     def healthz():

@@ -11,6 +11,9 @@ from mcp.server.fastmcp import FastMCP
 DEFAULT_API = os.environ.get("KBASE_API_URL", "http://localhost:8100")
 _UNREACHABLE = ("KBase 服务不可达（{url}）。请先启动：uvicorn --factory "
                 "kbase.api.main:create_app --port 8100")
+_NEEDS_API_KEY = ("KBase 服务已开启鉴权，但未配置 API Key。请设置环境变量 "
+                  "KBASE_API_KEY（在 KBase 设置页的「API Key」卡片创建一个，"
+                  "角色按需选择 viewer/editor/admin），再重启本 MCP Server。")
 
 
 @dataclass
@@ -18,8 +21,30 @@ class KBaseClient:
     http: httpx.AsyncClient
 
 
+def build_default_client() -> "KBaseClient":
+    """构造未显式注入 client 时使用的默认 KBaseClient：base_url 取
+    KBASE_API_URL（同既有逻辑）；若 env KBASE_API_KEY 已设置，则给
+    httpx.AsyncClient 挂上默认 Authorization: Bearer 头，之后该 client
+    发出的每一次反调请求都自动携带鉴权，不需要调用方在每次请求时手工传。
+    未设置 KBASE_API_KEY 时不加该头——对应 auth="off" 的部署或本机可信环境，
+    行为与鉴权改造前一致。"""
+    api_key = os.environ.get("KBASE_API_KEY")
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
+    return KBaseClient(httpx.AsyncClient(base_url=DEFAULT_API, headers=headers))
+
+
 def _err(url: str) -> dict:
     return {"error": _UNREACHABLE.format(url=url)}
+
+
+def _wrap_status_error(e: httpx.HTTPStatusError, body: str) -> dict:
+    """401（未认证：缺 Cookie/Bearer 或 API Key 已吊销）时不透传裸的 401
+    错误体——那对着 MCP 客户端的使用者（通常不了解 KBase 内部鉴权机制）没有
+    可操作性；改成清晰指引配置 KBASE_API_KEY 的中文提示。其余状态码
+    （403 权限不足/404/5xx 等）原样透传响应体，那些错误本身已经可读。"""
+    if e.response.status_code == 401:
+        return {"error": _NEEDS_API_KEY}
+    return {"error": body}
 
 
 async def list_knowledge_bases_impl(c: KBaseClient):
@@ -28,6 +53,8 @@ async def list_knowledge_bases_impl(c: KBaseClient):
         r.raise_for_status()
     except httpx.TransportError:
         return _err(str(c.http.base_url))
+    except httpx.HTTPStatusError as e:
+        return _wrap_status_error(e, e.response.text)
     return [{"id": k["id"], "name": k["name"]} for k in r.json()]
 
 
@@ -41,7 +68,7 @@ async def search_knowledge_impl(c: KBaseClient, kb_id: str, query: str,
     except httpx.TransportError:
         return _err(str(c.http.base_url))
     except httpx.HTTPStatusError as e:
-        return {"error": e.response.text}
+        return _wrap_status_error(e, e.response.text)
     return [{"doc_name": b["doc_name"], "heading_path": b["heading_path"],
              "text": b["text"], "score": b["score"]}
             for b in r.json()["blocks"]]
@@ -87,7 +114,8 @@ async def ask_knowledge_base_impl(c: KBaseClient, kb_id: str, question: str,
     except httpx.TransportError:
         return _err(str(c.http.base_url))
     except httpx.HTTPStatusError as e:
-        return {"error": (await e.response.aread()).decode("utf-8", "replace")}
+        body = (await e.response.aread()).decode("utf-8", "replace")
+        return _wrap_status_error(e, body)
     return {"answer": "".join(answer_parts),
             "citations": [{"doc_name": ci["doc_name"],
                            "heading_path": ci["heading_path"],
@@ -98,7 +126,7 @@ def build_mcp(client: KBaseClient | None = None) -> FastMCP:
     mcp = FastMCP("kbase")
     # 默认 client 有意随进程存活（不 aclose）：MCP Server 生命周期＝进程生命周期，
     # 连接与套接字在进程退出时由操作系统统一回收；测试注入的 client 由测试自管。
-    c = client or KBaseClient(httpx.AsyncClient(base_url=DEFAULT_API))
+    c = client or build_default_client()
 
     @mcp.tool()
     async def list_knowledge_bases() -> list | dict:

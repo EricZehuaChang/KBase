@@ -69,11 +69,15 @@ def resolve_secret_key(sf) -> str:
 
 
 def generate_api_key() -> tuple[str, str, str]:
-    """返回 (完整 key, prefix 前8字符, key_hash sha256 hex)。完整 key 只在
-    创建时返回一次，DB 只存 prefix + key_hash。"""
+    """返回 (完整 key, prefix, key_hash sha256 hex)。完整 key 只在
+    创建时返回一次，DB 只存 prefix + key_hash。
+    prefix 取随机部分（kbase_ak_ 之后）的前8字符——而不是完整 key 的前8
+    字符，因为所有 key 都以字面量 "kbase_ak_" 开头，取完整 key 前8字符会
+    对每一把 key 都得到相同的 "kbase_ak" 常量，在列表页起不到任何辨识作用；
+    取随机部分的前8字符才能让管理员在设置页凭 prefix 区分不同的 key。"""
     random_part = secrets.token_urlsafe(API_KEY_RANDOM_LENGTH)[:API_KEY_RANDOM_LENGTH]
     full_key = f"{API_KEY_PREFIX}{random_part}"
-    prefix = full_key[:8]
+    prefix = random_part[:8]
     key_hash = hash_api_key(full_key)
     return full_key, prefix, key_hash
 

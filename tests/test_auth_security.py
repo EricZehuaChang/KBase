@@ -83,7 +83,11 @@ def test_generate_api_key_format():
     full_key, prefix, key_hash = security.generate_api_key()
     assert full_key.startswith("kbase_ak_")
     assert len(full_key) == len("kbase_ak_") + 32
-    assert prefix == full_key[:8]
+    # prefix 取的是 "kbase_ak_" 之后随机部分的前8字符（不是完整 key 的前8
+    # 字符——那样每把 key 都是常量 "kbase_ak"，无法在列表页区分不同的 key）。
+    random_part = full_key[len("kbase_ak_"):]
+    assert prefix == random_part[:8]
+    assert prefix != "kbase_ak"
     assert key_hash == security.hash_api_key(full_key)
 
 
