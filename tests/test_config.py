@@ -1,5 +1,5 @@
 from pathlib import Path
-from kbase.config import load_config
+from kbase.config import load_config, resolve_db_url
 
 
 def test_load_config(tmp_path: Path):
@@ -196,3 +196,36 @@ llm:
     )
     cfg = load_config(cfg_file)
     assert cfg.db.url == "postgresql+psycopg://user:pass@pg-host:5432/kbase"
+
+
+def test_resolve_db_url_substitutes_sqlite_placeholder(tmp_path: Path):
+    """review fix：sqlite 默认带 {data_dir} 占位符时才替换。"""
+    cfg_file = tmp_path / "kbase.yaml"
+    cfg_file.write_text(
+        "data_dir: ./data\nllm:\n  active: a\n  providers:\n    - {name: a, base_url: 'http://x', api_key_env: K, model: m}\n",
+        encoding="utf-8",
+    )
+    cfg = load_config(cfg_file)
+    assert resolve_db_url(cfg) == "sqlite:///data/kbase.sqlite"
+
+
+def test_resolve_db_url_passes_through_literal_brace_in_pg_url(tmp_path: Path):
+    """review fix：db.url.format() 的脆弱性——PG 密码/URL 中若含字面 "{"，
+    无条件 .format(data_dir=...) 会因缺少匹配字段名而抛 KeyError 崩溃；
+    只有确认存在 "{data_dir}" 占位符时才应替换，否则必须原样透传不崩溃。"""
+    cfg_file = tmp_path / "kbase.yaml"
+    cfg_file.write_text(
+        """
+data_dir: ./data
+db:
+  url: "postgresql+psycopg://user:pa{ss@pg-host:5432/kbase"
+llm:
+  active: a
+  providers:
+    - {name: a, base_url: 'http://x', api_key_env: K, model: m}
+""",
+        encoding="utf-8",
+    )
+    cfg = load_config(cfg_file)
+    # 不崩溃，且字面 "{" 原样保留（不是 {data_dir} 占位符，不做任何替换）
+    assert resolve_db_url(cfg) == "postgresql+psycopg://user:pa{ss@pg-host:5432/kbase"

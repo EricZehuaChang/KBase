@@ -122,3 +122,17 @@ class AppConfig(BaseModel):
 def load_config(path: str | Path) -> AppConfig:
     raw = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
     return AppConfig.model_validate(raw)
+
+
+def resolve_db_url(cfg: AppConfig) -> str:
+    """把 cfg.db.url 里的 {data_dir} 占位符替换成实际路径；不含占位符的 URL
+    （如 postgresql+psycopg://...）原样透传。
+
+    不能无条件 .format(data_dir=...)：PG 密码/URL 中若含字面 "{"（如密码里
+    恰好有花括号），.format 会因缺少匹配字段名而抛 KeyError/ValueError 崩溃；
+    反过来若 URL 中恰好含字面 "{data_dir}" 之外的花括号内容也可能被误替换。
+    只在确认存在 "{data_dir}" 占位符时才调用 .format，其余情况一律原样返回，
+    这样才符合本文件顶部注释里"postgresql+psycopg:// 等其他 URL 原样透传，
+    不做占位替换"的约定。"""
+    url = cfg.db.url
+    return url.format(data_dir=str(cfg.data_dir)) if "{data_dir}" in url else url
