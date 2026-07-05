@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import JobProgress from "@/components/JobProgress.vue";
 import { createJob, listDocs, type DocumentItem } from "@/lib/api";
 
-const props = defineProps<{ kbId: string }>();
+const props = defineProps<{ kbId: string; canManage?: boolean }>();
 const emit = defineEmits<{ jobCreated: [] }>();
 
 const docs = ref<DocumentItem[]>([]);
@@ -81,7 +81,10 @@ async function handleGenerate() {
 
       <p v-if="createError" class="text-sm text-[var(--err)]">⚠️ {{ createError }}</p>
 
-      <Button class="self-start" :disabled="submitting || !readyDocs.length" @click="handleGenerate">
+      <Button
+        v-if="canManage ?? true"
+        class="self-start" :disabled="submitting || !readyDocs.length" @click="handleGenerate"
+      >
         {{ submitting ? "提交中…" : "生成汇编" }}
       </Button>
     </div>

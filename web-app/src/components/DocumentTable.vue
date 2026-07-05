@@ -11,7 +11,9 @@ import { RotateCw, Trash2, AlertCircle } from "@lucide/vue";
 import { statusBadge, canRetryDoc } from "@/lib/kb-utils";
 import type { DocumentItem } from "@/lib/api";
 
-defineProps<{ docs: DocumentItem[]; loading: boolean }>();
+withDefaults(defineProps<{ docs: DocumentItem[]; loading: boolean; canManage?: boolean }>(), {
+  canManage: true,
+});
 const emit = defineEmits<{ retry: [doc: DocumentItem]; delete: [doc: DocumentItem] }>();
 </script>
 
@@ -43,7 +45,7 @@ const emit = defineEmits<{ retry: [doc: DocumentItem]; delete: [doc: DocumentIte
             </div>
           </TableCell>
           <TableCell>
-            <div class="flex items-center gap-1">
+            <div v-if="canManage" class="flex items-center gap-1">
               <Button
                 v-if="canRetryDoc(doc.status)"
                 variant="ghost"

@@ -47,3 +47,16 @@ export function roleBadgeClass(role: Role): string {
     ? "bg-[var(--accent-weak)] text-[var(--accent-text)]"
     : "bg-[var(--surface-2)] text-[var(--text-2)]";
 }
+
+// ---- 角色门控（M4-1 G6）——纯函数，供各 View/AppShell 按 currentRole 隐藏入口。
+// 后端已用 require_role 强制校验，这里只是前端防呆（隐藏而非真正的访问控制）。
+
+/** 内容管理权限（建库/上传/删除文档/删库/发起生成等）：admin 与 editor。 */
+export function canManageContent(role: Role): boolean {
+  return role === "admin" || role === "editor";
+}
+
+/** 系统管理权限（设置页：Provider/用户管理/API Key/审计）：仅 admin。 */
+export function canAdminister(role: Role): boolean {
+  return role === "admin";
+}

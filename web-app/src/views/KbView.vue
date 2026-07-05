@@ -17,10 +17,16 @@ import DocumentTable from "@/components/DocumentTable.vue";
 import KbConfigDialog from "@/components/KbConfigDialog.vue";
 import {
   listKbs, createKb, deleteKb, listDocs, uploadDocs, deleteDoc, retryDoc, retryOcr,
+  currentRole,
   type Kb, type DocumentItem,
 } from "@/lib/api";
 import { hasPendingOcr } from "@/lib/kb-utils";
+import { canManageContent } from "@/lib/auth-utils";
 import { useKbDocs } from "@/composables/useKbDocs";
+
+// viewer 隐藏上传/删除/新建库按钮（后端已用 require_editor 强制校验，这里
+// 只是防呆，不替代后端）。
+const canManage = computed(() => canManageContent(currentRole.value ?? ""));
 
 const route = useRoute();
 const router = useRouter();
@@ -185,6 +191,7 @@ onMounted(loadKbs);
           @keydown.space.prevent="openKb(kb.id)"
         >
           <button
+            v-if="canManage"
             type="button"
             class="absolute right-2 top-2 rounded-[var(--radius-ctl)] p-1 text-[var(--text-3)] opacity-0 transition-opacity hover:bg-[var(--err-weak)] hover:text-[var(--err)] focus-visible:opacity-100 group-hover:opacity-100"
             aria-label="删除知识库"
@@ -197,6 +204,7 @@ onMounted(loadKbs);
         </div>
 
         <button
+          v-if="canManage"
           type="button"
           class="flex flex-col items-center justify-center gap-2 rounded-[var(--radius-card)] border-2 border-dashed border-[var(--border-strong)] p-4 text-[var(--text-3)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent-text)]"
           @click="createOpen = true"
@@ -218,7 +226,7 @@ onMounted(loadKbs);
         </div>
         <div class="flex items-center gap-2">
           <Button
-            v-if="hasPendingOcr(docs)"
+            v-if="canManage && hasPendingOcr(docs)"
             variant="outline"
             size="sm"
             @click="handleBatchRetryOcr"
@@ -226,18 +234,19 @@ onMounted(loadKbs);
             <RotateCw class="size-3.5" />
             批量重试OCR
           </Button>
-          <Button variant="outline" size="sm" @click="configOpen = true">
+          <Button v-if="canManage" variant="outline" size="sm" @click="configOpen = true">
             <Settings2 class="size-3.5" />
             知识库配置
           </Button>
         </div>
       </div>
 
-      <UploadZone class="mb-4" @files-selected="handleFilesSelected" />
+      <UploadZone v-if="canManage" class="mb-4" @files-selected="handleFilesSelected" />
 
       <DocumentTable
         :docs="docs"
         :loading="docsLoading"
+        :can-manage="canManage"
         @retry="handleRetry"
         @delete="(doc) => (deleteTarget = doc)"
       />

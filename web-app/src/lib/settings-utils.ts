@@ -54,3 +54,55 @@ export function healthDot(value: string): StatusDotInfo {
   // embedder/vectorstore 是类名（如 "LocalEmbedder"），非空字符串即正常
   return value ? { label: value, class: "bg-[var(--ok)]" } : { label: "—", class: "bg-[var(--text-3)]" };
 }
+
+// ---- 许可证横幅（M4-1 G6）----
+
+/** 与 api.ts LicenseInfo 结构一致但在此模块独立声明——纯函数不依赖 api.ts，
+ * 避免 settings-utils（vitest 直测）牵连 fetch 相关的模块副作用。 */
+export interface LicenseLike {
+  status: "trial" | "valid" | "expired" | "invalid";
+  org?: string;
+  expires?: string;
+}
+
+export interface LicenseBannerInfo {
+  tone: "info" | "warn";
+  message: string;
+}
+
+/** valid 状态不展示横幅（返回 null）；trial 用提示色，expired/invalid 用警告色
+ * （spec：不锁功能，只提示）。AppShell 顶部细条横幅据此渲染文案与配色。 */
+export function licenseBannerInfo(license: LicenseLike): LicenseBannerInfo | null {
+  if (license.status === "valid") return null;
+  if (license.status === "trial") {
+    return { tone: "info", message: "当前为试用模式，功能不受限，建议尽快导入正式许可证" };
+  }
+  if (license.status === "expired") {
+    return {
+      tone: "warn",
+      message: `许可证已过期（${license.expires ?? "未知日期"}），请联系管理员更新`,
+    };
+  }
+  return { tone: "warn", message: "许可证无效，请检查 license.json 是否被篡改或损坏" };
+}
+
+// ---- 用户管理（M4-1 G6）----
+
+/** 与 api.ts UserItem 结构一致的最小形状——纯函数独立声明，理由同 LicenseLike。 */
+export interface UserLike {
+  id: string;
+  role: string;
+  disabled: boolean;
+}
+
+/** 客户端镜像后端"不能禁用/降级最后一个管理员"的不变量，用于前置禁用相关
+ * 操作按钮（真正的强制仍在后端，见 kbase/api/main.py update_user）。
+ * 判定：目标用户是启用中的 admin，且没有其他启用中的 admin 在场。 */
+export function isLastEnabledAdmin(users: UserLike[], userId: string): boolean {
+  const target = users.find((u) => u.id === userId);
+  if (!target || target.role !== "admin" || target.disabled) return false;
+  const otherEnabledAdmins = users.filter(
+    (u) => u.id !== userId && u.role === "admin" && !u.disabled,
+  );
+  return otherEnabledAdmins.length === 0;
+}

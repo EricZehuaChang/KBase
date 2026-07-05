@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { redirectTarget, loginRedirectQuery, roleLabel, roleBadgeClass } from "../auth-utils";
+import {
+  redirectTarget, loginRedirectQuery, roleLabel, roleBadgeClass,
+  canManageContent, canAdminister,
+} from "../auth-utils";
 
 describe("redirectTarget", () => {
   it("query.redirect 存在且为站内路径时使用它", () => {
@@ -53,5 +56,25 @@ describe("roleBadgeClass", () => {
     expect(roleBadgeClass("admin")).toBe("bg-[var(--accent-weak)] text-[var(--accent-text)]");
     expect(roleBadgeClass("editor")).toBe("bg-[var(--surface-2)] text-[var(--text-2)]");
     expect(roleBadgeClass("viewer")).toBe("bg-[var(--surface-2)] text-[var(--text-2)]");
+  });
+});
+
+describe("canManageContent", () => {
+  it("admin 与 editor 可管理内容", () => {
+    expect(canManageContent("admin")).toBe(true);
+    expect(canManageContent("editor")).toBe(true);
+  });
+
+  it("viewer 及未知角色不可管理内容", () => {
+    expect(canManageContent("viewer")).toBe(false);
+    expect(canManageContent("weird")).toBe(false);
+  });
+});
+
+describe("canAdminister", () => {
+  it("仅 admin 可管理系统设置", () => {
+    expect(canAdminister("admin")).toBe(true);
+    expect(canAdminister("editor")).toBe(false);
+    expect(canAdminister("viewer")).toBe(false);
   });
 });
