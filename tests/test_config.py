@@ -131,3 +131,38 @@ llm:
     assert cfg.embedder.endpoint == "http://tei-embed:80"
     assert cfg.retrieval.rerank.name == "tei"
     assert cfg.retrieval.rerank.endpoint == "http://tei-rerank:80"
+
+
+def test_vectorstore_endpoint_and_api_key_default_to_none(tmp_path: Path):
+    """M4-2 H2：新增字段默认不填，向后兼容既有 lite（chroma）配置。"""
+    cfg_file = tmp_path / "kbase.yaml"
+    cfg_file.write_text(
+        "data_dir: ./data\nllm:\n  active: a\n  providers:\n    - {name: a, base_url: 'http://x', api_key_env: K, model: m}\n",
+        encoding="utf-8",
+    )
+    cfg = load_config(cfg_file)
+    assert cfg.vectorstore.name == "chroma"
+    assert cfg.vectorstore.endpoint is None
+    assert cfg.vectorstore.api_key is None
+
+
+def test_vectorstore_qdrant_endpoint_parses(tmp_path: Path):
+    cfg_file = tmp_path / "kbase.yaml"
+    cfg_file.write_text(
+        """
+data_dir: ./data
+vectorstore:
+  name: qdrant
+  endpoint: http://qdrant:6333
+  api_key: secret
+llm:
+  active: a
+  providers:
+    - {name: a, base_url: 'http://x', api_key_env: K, model: m}
+""",
+        encoding="utf-8",
+    )
+    cfg = load_config(cfg_file)
+    assert cfg.vectorstore.name == "qdrant"
+    assert cfg.vectorstore.endpoint == "http://qdrant:6333"
+    assert cfg.vectorstore.api_key == "secret"

@@ -10,6 +10,7 @@ dependencies = [
     "pyyaml>=6.0",
     "sqlalchemy>=2.0",
     "chromadb>=0.5",
+    "qdrant-client>=1.10",
     "markitdown[docx,pptx,xlsx,pdf]>=0.1",
     "langchain-text-splitters>=0.3",
     "openai>=1.40",
