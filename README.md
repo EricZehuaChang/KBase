@@ -136,6 +136,8 @@ npm run test
 
 `kbase_mcp/` 是一个独立的 MCP（Model Context Protocol）进程，把知识库暴露为三个工具（`list_knowledge_bases` / `search_knowledge` / `ask_knowledge_base`），供 Claude Code / Claude Desktop 等 MCP 客户端直接调用。它通过 HTTP 反调运行中的 KBase API，**不会**再加载一份模型内核——因此**必须先启动 KBase API**（见上方"快速开始"，默认 `http://localhost:8100`），再启动 MCP Server。
 
+> **工具错误契约**：任一工具在失败时（KBase 未启动、kb_id 不存在、provider 密钥缺失等）不抛协议级异常，而是正常返回 `{"error": "<中文说明>"}`——客户端应先检查返回对象是否含 `error` 键再消费业务字段。
+
 ### 安装
 
 ```powershell
