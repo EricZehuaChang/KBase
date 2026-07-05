@@ -92,6 +92,13 @@ def build_digest_steps(sf, llm, kb_id: str, doc_ids: list[str] | None, job_id: s
     每文档一步读 content.md 前 6000 字生成摘要（缺失 content.md 该步失败，
     runner 继续后续步骤）→ 总览步 → 汇整步 → 写产物步。
 
+    各步内部用 asyncio.run 包一层 async 调用（同 build_proposal_steps /
+    ContextualEnricher.enrich 的模式——run_job 由 BackgroundTasks 工作线程
+    调用，线程内无运行中的事件循环，可以直接 asyncio.run；若未来调用方
+    已在协程/事件循环内调用这些 step，asyncio.run 会抛
+    "asyncio.run() cannot be called from a running event loop"——届时需要
+    换成 loop.run_until_complete 或把 step 签名变为 async）。
+
     产物路径：{jobs_dir}/{job_id}/artifact.md。
     """
     docs = _resolve_docs(sf, kb_id, doc_ids)
