@@ -8,6 +8,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from pathlib import Path
+from typing import Literal
 
 from fastapi import (APIRouter, BackgroundTasks, Depends, FastAPI, HTTPException,
                      Query, Request, Response as FastAPIResponse, UploadFile)
@@ -218,19 +219,25 @@ class JobCreate(BaseModel):
     params: dict = {}
 
 
+# 合法角色枚举——pydantic 用它约束请求体的 role 字段，拒绝形如
+# "superadmin"/"root" 的伪角色（否则会被写进 DB，之后每个 require_role 请求都
+# 在 deps.py 的 _ROLE_RANK[actor["role"]] 处以未捕获 KeyError 抛 500）。
+Role = Literal["admin", "editor", "viewer"]
+
+
 class ApiKeyCreate(BaseModel):
     name: str
-    role: str
+    role: Role
 
 
 class UserCreate(BaseModel):
     username: str
-    role: str
+    role: Role
     password: str
 
 
 class UserUpdate(BaseModel):
-    role: str | None = None
+    role: Role | None = None
     disabled: bool | None = None
     password: str | None = None
 

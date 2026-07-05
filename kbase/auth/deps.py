@@ -107,7 +107,12 @@ def require_role(min_role: str):
             # 理论上不会发生：路由级鉴权依赖总是先于 require_role 执行并
             # 写好 request.state.actor；保留此分支只是防御性兜底。
             raise _unauthorized()
-        if _ROLE_RANK[actor["role"]] < min_rank:
+        # 未知角色（_ROLE_RANK 缺失）按 rank -1（低于任何合法角色）处理，一律
+        # 拒绝为 403，而不是让 dict 下标以未捕获 KeyError 冒泡成 500。请求体的
+        # role 已在 API 层用 Literal 严格校验（见 api/main.py Role），这里是纵深
+        # 防御：兜住那些在校验加固之前就已落库的伪角色 actor。
+        actor_rank = _ROLE_RANK.get(actor["role"], -1)
+        if actor_rank < min_rank:
             raise HTTPException(status_code=403, detail="权限不足：当前角色无法执行此操作")
         return actor
 

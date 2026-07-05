@@ -182,12 +182,25 @@ export function setUnauthorizedHandler(handler: (() => void) | null): void {
   onUnauthorized = handler;
 }
 
+/** 统一处理一次 401（会话失效）：清会话缓存并触发注册的跳转回调。返回是否
+ * 有回调被触发——调用方（如 SSE 流的手工 fetch 分支）据此决定是否还需展示
+ * 兜底错误气泡：有回调时页面已在跳登录页，气泡冗余；无回调（如单测/未注册）
+ * 时仍应展示，避免错误无声消失。req() 与 useChat 的 raw-fetch 分支共用本函数，
+ * 保证两条 401 路径行为一致。 */
+export function handleUnauthorized(): boolean {
+  clearSessionCache();
+  if (onUnauthorized) {
+    onUnauthorized();
+    return true;
+  }
+  return false;
+}
+
 async function req<T>(path: string, init?: RequestInit, opts?: { skipAuthRedirect?: boolean }): Promise<T> {
   const res = await fetch(path, { credentials: "include", ...init });
   if (!res.ok) {
     if (res.status === 401 && !opts?.skipAuthRedirect) {
-      clearSessionCache();
-      onUnauthorized?.();
+      handleUnauthorized();
     }
     const text = await res.text();
     let detail: string | undefined;
