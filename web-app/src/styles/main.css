@@ -6,6 +6,13 @@
 @import "tw-animate-css";
 
 @custom-variant dark (&:is([data-theme="dark"] *));
+/* shadcn-vue 生成的 Tabs 组件用 data-horizontal:/data-vertical: 简写变体，
+   但 reka-ui 的 TabsRoot 实际写的是 data-orientation="horizontal|vertical"
+   属性（非布尔 data-horizontal 属性），Tailwind v4 默认不认识这个简写，导致
+   该变体从不匹配——TabsList/TabsContent 退化为 flex-row 同级、被拉伸到与
+   内容等高（首次接入 Tabs 才暴露的潜藏 bug，见 GenerateView 引用）。 */
+@custom-variant data-horizontal (&[data-orientation="horizontal"]);
+@custom-variant data-vertical (&[data-orientation="vertical"]);
 
 @theme inline {
   --font-heading: var(--font-sans);

@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from "vue-router";
 import ChatView from "@/views/ChatView.vue";
 import KbView from "@/views/KbView.vue";
 import AnalysisView from "@/views/AnalysisView.vue";
+import GenerateView from "@/views/GenerateView.vue";
 import SettingsView from "@/views/SettingsView.vue";
 
 const router = createRouter({
@@ -10,6 +11,7 @@ const router = createRouter({
     { path: "/", name: "chat", component: ChatView },
     { path: "/kb", name: "kb", component: KbView },
     { path: "/analysis", name: "analysis", component: AnalysisView },
+    { path: "/generate", name: "generate", component: GenerateView },
     { path: "/settings", name: "settings", component: SettingsView },
   ],
 });

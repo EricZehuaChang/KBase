@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useRoute } from "vue-router";
-import { MessageCircle, Folder, ScanSearch, Settings, Sun, Moon } from "@lucide/vue";
+import { MessageCircle, Folder, ScanSearch, FileText, Settings, Sun, Moon } from "@lucide/vue";
 import { theme, toggleTheme } from "@/lib/theme";
 
 const route = useRoute();
@@ -9,6 +9,7 @@ const navItems = [
   { path: "/", label: "问答", icon: MessageCircle },
   { path: "/kb", label: "知识库", icon: Folder },
   { path: "/analysis", label: "检索分析", icon: ScanSearch },
+  { path: "/generate", label: "生成", icon: FileText },
   { path: "/settings", label: "设置", icon: Settings },
 ] as const;
 
