@@ -26,7 +26,10 @@ class SPAStaticFiles(StaticFiles):
     回退到 index.html，交由前端 router 接管——标准 FastAPI SPA 托管模式。
     该 mount 挂在 "/"，未匹配到任何 API 路由的 /api/* 请求也会落到这里——
     必须显式排除，否则 /api/nonexistent 会被错误地回退成 200 的 index.html
-    而不是 404，掩盖真正的路由错误。
+    而不是 404，掩盖真正的路由错误。同理 /openapi.json、/docs、/redoc 在
+    auth="on" 生产模式下被 FastAPI 关闭（docs_url=None 等），若不排除会被
+    SPA 回退成 200 的 index.html——探测者拿不到 schema，但 200 状态会误导；
+    显式排除让它们如实 404，鉴权加固才名副其实。
     注意：StaticFiles.get_response 未命中时是 raise HTTPException(404)，
     不是返回 404 响应，所以要 except 而不是检查返回值的状态码。"""
 
@@ -34,7 +37,9 @@ class SPAStaticFiles(StaticFiles):
         # get_path() 用 os.path.join 拼出 path，Windows 上分隔符是反斜杠，
         # 用 PurePosixPath 统一成 "/" 再判断前缀，避免平台差异漏判。
         normalized = path.replace("\\", "/")
-        if normalized == "api" or normalized.startswith("api/") or normalized == "healthz":
+        if (normalized == "api" or normalized.startswith("api/")
+                or normalized == "healthz"
+                or normalized in ("openapi.json", "docs", "redoc")):
             return await super().get_response(path, scope)
         try:
             return await super().get_response(path, scope)
@@ -242,6 +247,10 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
     完全一致）；传实例=直接注入（测试用真实 QueryRewriter 搭配 FakeLLM，跳过
     Lazy 包装）。仅会话查询路由（/api/conversations/{id}/query）使用；
     旧的 /api/kb/{id}/query 端点不接入改写，行为字节级不变。"""
+    # 严格校验 auth，杜绝拼写错误（如 "On"/"true"/"disabled"）静默落到与
+    # 意图相反的分支——尤其是任何非 "on" 的值都会走 off 路径、悄悄关闭鉴权。
+    if auth not in ("on", "off"):
+        raise ValueError(f"auth must be 'on' or 'off', got {auth!r}")
     _load_builtin_plugins()
     cfg = load_config(config_path)
     cfg.data_dir.mkdir(parents=True, exist_ok=True)
@@ -355,7 +364,14 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
         # 短路返回 False，不会触碰 llm，因此不需要 Lazy 包装，可直接构造。
         rewriter = QueryRewriter(llm=None, mode="off")
 
-    app = FastAPI(title="KBase")
+    # auth="on"（生产）：关闭 /docs、/redoc、/openapi.json——它们默认不鉴权，
+    # 会把完整路由与模型 schema 暴露给未认证访问者，生产环境不应可达；
+    # auth="off"（dev/test）：保留，方便本地查阅交互式文档。
+    if auth == "on":
+        app = FastAPI(title="KBase", docs_url=None, redoc_url=None,
+                      openapi_url=None)
+    else:
+        app = FastAPI(title="KBase")
     # 测试注入路径：暴露被注入的 active llm 实例，便于测试直接断言其记录的
     # last_messages（如 FakeLLM），而不必依赖内部私有变量；生产路径未注入
     # 任何 llm 时为 None。

@@ -117,6 +117,23 @@ def test_healthz_and_spa_reachable_without_auth(tmp_path, fake_embedder):
     assert "text/html" in r.headers["content-type"]
 
 
+def test_api_docs_disabled_when_auth_on_enabled_when_off(tmp_path, fake_embedder):
+    """生产（auth="on"）关闭 /docs /redoc /openapi.json——它们默认不鉴权，
+    会把完整路由与模型 schema 暴露给未认证访问者；dev/test（auth="off"）保留。"""
+    app_on, c_on = _client_on(tmp_path, fake_embedder)
+    assert c_on.get("/openapi.json").status_code == 404
+
+    off_dir = tmp_path / "off"
+    off_dir.mkdir()
+    cfg = off_dir / "kbase.yaml"
+    cfg.write_text(CFG.format(data_dir=str(off_dir / "data").replace("\\", "/")),
+                   encoding="utf-8")
+    app_off = create_app(config_path=cfg, embedder=fake_embedder,
+                         llms={"fake": FakeLLM()}, reranker=False, auth="off")
+    c_off = TestClient(app_off)
+    assert c_off.get("/openapi.json").status_code == 200
+
+
 def test_bootstrap_admin_created_on_startup(tmp_path, fake_embedder):
     app, c = _client_on(tmp_path, fake_embedder)
     from kbase.db import make_session_factory
