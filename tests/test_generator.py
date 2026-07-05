@@ -44,22 +44,32 @@ async def test_refusal_when_no_context():
 
 
 async def test_refusal_when_low_score():
+    """拒答门看最高分：全部块都低于 min_score → 拒答（行为与改造前一致）。"""
     gen = Generator(FakeLLM())
     low = _block(score=MIN_SCORE - 0.01)
     chunks = [c async for c in gen.answer_stream("随便问", [low])]
     assert "未找到依据" in "".join(chunks)
 
 
+def test_include_floor_keeps_conflicting_evidence():
+    """收录底线与拒答门分离：最高分过门后，低分但 >= min_include_score 的块
+    一并收录（可能载有冲突/佐证信息，交给模型辨析）；低于底线的噪声块剔除。"""
+    gen = Generator(FakeLLM(), min_score=0.35, min_include_score=0.1)
+    b_high, b_mid, b_noise = _block(0.9), _block(0.2), _block(0.05)
+    usable = gen.usable_blocks([b_high, b_mid, b_noise])
+    assert usable == [b_high, b_mid]        # 0.05 低于底线剔除，0.2 过底线保留
+
+
 async def test_citations_use_usable_blocks_only():
     """citations() 和 answer_stream() 必须传入同一份经 usable_blocks() 过滤后的列表，
     否则引用编号可能与回答中的 [n] 标记错位。"""
-    gen = Generator(FakeLLM())
+    gen = Generator(FakeLLM(), min_score=MIN_SCORE, min_include_score=0.1)
     high = _block(score=0.9)
-    low = _block(score=MIN_SCORE - 0.01)
-    mixed = [high, low]
-    usable = gen.usable_blocks(mixed)
-    assert usable == [high]
+    low_but_included = _block(score=MIN_SCORE - 0.01)   # 过底线：收录
+    noise = _block(score=0.05)                          # 低于底线：剔除
+    usable = gen.usable_blocks([high, low_but_included, noise])
+    assert usable == [high, low_but_included]
     cits = gen.citations(usable)
-    assert len(cits) == 1
-    assert cits[0]["index"] == 1
+    assert len(cits) == 2
+    assert [c["index"] for c in cits] == [1, 2]
     assert cits[0]["doc_name"] == "补贴办法.docx"

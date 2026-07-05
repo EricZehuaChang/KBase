@@ -63,6 +63,7 @@ class RetrievalConfig(BaseModel):
     rerank: RerankConfig = Field(default_factory=RerankConfig)
     min_score_dense: float = 0.3
     min_score_rerank: float = 0.35
+    min_include_score: float = 0.1   # 收录底线：低于它的块视为噪声剔除（拒答门另看最高分）
     rewrite: RewriteConfig = Field(default_factory=RewriteConfig)
     max_parent_chars: int = 4000   # D6：父块截窗上限
 
