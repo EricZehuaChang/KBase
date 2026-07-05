@@ -277,10 +277,17 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
     providers_store.seed_from_config(sf, cfg)   # providers 表为空时才导入 YAML，之后 DB 为唯一真源
 
     if embedder is None:   # 测试注入 FakeEmbedder，生产走配置
-        # bge_local 依赖 local-embed extra 且加载慢，仅在真正需要时 import 注册
-        import kbase.plugins.embedders.bge_local  # noqa: F401
-        embedder = registry.create("embedder", cfg.embedder.name,
-                                   model=cfg.embedder.model)
+        if cfg.embedder.name == "tei":
+            import kbase.plugins.embedders.tei  # noqa: F401
+            if not cfg.embedder.endpoint:
+                raise ValueError("embedder.name=tei 但未配置 embedder.endpoint")
+            embedder = registry.create("embedder", "tei",
+                                       endpoint=cfg.embedder.endpoint)
+        else:
+            # bge_local 依赖 local-embed extra 且加载慢，仅在真正需要时 import 注册
+            import kbase.plugins.embedders.bge_local  # noqa: F401
+            embedder = registry.create("embedder", cfg.embedder.name,
+                                       model=cfg.embedder.model)
     if store is None:
         store = registry.create("vectorstore", cfg.vectorstore.name,
                                 persist_dir=str(cfg.data_dir / "chroma"))
@@ -326,9 +333,16 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
         reranker = None                     # 显式关闭：测试哨兵，不走加载/降级逻辑
     elif reranker is None and cfg.retrieval.rerank.enabled:
         try:
-            import kbase.plugins.rerankers.bge_local  # noqa: F401
-            reranker = registry.create("reranker", "bge-local",
-                                       model=cfg.retrieval.rerank.model)
+            if cfg.retrieval.rerank.name == "tei":
+                import kbase.plugins.rerankers.tei  # noqa: F401
+                if not cfg.retrieval.rerank.endpoint:
+                    raise ValueError("rerank.name=tei 但未配置 rerank.endpoint")
+                reranker = registry.create("reranker", "tei",
+                                           endpoint=cfg.retrieval.rerank.endpoint)
+            else:
+                import kbase.plugins.rerankers.bge_local  # noqa: F401
+                reranker = registry.create("reranker", "bge-local",
+                                           model=cfg.retrieval.rerank.model)
         except Exception as e:  # noqa: BLE001 —— 模型加载失败降级不重排
             reranker = None
             rerank_degraded = True
