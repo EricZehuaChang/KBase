@@ -109,6 +109,36 @@ npm run test
 
 配色、圆角、阴影等设计令牌全部集中在 `web-app/src/styles/tokens.css`，以 CSS 变量形式定义（`:root` 为亮色，`[data-theme="dark"]` 覆盖为暗色）。定制主题（例如行业配色）只需覆盖 `--accent` / `--accent-weak` / `--accent-text` 这一组强调色变量，其余中性色与语义色（`--ok`/`--warn`/`--err`）建议保持不变以维持可读性对比度；shadcn-vue 组件通过 `main.css` 里的映射（`--primary: var(--accent)` 等）统一吃同一套令牌，无需单独改组件样式。
 
+## 生成
+
+除逐轮问答外，KBase 还支持两类"批量生成"场景，均以 job 后台任务的形式运行（提交即返回 `job_id`，前端/客户端轮询进度），产物落盘为 Markdown，并可按需导出 docx。前端「生成」页（导航第 5 项）提供完整向导 UI；下面同时给出 API 直调方式。
+
+### 场景一：方案生成（大纲 → 逐节生成 → 引用汇整）
+
+1. **生成大纲**：`POST /api/proposals/outline` `{kb_id, topic, requirements, provider?}`，同步返回 3~7 节的大纲（`[{title, brief}, ...]`），前端可编辑（增删节、改标题/要点、调整顺序）后再提交。
+2. **建 proposal job**：`POST /api/jobs` `{type: "proposal", kb_id, provider?, params: {topic, requirements, outline}}`，返回 `{id}` 后立即在后台执行——大纲每一节单独检索（`topic + 节标题 + brief` top-5）并调用 LLM 生成正文，某节检索不到可用依据时不调用 LLM、直接写入"知识库中无相关依据，本节未生成"占位（不编造），不影响其余节继续生成。
+3. 全部节生成完成后汇整：按 `(文档名, 标题路径)` 对所有节的引用做全局去重编号，正文中的 `[n]` 重映射为全局编号，文末追加 `## 引用文献` 附录列出编号对应的文档出处。
+4. **轮询进度**：`GET /api/jobs/{id}`，`progress.steps` 是逐步更新的数组（每节一步 + 汇整一步 + 写产物一步），每步 `status` 为 `pending|running|done|failed`；单节失败不影响整体，全部结束后 job 顶层 `status` 为 `done`（无失败步）或 `done_with_errors`（有步骤失败但仍有产出）。
+5. **下载产物**：`GET /api/jobs/{id}/artifact?format=md|docx`（job 未到终态返回 409）。
+
+### 场景二：定期汇编（多文档摘要）
+
+`POST /api/jobs` `{type: "digest", kb_id, provider?, params: {doc_ids?}}`——`doc_ids` 省略则汇总该知识库全部 `ready` 状态文档。每个文档单独一步：读取其 `content.md` 前 6000 字交给 LLM 生成 200 字以内摘要；所有文档摘要完成后再请求一段总览。产物结构固定为 `# {知识库名}文档汇编` + `## 总览` + 每文档一个 `## 文件名` 段落。轮询与下载方式与方案生成一致（`GET /api/jobs/{id}`、`GET /api/jobs/{id}/artifact`）。
+
+### API 端点简表
+
+| 方法/路径 | 说明 |
+|---|---|
+| `POST /api/proposals/outline` | 同步生成方案大纲（`{kb_id, topic, requirements, provider?}` → 大纲数组） |
+| `POST /api/jobs` | 建 job（`type: proposal\|digest`），立即返回 `{id}`，后台执行 |
+| `GET /api/jobs?kb_id=` | 列出该知识库的 job（按更新时间倒序） |
+| `GET /api/jobs/{id}` | 查询 job 详情（`status`/`progress`/`artifact_path`/`error`） |
+| `GET /api/jobs/{id}/artifact?format=md\|docx` | 下载产物（job 未到终态 409；产物不存在 404） |
+
+### docx 导出说明
+
+`format=docx` 首次请求时才按需从已生成的 `artifact.md` 转换并缓存（同一 job 后续请求直接复用缓存文件，不重复转换）。转换规则（`kbase/jobs/export_docx.py`）：Markdown `#`/`##`/`###` → Word Heading 1~3，空行分段，`- ` 列表项，`**加粗**` 转为加粗 run，其余文本按普通段落处理。依赖 `python-docx`（已在 `pyproject.toml` 主依赖组，`pip install -e ".[dev,local-embed]"` 时随主依赖一并安装，无需额外 extra）。
+
 ## 测试
 
 ```powershell
