@@ -5,7 +5,7 @@
 // 避免后台定时器继续对已卸载组件的响应式状态写入。
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { Plus, RotateCw, Settings2 } from "@lucide/vue";
+import { Plus, RotateCw, Settings2, Trash2 } from "@lucide/vue";
 import { toast } from "vue-sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +16,7 @@ import UploadZone from "@/components/UploadZone.vue";
 import DocumentTable from "@/components/DocumentTable.vue";
 import KbConfigDialog from "@/components/KbConfigDialog.vue";
 import {
-  listKbs, createKb, listDocs, uploadDocs, deleteDoc, retryDoc, retryOcr,
+  listKbs, createKb, deleteKb, listDocs, uploadDocs, deleteDoc, retryDoc, retryOcr,
   type Kb, type DocumentItem,
 } from "@/lib/api";
 import { hasPendingOcr } from "@/lib/kb-utils";
@@ -75,6 +75,26 @@ async function submitCreate() {
     toast.error(err instanceof Error ? err.message : String(err));
   } finally {
     creating.value = false;
+  }
+}
+
+// ---- 删除知识库 ----
+const kbDeleteTarget = ref<Kb | null>(null);
+const deletingKb = ref(false);
+
+async function confirmDeleteKb() {
+  if (!kbDeleteTarget.value) return;
+  deletingKb.value = true;
+  try {
+    await deleteKb(kbDeleteTarget.value.id);
+    toast.success(`已删除知识库: ${kbDeleteTarget.value.name}`);
+    if (kbId.value === kbDeleteTarget.value.id) backToGrid();
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : String(err));
+  } finally {
+    deletingKb.value = false;
+    kbDeleteTarget.value = null;
+    await loadKbs();
   }
 }
 
@@ -154,16 +174,26 @@ onMounted(loadKbs);
     <template v-if="!kbId">
       <h1 class="mb-4 text-lg font-semibold">知识库</h1>
       <div class="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
-        <button
+        <div
           v-for="kb in kbs"
           :key="kb.id"
-          type="button"
-          class="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-4 text-left transition-colors hover:border-[var(--accent)]"
+          role="button"
+          tabindex="0"
+          class="group relative rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-4 text-left transition-colors hover:border-[var(--accent)]"
           @click="openKb(kb.id)"
+          @keydown.enter="openKb(kb.id)"
         >
-          <div class="truncate font-medium">{{ kb.name }}</div>
+          <button
+            type="button"
+            class="absolute right-2 top-2 rounded-[var(--radius-ctl)] p-1 text-[var(--text-3)] opacity-0 transition-opacity hover:bg-[var(--err-weak)] hover:text-[var(--err)] focus-visible:opacity-100 group-hover:opacity-100"
+            aria-label="删除知识库"
+            @click.stop="kbDeleteTarget = kb"
+          >
+            <Trash2 class="size-3.5" />
+          </button>
+          <div class="truncate pr-6 font-medium">{{ kb.name }}</div>
           <div class="mt-1 text-sm text-[var(--text-3)]">{{ docCounts[kb.id] ?? 0 }} 篇文档</div>
-        </button>
+        </div>
 
         <button
           type="button"
@@ -245,4 +275,22 @@ onMounted(loadKbs);
   </Dialog>
 
   <KbConfigDialog v-model:open="configOpen" :kb="currentKb" @saved="loadKbs" />
+
+  <!-- 删除知识库确认 Dialog -->
+  <Dialog :open="!!kbDeleteTarget" @update:open="(v) => { if (!v) kbDeleteTarget = null; }">
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle>删除知识库</DialogTitle>
+        <DialogDescription>
+          将删除「{{ kbDeleteTarget?.name }}」及其
+          {{ kbDeleteTarget ? (docCounts[kbDeleteTarget.id] ?? 0) : 0 }}
+          篇文档与相关会话，不可恢复。
+        </DialogDescription>
+      </DialogHeader>
+      <DialogFooter>
+        <Button variant="outline" @click="kbDeleteTarget = null">取消</Button>
+        <Button variant="destructive" :disabled="deletingKb" @click="confirmDeleteKb">确认删除</Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
 </template>

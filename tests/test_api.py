@@ -237,3 +237,60 @@ def test_kb_config_put_get_and_validation(tmp_path, fake_embedder):
     # 未知 kb
     assert c.put("/api/kb/not-exist/config",
                  json={"chunk_size": 300}).status_code == 404
+
+
+def test_delete_kb_cascades_everything(tmp_path, fake_embedder):
+    """删除知识库级联清理：向量集合、FTS、chunks/documents 行、
+    conversations/messages 行、kb 行本身；二次删除 404。"""
+    from kbase.plugins.vectorstores.chroma_store import ChromaStore
+
+    cfg = tmp_path / "kbase.yaml"
+    cfg.write_text(CFG.format(data_dir=str(tmp_path / "data").replace("\\", "/")),
+                   encoding="utf-8")
+    store = ChromaStore(persist_dir=str(tmp_path / "data" / "chroma"))
+    app = create_app(config_path=cfg, embedder=fake_embedder, store=store,
+                     llms={"fake": FakeLLM()}, reranker=False)
+    c = TestClient(app)
+    kb_id = c.post("/api/kb", json={"name": "库"}).json()["id"]
+    c.post(f"/api/kb/{kb_id}/documents",
+           files=[("files", ("补贴办法.md", MD.encode("utf-8"), "text/markdown"))])
+    docs = c.get(f"/api/kb/{kb_id}/documents").json()
+    assert docs and docs[0]["status"] == "ready"
+
+    conv = c.post("/api/conversations", json={"kb_id": kb_id}).json()
+    q = "补贴办法.md > 补贴办法 > 第一章 申领条件\n连续工作满两年可申领住房补贴。"
+    with c.stream("POST", f"/api/conversations/{conv['id']}/query",
+                  json={"question": q}) as r:
+        "".join(r.iter_text())
+    assert c.get(f"/api/conversations/{conv['id']}/messages").json()
+
+    vec = fake_embedder.embed([q])[0]
+    assert store.search(kb_id, vec, top_k=5)     # 删除前确有命中
+
+    r = c.delete(f"/api/kb/{kb_id}")
+    assert r.status_code == 200
+
+    # chroma：集合已删，重新 get_or_create 后应为空（探针方式：fresh store 上查询）
+    assert store.search(kb_id, vec, top_k=5) == []
+    # fts 空
+    from kbase.index.keyword import KeywordIndex
+    from kbase.db import make_session_factory
+    sf = make_session_factory(f"sqlite:///{tmp_path / 'data'}/kbase.sqlite")
+    assert KeywordIndex(sf).search(kb_id, "住房补贴", top_k=5) == []
+    # documents/chunks 行清空
+    assert c.get(f"/api/kb/{kb_id}/documents").json() == []
+    # conversations 清空
+    assert c.get("/api/conversations", params={"kb_id": kb_id}).json()["items"] == []
+    # kb 行本身也没了
+    assert not any(k["id"] == kb_id for k in c.get("/api/kb").json())
+    # files 目录被清理
+    doc_id = docs[0]["id"]
+    assert not (tmp_path / "data" / "files" / doc_id).exists()
+
+    # 二次删除 404
+    assert c.delete(f"/api/kb/{kb_id}").status_code == 404
+
+
+def test_delete_kb_unknown_404(tmp_path, fake_embedder):
+    c = _client(tmp_path, fake_embedder)
+    assert c.delete("/api/kb/not-exist").status_code == 404

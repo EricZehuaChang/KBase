@@ -35,3 +35,14 @@ def test_delete_by_doc(tmp_path, fake_embedder):
     store.delete("kb1", doc_id="d1")
     hits = store.search("kb1", vecs[0], top_k=3)
     assert {h.chunk_id for h in hits} == {"c3"}
+
+
+def test_delete_collection_removes_all_and_search_returns_empty(tmp_path, fake_embedder):
+    store, vecs = _mk(tmp_path, fake_embedder)
+    store.delete_collection("kb1")
+    assert store.search("kb1", vecs[0], top_k=3) == []
+
+
+def test_delete_collection_tolerates_missing(tmp_path):
+    store = ChromaStore(persist_dir=str(tmp_path / "chroma"))
+    store.delete_collection("never-existed")   # 不应抛异常

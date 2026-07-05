@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { renderWithChips, groupByTime } from "../chat-utils";
+import { renderWithChips, groupByTime, appendConversationPage } from "../chat-utils";
 
 describe("renderWithChips", () => {
   it("将 [n] 角标切分为 chip 片段，其余为文本片段，文本内容完整不丢字符", () => {
@@ -47,5 +47,25 @@ describe("groupByTime", () => {
     expect(groups).toEqual([
       { label: "今天", items: [{ id: "a", updated_at: "2026-07-05T08:00:00Z" }] },
     ]);
+  });
+});
+
+describe("appendConversationPage", () => {
+  it("首次加载：existing 为空时结果即本页 items，hasMore 按 total 判断", () => {
+    const result = appendConversationPage([], { items: [{ id: "a" }, { id: "b" }], total: 5 });
+    expect(result.items).toEqual([{ id: "a" }, { id: "b" }]);
+    expect(result.hasMore).toBe(true);
+  });
+
+  it("加载更多：新页追加在已有列表之后", () => {
+    const existing = [{ id: "a" }, { id: "b" }];
+    const result = appendConversationPage(existing, { items: [{ id: "c" }], total: 3 });
+    expect(result.items).toEqual([{ id: "a" }, { id: "b" }, { id: "c" }]);
+    expect(result.hasMore).toBe(false);        // 3 项已全部加载
+  });
+
+  it("hasMore 精确反映 items.length < total", () => {
+    const result = appendConversationPage([{ id: "a" }], { items: [{ id: "b" }], total: 3 });
+    expect(result.hasMore).toBe(true);          // 已有 2/3，还差 1
   });
 });

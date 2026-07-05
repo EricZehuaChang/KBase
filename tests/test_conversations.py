@@ -29,7 +29,7 @@ def test_conversation_crud_and_title(tmp_path, fake_embedder):
         body = "".join(r.iter_text())
     assert "event: done" in body
     convs = c.get("/api/conversations", params={"kb_id": kb_id}).json()
-    assert convs[0]["title"] == q[:20]                     # 标题=首问前20字
+    assert convs["items"][0]["title"] == q[:20]            # 标题=首问前20字
     msgs = c.get(f"/api/conversations/{conv['id']}/messages").json()
     assert [m["role"] for m in msgs] == ["user", "assistant"]
     assert msgs[1]["content"]                              # 助手消息已落库
@@ -159,6 +159,36 @@ def test_rewriter_rewrites_retrieval_but_not_generation(tmp_path, fake_embedder)
     msgs = c.get(f"/api/conversations/{conv['id']}/messages").json()
     user_msgs = [m["content"] for m in msgs if m["role"] == "user"]
     assert user_msgs[-1] == q2
+
+
+def test_conversation_pagination(tmp_path, fake_embedder):
+    """GET /api/conversations 分页：默认 limit=30，响应 {items, total}；
+    造 35 条会话分页取两页，覆盖全部且不重复。"""
+    c, kb_id = _client(tmp_path, fake_embedder)
+    for _ in range(35):
+        c.post("/api/conversations", json={"kb_id": kb_id})
+
+    page1 = c.get("/api/conversations", params={"kb_id": kb_id}).json()
+    assert page1["total"] == 35
+    assert len(page1["items"]) == 30           # 默认 limit=30
+
+    page2 = c.get("/api/conversations",
+                  params={"kb_id": kb_id, "limit": 30, "offset": 30}).json()
+    assert page2["total"] == 35
+    assert len(page2["items"]) == 5
+
+    ids_p1 = {i["id"] for i in page1["items"]}
+    ids_p2 = {i["id"] for i in page2["items"]}
+    assert not (ids_p1 & ids_p2)               # 两页不重叠
+    assert len(ids_p1 | ids_p2) == 35          # 覆盖全部
+
+
+def test_conversation_limit_capped_at_100(tmp_path, fake_embedder):
+    c, kb_id = _client(tmp_path, fake_embedder)
+    for _ in range(3):
+        c.post("/api/conversations", json={"kb_id": kb_id})
+    r = c.get("/api/conversations", params={"kb_id": kb_id, "limit": 500})
+    assert r.status_code == 422                # 上限 100，超出应被拒绝
 
 
 def test_rewriter_false_matches_m2_behavior(tmp_path, fake_embedder):
