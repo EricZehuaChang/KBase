@@ -166,3 +166,33 @@ llm:
     assert cfg.vectorstore.name == "qdrant"
     assert cfg.vectorstore.endpoint == "http://qdrant:6333"
     assert cfg.vectorstore.api_key == "secret"
+
+
+def test_db_url_defaults_to_sqlite_placeholder(tmp_path: Path):
+    """M4-2 H3：新增字段默认不填，向后兼容既有 lite 配置——默认值携带
+    {data_dir} 占位符，由 create_app 负责替换成实际路径。"""
+    cfg_file = tmp_path / "kbase.yaml"
+    cfg_file.write_text(
+        "data_dir: ./data\nllm:\n  active: a\n  providers:\n    - {name: a, base_url: 'http://x', api_key_env: K, model: m}\n",
+        encoding="utf-8",
+    )
+    cfg = load_config(cfg_file)
+    assert cfg.db.url == "sqlite:///{data_dir}/kbase.sqlite"
+
+
+def test_db_postgresql_url_parses_verbatim(tmp_path: Path):
+    cfg_file = tmp_path / "kbase.yaml"
+    cfg_file.write_text(
+        """
+data_dir: ./data
+db:
+  url: postgresql+psycopg://user:pass@pg-host:5432/kbase
+llm:
+  active: a
+  providers:
+    - {name: a, base_url: 'http://x', api_key_env: K, model: m}
+""",
+        encoding="utf-8",
+    )
+    cfg = load_config(cfg_file)
+    assert cfg.db.url == "postgresql+psycopg://user:pass@pg-host:5432/kbase"

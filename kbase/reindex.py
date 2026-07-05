@@ -32,12 +32,14 @@ def _main() -> None:
 
     from kbase.config import load_config
     from kbase.db import make_session_factory
-    from kbase.index.keyword import KeywordIndex
+    from kbase.index.factory import make_keyword_index
     from kbase.plugins.registry import registry
 
     cfg = load_config(args.config)
-    sf = make_session_factory(f"sqlite:///{cfg.data_dir}/kbase.sqlite")
-    kw = KeywordIndex(sf)
+    sf = make_session_factory(cfg.db.url.format(data_dir=cfg.data_dir))
+    with sf() as _s:
+        dialect = _s.get_bind().dialect.name
+    kw = make_keyword_index(sf, dialect=dialect)
 
     import kbase.plugins.embedders.bge_local      # noqa: F401
     import kbase.plugins.vectorstores.chroma_store  # noqa: F401

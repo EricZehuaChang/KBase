@@ -59,7 +59,7 @@ from kbase.auth.deps import (make_get_current_actor, make_origin_guard_middlewar
                              make_synthetic_admin_actor_dependency, require_role)
 from kbase.config import load_config
 from kbase.db import make_session_factory
-from kbase.index.keyword import KeywordIndex
+from kbase.index.factory import make_keyword_index
 from kbase.ingest.pipeline import IngestPipeline
 from kbase.jobs.digest import build_digest_steps
 from kbase.jobs.export_docx import markdown_to_docx
@@ -274,7 +274,7 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
     _load_builtin_plugins()
     cfg = load_config(config_path)
     cfg.data_dir.mkdir(parents=True, exist_ok=True)
-    sf = make_session_factory(f"sqlite:///{cfg.data_dir}/kbase.sqlite")
+    sf = make_session_factory(cfg.db.url.format(data_dir=cfg.data_dir))
     providers_store.seed_from_config(sf, cfg)   # providers 表为空时才导入 YAML，之后 DB 为唯一真源
 
     if embedder is None:   # 测试注入 FakeEmbedder，生产走配置
@@ -310,7 +310,9 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
         # 这里在应用启动阶段（单线程）提前 eager 初始化，避免该竞态。
         import jieba
         jieba.initialize()
-        keyword_index = KeywordIndex(sf)
+        with sf() as _s:
+            _dialect = _s.get_bind().dialect.name
+        keyword_index = make_keyword_index(sf, dialect=_dialect)
 
     if enricher is None:
         # 生产路径：延迟解析真实 ContextualEnricher，避免没有任何 kb 启用

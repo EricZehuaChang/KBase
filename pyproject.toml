@@ -29,6 +29,7 @@ dependencies = [
     # kbase/license.py 的 Ed25519 验签直接依赖；此前只是通过 markitdown[pdf]
     # ->pdfminer.six 间接拉入，改成显式声明避免那条传递链变化时悄悄消失。
     "cryptography>=42.0",
+    "psycopg[binary]>=3.1",
 ]
 
 [project.optional-dependencies]
@@ -38,8 +39,11 @@ mcp = ["mcp>=1.2"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-markers = ["external: 需要网络或大模型下载，默认跳过"]
-addopts = "-m 'not external'"
+markers = [
+    "external: 需要网络或大模型下载，默认跳过",
+    "pg: 需要真实 PostgreSQL（设置 KBASE_TEST_PG_URL 才跑），默认跳过",
+]
+addopts = "-m 'not external and not pg'"
 
 [build-system]
 requires = ["hatchling"]
