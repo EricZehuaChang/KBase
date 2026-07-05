@@ -110,8 +110,15 @@ def build_mcp(client: KBaseClient | None = None) -> FastMCP:
 
     @mcp.tool()
     async def ask_knowledge_base(kb_id: str, question: str,
-                                 provider: str | None = None) -> dict:
-        """对指定知识库完整 RAG 问答，返回答案与引用。"""
+                                 provider: str | None = None) -> dict | list:
+        """对指定知识库完整 RAG 问答，返回答案与引用。
+        返回标注写成 `dict | list`（而非直觉的裸 `dict`）：FastMCP 的
+        func_metadata 对裸 `dict` 返回值不生成 output_schema（落入
+        "其他类class" 分支、get_type_hints(dict) 为空，模型创建失败），
+        导致 CallToolResult.structuredContent 恒为 None；只要标注是
+        list/dict 的 Union（这里从不会真的返回 list，仅借用触发条件），
+        SDK 就会把结果包进 {"result": ...} 并生成 schema，
+        与另外两个工具的 structuredContent["result"] 形状保持一致。"""
         return await ask_knowledge_base_impl(c, kb_id, question, provider)
 
     return mcp

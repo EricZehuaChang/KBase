@@ -135,12 +135,22 @@ async def run(args):
         hit_count += hit
         retrievals[q["question"]] = (blocks, hit)
 
+    # 与 main.py:276 生产逻辑对齐：按 retriever 是否启用重排选 min_score 档位，
+    # 并传 min_include_score（收录底线）。build_retriever() 走的是"纯向量/混合"
+    # 档（未传 reranker），故这里 rerank_active 恒为 False、恒取 min_score_dense；
+    # 写成与生产相同的三目而非直接硬编码 min_score_dense，是为了在
+    # build_retriever 将来也变成 rerank 感知时不必再改这行，且评测的拒答门
+    # 阈值语义与线上永远一致，不会因为忘记同步而跑出虚高/虚低的评测分。
+    gen_min_score = (cfg.retrieval.min_score_rerank if retriever.rerank_active
+                     else cfg.retrieval.min_score_dense)
+
     for pname in providers:
         p = cfg.get_provider(pname)
         llm = registry.create("llm", "openai-compat", base_url=p.base_url,
                               api_key_env=p.api_key_env, model=p.model,
                               max_concurrency=p.max_concurrency, params=p.params)
-        gen = Generator(llm)
+        gen = Generator(llm, min_score=gen_min_score,
+                        min_include_score=cfg.retrieval.min_include_score)
         for q in questions:
             blocks, hit = retrievals[q["question"]]
             usable = gen.usable_blocks(blocks)

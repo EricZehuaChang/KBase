@@ -132,6 +132,55 @@ npm run test
 - `--questions` 默认 `eval/questions.jsonl`（JSONL，每行 `question` / `expect_doc` / `expect_keywords`）
 - 输出的 `report.md` 是生成产物，已在 `.gitignore` 中排除（`eval/report*.md`），不会入库
 
+## MCP Server
+
+`kbase_mcp/` 是一个独立的 MCP（Model Context Protocol）进程，把知识库暴露为三个工具（`list_knowledge_bases` / `search_knowledge` / `ask_knowledge_base`），供 Claude Code / Claude Desktop 等 MCP 客户端直接调用。它通过 HTTP 反调运行中的 KBase API，**不会**再加载一份模型内核——因此**必须先启动 KBase API**（见上方"快速开始"，默认 `http://localhost:8100`），再启动 MCP Server。
+
+### 安装
+
+```powershell
+.venv\Scripts\python -m pip install -e ".[mcp]"
+```
+
+### 启动（两种传输）
+
+```powershell
+# STDIO（默认）——供 Claude Code / Claude Desktop 这类以子进程方式拉起的客户端使用
+.venv\Scripts\python -m kbase_mcp
+
+# Streamable HTTP——供远程/多客户端场景使用
+.venv\Scripts\python -m kbase_mcp --http --port 3001 --host 127.0.0.1
+```
+
+环境变量：
+
+- `KBASE_API_URL`：MCP 反调的 KBase API 地址，默认 `http://localhost:8100`。
+- `KBASE_MCP_TOKEN`：仅影响 HTTP 传输的鉴权。**不设置**＝鉴权关闭（任何请求都放行，适合本机/内网可信环境）；**设置后**，HTTP 请求必须带 `Authorization: Bearer <token>` 头，否则 401。STDIO 传输不受影响（子进程管道本身即信任边界，不做 token 校验）。
+
+### 注册到 Claude Code
+
+```powershell
+claude mcp add kbase -- python -m kbase_mcp
+```
+
+### 注册到 Claude Desktop
+
+在 Claude Desktop 的配置文件（`claude_desktop_config.json`）里加入：
+
+```json
+{
+  "mcpServers": {
+    "kbase": {
+      "command": "python",
+      "args": ["-m", "kbase_mcp"],
+      "env": {
+        "KBASE_API_URL": "http://localhost:8100"
+      }
+    }
+  }
+}
+```
+
 ## 架构
 
 内核只依赖抽象接口，具体实现（Embedder/VectorStore/LLMProvider/Chunker）在插件层注册、YAML 配置选择；完整设计（分块策略、混合检索、性能设计、部署 profile、Roadmap）见 [`docs/superpowers/specs/2026-07-04-kbase-knowledge-base-design.md`](docs/superpowers/specs/2026-07-04-kbase-knowledge-base-design.md)，M1 阶段的实施拆解见 [`docs/superpowers/plans/`](docs/superpowers/plans/) 下对应计划文档。
