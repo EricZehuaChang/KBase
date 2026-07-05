@@ -182,6 +182,7 @@ onMounted(loadKbs);
           class="group relative rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-4 text-left transition-colors hover:border-[var(--accent)]"
           @click="openKb(kb.id)"
           @keydown.enter="openKb(kb.id)"
+          @keydown.space.prevent="openKb(kb.id)"
         >
           <button
             type="button"
