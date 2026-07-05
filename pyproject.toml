@@ -25,6 +25,9 @@ dependencies = [
     # 锁定 <4.1 保留兼容性，同时满足 chromadb 的 bcrypt>=4.0.1 下限。
     "bcrypt>=4.0.1,<4.1",
     "PyJWT>=2.8",
+    # kbase/license.py 的 Ed25519 验签直接依赖；此前只是通过 markitdown[pdf]
+    # ->pdfminer.six 间接拉入，改成显式声明避免那条传递链变化时悄悄消失。
+    "cryptography>=42.0",
 ]
 
 [project.optional-dependencies]

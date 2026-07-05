@@ -18,6 +18,9 @@ data/
 *.db
 .env
 
+# 许可证：客户私有化部署各自签发/放置，仓库不内置任何一份
+license.json
+
 # 评测报告（生成产物，不入库）
 eval/report*.md
 

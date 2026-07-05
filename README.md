@@ -188,6 +188,7 @@ npm run test
 
 - `KBASE_API_URL`：MCP 反调的 KBase API 地址，默认 `http://localhost:8100`。
 - `KBASE_MCP_TOKEN`：仅影响 HTTP 传输的鉴权。**不设置**＝鉴权关闭（任何请求都放行，适合本机/内网可信环境）；**设置后**，HTTP 请求必须带 `Authorization: Bearer <token>` 头，否则 401。STDIO 传输不受影响（子进程管道本身即信任边界，不做 token 校验）。
+- `KBASE_API_KEY`：KBase API 若已开启鉴权（`create_app(auth="on")`，生产默认），MCP 反调 KBase 的每个请求都需要带凭据。在 KBase 设置页的「API Key」卡片创建一把 key（管理员操作），把完整 key（形如 `kbase_ak_...`，只在创建时展示一次）设成这个环境变量，MCP Server 会自动在所有反调请求上加 `Authorization: Bearer <key>`。未设置且 API 确实要求鉴权时，工具调用会收到清晰的中文错误提示，指引来设置这个变量。
 
 ### 注册到 Claude Code
 
