@@ -9,7 +9,7 @@ def _client(tmp_path, fake_embedder, llms=None):
     cfg.write_text(CFG.format(data_dir=str(tmp_path / "data").replace("\\", "/")),
                    encoding="utf-8")
     app = create_app(config_path=cfg, embedder=fake_embedder,
-                     llms=llms or {"fake": FakeLLM()}, reranker=False)
+                     llms=llms or {"fake": FakeLLM()}, reranker=False, auth="off")
     return TestClient(app)
 
 

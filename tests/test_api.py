@@ -35,7 +35,7 @@ def _client(tmp_path, fake_embedder):
     cfg.write_text(CFG.format(data_dir=str(tmp_path / "data").replace("\\", "/")),
                    encoding="utf-8")
     app = create_app(config_path=cfg, embedder=fake_embedder,
-                     llms={"fake": FakeLLM()}, reranker=False)
+                     llms={"fake": FakeLLM()}, reranker=False, auth="off")
     return TestClient(app)
 
 
@@ -175,7 +175,7 @@ def test_reranker_load_failure_degrades(tmp_path, fake_embedder, monkeypatch):
     cfg.write_text(CFG.format(data_dir=str(tmp_path / "data").replace("\\", "/")),
                    encoding="utf-8")
     app = create_app(config_path=cfg, embedder=fake_embedder,
-                     llms={"fake": FakeLLM()})          # reranker=None 走配置加载路径
+                     llms={"fake": FakeLLM()}, auth="off")  # reranker=None 走配置加载路径
     c = TestClient(app)
     assert c.get("/healthz").json()["reranker"] == "degraded"
     assert c.post("/api/kb", json={"name": "x"}).status_code == 200
@@ -224,7 +224,8 @@ def test_pending_ocr_then_retry_becomes_ready(tmp_path, fake_embedder):
     cfg.write_text(CFG.format(data_dir=str(tmp_path / "data").replace("\\", "/")),
                    encoding="utf-8")
     app = create_app(config_path=cfg, embedder=fake_embedder,
-                     llms={"fake": FakeLLM()}, reranker=False, ocr_backend=ocr)
+                     llms={"fake": FakeLLM()}, reranker=False, ocr_backend=ocr,
+                     auth="off")
     c = TestClient(app)
     kb_id = c.post("/api/kb", json={"name": "库"}).json()["id"]
 
@@ -249,7 +250,8 @@ def test_retry_ocr_batch_endpoint(tmp_path, fake_embedder):
     cfg.write_text(CFG.format(data_dir=str(tmp_path / "data").replace("\\", "/")),
                    encoding="utf-8")
     app = create_app(config_path=cfg, embedder=fake_embedder,
-                     llms={"fake": FakeLLM()}, reranker=False, ocr_backend=ocr)
+                     llms={"fake": FakeLLM()}, reranker=False, ocr_backend=ocr,
+                     auth="off")
     c = TestClient(app)
     kb_id = c.post("/api/kb", json={"name": "库"}).json()["id"]
     c.post(f"/api/kb/{kb_id}/documents",
@@ -272,7 +274,8 @@ def test_retry_ocr_batch_single_worker(tmp_path, fake_embedder, monkeypatch):
     cfg.write_text(CFG.format(data_dir=str(tmp_path / "data").replace("\\", "/")),
                    encoding="utf-8")
     app = create_app(config_path=cfg, embedder=fake_embedder,
-                     llms={"fake": FakeLLM()}, reranker=False, ocr_backend=ocr)
+                     llms={"fake": FakeLLM()}, reranker=False, ocr_backend=ocr,
+                     auth="off")
     c = TestClient(app)
     kb_id = c.post("/api/kb", json={"name": "库"}).json()["id"]
     for i, name in enumerate(("scan1.pdf", "scan2.pdf", "scan3.pdf")):
@@ -342,7 +345,7 @@ def test_delete_kb_cascades_everything(tmp_path, fake_embedder):
                    encoding="utf-8")
     store = ChromaStore(persist_dir=str(tmp_path / "data" / "chroma"))
     app = create_app(config_path=cfg, embedder=fake_embedder, store=store,
-                     llms={"fake": FakeLLM()}, reranker=False)
+                     llms={"fake": FakeLLM()}, reranker=False, auth="off")
     c = TestClient(app)
     kb_id = c.post("/api/kb", json={"name": "库"}).json()["id"]
     c.post(f"/api/kb/{kb_id}/documents",

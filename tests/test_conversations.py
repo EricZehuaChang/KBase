@@ -11,7 +11,7 @@ def _client(tmp_path, fake_embedder):
     cfg.write_text(CFG.format(data_dir=str(tmp_path / "data").replace("\\", "/")),
                    encoding="utf-8")
     app = create_app(config_path=cfg, embedder=fake_embedder,
-                     llms={"fake": FakeLLM()}, reranker=False)
+                     llms={"fake": FakeLLM()}, reranker=False, auth="off")
     c = TestClient(app)
     kb_id = c.post("/api/kb", json={"name": "库"}).json()["id"]
     c.post(f"/api/kb/{kb_id}/documents",
@@ -126,7 +126,7 @@ def _client_with_rewriter(tmp_path, fake_embedder, rewriter):
     spy = SpyEmbedder()
     app = create_app(config_path=cfg, embedder=spy,
                      llms={"fake": FakeLLM()}, reranker=False,
-                     rewriter=rewriter)
+                     rewriter=rewriter, auth="off")
     c = TestClient(app)
     kb_id = c.post("/api/kb", json={"name": "库"}).json()["id"]
     c.post(f"/api/kb/{kb_id}/documents",

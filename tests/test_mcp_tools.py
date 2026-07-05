@@ -13,7 +13,7 @@ def kbase_app(tmp_path, fake_embedder):
     cfg.write_text(CFG.format(data_dir=str(tmp_path / "data").replace("\\", "/")),
                    encoding="utf-8")
     return create_app(config_path=cfg, embedder=fake_embedder,
-                      llms={"fake": FakeLLM()}, reranker=False)
+                      llms={"fake": FakeLLM()}, reranker=False, auth="off")
 
 
 @pytest.fixture
@@ -99,7 +99,7 @@ async def test_ask_knowledge_base_preserves_newline_in_multiline_token(
             return out
 
     app = create_app(config_path=cfg, embedder=_FakeEmbedder(),
-                     llms={"fake": NewlineFakeLLM()}, reranker=False)
+                     llms={"fake": NewlineFakeLLM()}, reranker=False, auth="off")
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport,

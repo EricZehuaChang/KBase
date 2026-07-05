@@ -9,7 +9,8 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from pathlib import Path
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, UploadFile
+from fastapi import (APIRouter, BackgroundTasks, Depends, FastAPI, HTTPException,
+                     Query, Response as FastAPIResponse, UploadFile)
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -44,6 +45,9 @@ class SPAStaticFiles(StaticFiles):
 
 from kbase import conversations as conv_store
 from kbase import providers_store
+from kbase.auth import security
+from kbase.auth.bootstrap import ensure_admin
+from kbase.auth.deps import make_get_current_actor, make_origin_guard_middleware
 from kbase.config import load_config
 from kbase.db import make_session_factory
 from kbase.index.keyword import KeywordIndex
@@ -53,7 +57,7 @@ from kbase.jobs.export_docx import markdown_to_docx
 from kbase.jobs.proposal import build_proposal_steps, generate_outline
 from kbase.jobs.runner import run_job
 from kbase.jobs.store import create_job, get_job, list_jobs
-from kbase.models import Chunk, Conversation, Document, KnowledgeBase, Message
+from kbase.models import Chunk, Conversation, Document, KnowledgeBase, Message, User
 from kbase.plugins.registry import registry
 from kbase.rag.generator import Generator
 from kbase.rag.retriever import Retriever
@@ -207,8 +211,13 @@ class JobCreate(BaseModel):
 
 def create_app(config_path="config/kbase.yaml", *, embedder=None,
                store=None, llms: dict | None = None, reranker=None,
-               enricher=None, ocr_backend=None, rewriter=None) -> FastAPI:
-    """reranker: None=按配置加载（生产默认，失败自动降级）；
+               enricher=None, ocr_backend=None, rewriter=None,
+               auth: str = "on") -> FastAPI:
+    """auth: "on"（生产默认）——全部 /api 路由（除 POST /api/auth/login 外）
+    要求有效的会话 Cookie 或 API Key，启动时执行首启 admin 引导；
+    "off"（既有功能测试用）——跳过 actor 依赖与 bootstrap，行为与鉴权改造前
+    完全一致，被测物是功能而不是鉴权。
+    reranker: None=按配置加载（生产默认，失败自动降级）；
     False=显式关闭（测试用哨兵，保持既有分数语义不变）；
     传实例=直接注入（测试用 fake reranker）。
     enricher: None=生产默认，包一层 LazyEnricher 延迟到首次摄取时才解析真实
@@ -343,6 +352,48 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
     # 任何 llm 时为 None。
     app.state.test_llm = (llms or {}).get(cfg.llm.active)
 
+    # ---- 鉴权装配（spec §2/§7）----
+    # auth="off"：既有功能测试路径，router 不挂 actor 依赖、不跑 bootstrap、
+    # 不加 Origin 中间件——行为与鉴权改造前完全一致。
+    # auth="on"（生产默认）：全部 /api/* 路由（除 POST /api/auth/login 外）
+    # 要求 Cookie 会话或 Bearer API Key；首启自动引导 admin；非 GET 请求校验
+    # Origin 同源。
+    secret = security.resolve_secret_key(sf)
+    get_current_actor = make_get_current_actor(sf, secret=secret)
+    if auth == "on":
+        ensure_admin(sf)
+        app.middleware("http")(make_origin_guard_middleware())
+        api_dependencies = [Depends(get_current_actor)]
+    else:
+        api_dependencies = []
+    router = APIRouter(prefix="/api", dependencies=api_dependencies)
+
+    class LoginBody(BaseModel):
+        username: str
+        password: str
+
+    @app.post("/api/auth/login")
+    def login(body: LoginBody, response: FastAPIResponse):
+        with sf() as s:
+            user = s.query(User).filter_by(username=body.username).first()
+        if (user is None or user.disabled
+                or not security.verify_password(body.password, user.password_hash)):
+            raise HTTPException(401, "用户名或密码错误，或账号已被禁用")
+        token = security.create_session_token(user.username, user.role, secret=secret)
+        response.set_cookie(
+            "kbase_session", token, httponly=True, samesite="lax",
+            max_age=security.SESSION_TOKEN_TTL_SECONDS)
+        return {"username": user.username, "role": user.role}
+
+    @router.post("/auth/logout")
+    def logout(response: FastAPIResponse):
+        response.delete_cookie("kbase_session")
+        return {"ok": True}
+
+    @router.get("/auth/me")
+    def auth_me(actor: dict = Depends(get_current_actor)):
+        return {"username": actor["name"], "role": actor["role"]}
+
     @app.get("/healthz")
     def healthz():
         if rerank_degraded:
@@ -355,25 +406,25 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
                 "vectorstore": type(store).__name__,
                 "reranker": reranker_status}
 
-    @app.get("/api/providers")
+    @router.get("/providers")
     def providers():
         # 旧端点（Plan B 前旧前端仍用它）：改读 DB，返回结构保持不变
         return {"active": providers_store.get_active(sf),
                 "providers": [p["name"] for p in providers_store.list_providers(sf)]}
 
-    @app.get("/api/settings/providers")
+    @router.get("/settings/providers")
     def settings_list_providers():
         return {"active": providers_store.get_active(sf),
                 "providers": providers_store.list_providers(sf)}
 
-    @app.post("/api/settings/providers")
+    @router.post("/settings/providers")
     def settings_create_provider(body: ProviderCreate):
         if providers_store.get_provider_dict(sf, body.name) is not None:
             raise HTTPException(409, f"provider 已存在: {body.name}")
         providers_store.create_provider(sf, body.model_dump())
         return {"ok": True}
 
-    @app.put("/api/settings/providers/{name}")
+    @router.put("/settings/providers/{name}")
     def settings_update_provider(name: str, body: ProviderUpdate):
         found = providers_store.update_provider(
             sf, name, body.model_dump(exclude_unset=True))
@@ -382,7 +433,7 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
         _invalidate_llm_cache(name)
         return {"ok": True}
 
-    @app.delete("/api/settings/providers/{name}")
+    @router.delete("/settings/providers/{name}")
     def settings_delete_provider(name: str):
         if providers_store.get_active(sf) == name:
             raise HTTPException(409, "默认 provider 不可删除，请先切换默认")
@@ -392,14 +443,14 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
         _invalidate_llm_cache(name)
         return {"ok": True}
 
-    @app.put("/api/settings/active-provider")
+    @router.put("/settings/active-provider")
     def settings_set_active_provider(body: ActiveProviderBody):
         if providers_store.get_provider_dict(sf, body.name) is None:
             raise HTTPException(404, f"provider 不存在: {body.name}")
         providers_store.set_active(sf, body.name)
         return {"ok": True}
 
-    @app.post("/api/settings/providers/{name}/test")
+    @router.post("/settings/providers/{name}/test")
     async def settings_test_provider(name: str):
         if providers_store.get_provider_dict(sf, name) is None:
             raise HTTPException(404, f"provider 不存在: {name}")
@@ -415,7 +466,7 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
         except Exception as e:  # noqa: BLE001 —— 连通性探测，任何失败都回报而非 500
             return {"ok": False, "error": str(e)}
 
-    @app.post("/api/kb")
+    @router.post("/kb")
     def create_kb(body: KBCreate):
         kb = KnowledgeBase(id=str(uuid.uuid4()), name=body.name)
         with sf() as s:
@@ -423,14 +474,14 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
             s.commit()
         return {"id": kb.id, "name": kb.name}
 
-    @app.get("/api/kb")
+    @router.get("/kb")
     def list_kb():
         with sf() as s:
             return [{"id": k.id, "name": k.name,
                      "config": json.loads(k.config) if k.config else None}
                     for k in s.query(KnowledgeBase).all()]
 
-    @app.delete("/api/kb/{kb_id}")
+    @router.delete("/kb/{kb_id}")
     def delete_kb(kb_id: str):
         with sf() as s:
             kb = s.get(KnowledgeBase, kb_id)
@@ -460,7 +511,7 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
         store.delete_collection(kb_id)
         return {"ok": True}
 
-    @app.put("/api/kb/{kb_id}/config")
+    @router.put("/kb/{kb_id}/config")
     def put_kb_config(kb_id: str, body: KBConfigBody):
         with sf() as s:
             kb = s.get(KnowledgeBase, kb_id)
@@ -481,7 +532,7 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
                 lambda item: pipeline.ingest_file(kb_id, item[0], item[1]),
                 items))
 
-    @app.post("/api/kb/{kb_id}/documents")
+    @router.post("/kb/{kb_id}/documents")
     def upload(kb_id: str, files: list[UploadFile], bg: BackgroundTasks):
         upload_dir = cfg.data_dir / "uploads"
         upload_dir.mkdir(parents=True, exist_ok=True)
@@ -496,14 +547,14 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
         bg.add_task(_ingest_batch, kb_id, items)
         return {"accepted": accepted}
 
-    @app.get("/api/kb/{kb_id}/documents")
+    @router.get("/kb/{kb_id}/documents")
     def list_docs(kb_id: str):
         with sf() as s:
             docs = s.query(Document).filter_by(kb_id=kb_id).all()
             return [{"id": d.id, "filename": d.filename, "status": d.status,
                      "error": d.error} for d in docs]
 
-    @app.get("/api/documents/{doc_id}/content")
+    @router.get("/documents/{doc_id}/content")
     def document_content(doc_id: str):
         with sf() as s:
             doc = s.get(Document, doc_id)
@@ -515,7 +566,7 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
         return {"doc_id": doc.id, "filename": doc.filename,
                 "markdown": content_path.read_text(encoding="utf-8")}
 
-    @app.delete("/api/kb/{kb_id}/documents/{doc_id}")
+    @router.delete("/kb/{kb_id}/documents/{doc_id}")
     def delete_document(kb_id: str, doc_id: str):
         with sf() as s:
             doc = s.get(Document, doc_id)
@@ -534,7 +585,7 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
         shutil.rmtree(cfg.data_dir / "files" / doc_id, ignore_errors=True)
         return {"ok": True}
 
-    @app.post("/api/documents/{doc_id}/retry")
+    @router.post("/documents/{doc_id}/retry")
     def retry_document(doc_id: str):
         with sf() as s:
             doc = s.get(Document, doc_id)
@@ -551,7 +602,7 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
         for doc_id in doc_ids:
             pipeline.retry_document(doc_id)
 
-    @app.post("/api/kb/{kb_id}/retry-ocr")
+    @router.post("/kb/{kb_id}/retry-ocr")
     def retry_kb_ocr(kb_id: str, bg: BackgroundTasks):
         with sf() as s:
             pending = s.query(Document).filter_by(
@@ -608,11 +659,11 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
 
         return EventSourceResponse(events())
 
-    @app.post("/api/kb/{kb_id}/query")
+    @router.post("/kb/{kb_id}/query")
     async def query(kb_id: str, body: QueryBody):
         return await _run_query(kb_id, body)
 
-    @app.post("/api/kb/{kb_id}/search")
+    @router.post("/kb/{kb_id}/search")
     async def search(kb_id: str, body: SearchBody):
         """检索调试端点：debug=False 只返回 blocks（不含 trace key，向后兼容展示用途）；
         debug=True 额外返回各阶段 trace（dense/keyword/fused[/reranked]），用于排查召回质量。
@@ -624,21 +675,21 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
                     "trace": result.trace}
         return {"blocks": [asdict(b) for b in result]}
 
-    @app.post("/api/conversations")
+    @router.post("/conversations")
     def create_conversation(body: ConversationCreate):
         return conv_store.create_conversation(sf, body.kb_id)
 
-    @app.get("/api/conversations")
+    @router.get("/conversations")
     def list_conversations(kb_id: str | None = None,
                            limit: int = Query(default=30, ge=1, le=100),
                            offset: int = Query(default=0, ge=0)):
         return conv_store.list_conversations(sf, kb_id, limit=limit, offset=offset)
 
-    @app.get("/api/conversations/{conv_id}/messages")
+    @router.get("/conversations/{conv_id}/messages")
     def list_conversation_messages(conv_id: str):
         return conv_store.list_messages(sf, conv_id)
 
-    @app.post("/api/conversations/{conv_id}/query")
+    @router.post("/conversations/{conv_id}/query")
     async def query_conversation(conv_id: str, body: QueryBody):
         with sf() as s:
             conv = s.get(Conversation, conv_id)
@@ -657,7 +708,7 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
                                retrieval_query=rewrite_res.query,
                                on_complete=_persist)
 
-    @app.post("/api/proposals/outline")
+    @router.post("/proposals/outline")
     async def proposals_outline(body: OutlineBody):
         try:
             llm = get_llm(body.provider)
@@ -671,7 +722,7 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
         except ValueError as e:
             raise HTTPException(502, str(e)) from e
 
-    @app.post("/api/jobs")
+    @router.post("/jobs")
     def create_job_endpoint(body: JobCreate, bg: BackgroundTasks):
         if body.type not in ("proposal", "digest"):
             raise HTTPException(422, f"未知的 job type: {body.type}")
@@ -708,11 +759,11 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
         bg.add_task(run_job, sf, job["id"], steps)
         return {"id": job["id"]}
 
-    @app.get("/api/jobs")
+    @router.get("/jobs")
     def jobs_list(kb_id: str):
         return list_jobs(sf, kb_id)
 
-    @app.get("/api/jobs/{job_id}")
+    @router.get("/jobs/{job_id}")
     def jobs_detail(job_id: str):
         job = get_job(sf, job_id)
         if job is None:
@@ -723,7 +774,7 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
     _DOCX_MEDIA_TYPE = ("application/vnd.openxmlformats-officedocument"
                         ".wordprocessingml.document")
 
-    @app.get("/api/jobs/{job_id}/artifact")
+    @router.get("/jobs/{job_id}/artifact")
     def jobs_artifact(job_id: str, format: str = "md"):
         job = get_job(sf, job_id)
         if job is None:
@@ -747,6 +798,8 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
         download_name = _ARTIFACT_FILENAME.get(job["type"], "artifact.docx")
         return FileResponse(docx_path, media_type=_DOCX_MEDIA_TYPE,
                             filename=download_name)
+
+    app.include_router(router)
 
     web_dir = Path(__file__).resolve().parents[2] / "web"
     if web_dir.exists():
