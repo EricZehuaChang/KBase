@@ -436,6 +436,8 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
             if kb is not None:
                 s.delete(kb)
             s.commit()
+        # 二次清理：若行删除期间有摄取在途 upsert 重建了集合，扫掉这批孤儿向量
+        store.delete_collection(kb_id)
         return {"ok": True}
 
     @app.put("/api/kb/{kb_id}/config")
