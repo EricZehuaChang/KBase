@@ -47,6 +47,15 @@ class RerankConfig(BaseModel):
     model: str = "BAAI/bge-reranker-v2-m3"
 
 
+class RewriteConfig(BaseModel):
+    # mode: "off"=从不改写；"conditional"=按 should_rewrite 的启发式判断触发；
+    # "always"=只要有历史就触发（仍需要非空 history）。
+    # provider=None 表示用 llm.active 对应的 provider 做改写调用。
+    mode: str = "conditional"
+    provider: str | None = None
+    max_wait_s: float = 5.0
+
+
 class RetrievalConfig(BaseModel):
     hybrid: bool = True
     candidates: int = 20          # 每路召回数与融合候选数
@@ -54,6 +63,8 @@ class RetrievalConfig(BaseModel):
     rerank: RerankConfig = Field(default_factory=RerankConfig)
     min_score_dense: float = 0.3
     min_score_rerank: float = 0.35
+    rewrite: RewriteConfig = Field(default_factory=RewriteConfig)
+    max_parent_chars: int = 4000   # D6：父块截窗上限
 
 
 class EnrichConfig(BaseModel):
