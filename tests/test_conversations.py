@@ -94,3 +94,84 @@ def test_history_strips_citation_markers(tmp_path, fake_embedder):
     hist = build_history(sf, "cv1")
     asst = next(m for m in hist if m["role"] == "assistant")
     assert "[1]" not in asst["content"] and "[2]" not in asst["content"]
+
+
+class FakeRewriteLLM:
+    """QueryRewriter 专用假 LLM：把追问改写为含关键词的自包含问题。"""
+    def __init__(self, out="出差北京司局级住宿费标准是多少"):
+        self.out = out
+        self.calls = 0
+
+    async def complete(self, messages, **params):
+        self.calls += 1
+        return self.out
+
+
+def _client_with_rewriter(tmp_path, fake_embedder, rewriter):
+    """conversations 测试自有的 client 构造：注入 SpyEmbedder 记录检索用的实际
+    query 文本，并直接传入 QueryRewriter 实例（同 reranker/enricher 的实例注入
+    哨兵模式），跳过配置文件里的 provider 懒解析。"""
+    calls = []
+
+    class SpyEmbedder:
+        dimension = fake_embedder.dimension
+
+        def embed(self, texts):
+            calls.append(list(texts))
+            return fake_embedder.embed(texts)
+
+    cfg = tmp_path / "kbase.yaml"
+    cfg.write_text(CFG.format(data_dir=str(tmp_path / "data").replace("\\", "/")),
+                   encoding="utf-8")
+    spy = SpyEmbedder()
+    app = create_app(config_path=cfg, embedder=spy,
+                     llms={"fake": FakeLLM()}, reranker=False,
+                     rewriter=rewriter)
+    c = TestClient(app)
+    kb_id = c.post("/api/kb", json={"name": "库"}).json()["id"]
+    c.post(f"/api/kb/{kb_id}/documents",
+           files=[("files", ("补贴办法.md", MD.encode("utf-8"), "text/markdown"))])
+    return c, kb_id, calls
+
+
+def test_rewriter_rewrites_retrieval_but_not_generation(tmp_path, fake_embedder):
+    from kbase.rag.rewriter import QueryRewriter
+    rewriter = QueryRewriter(llm=FakeRewriteLLM(), mode="always")
+    c, kb_id, embed_calls = _client_with_rewriter(tmp_path, fake_embedder, rewriter)
+    conv = c.post("/api/conversations", json={"kb_id": kb_id}).json()
+    q1 = "补贴办法.md > 补贴办法 > 第一章 申领条件\n连续工作满两年可申领住房补贴。"
+    with c.stream("POST", f"/api/conversations/{conv['id']}/query",
+                  json={"question": q1}) as r:
+        "".join(r.iter_text())
+    embed_calls.clear()                     # 只看第二轮（追问）触发的检索
+    q2 = "那司局级呢？"
+    with c.stream("POST", f"/api/conversations/{conv['id']}/query",
+                  json={"question": q2}) as r:
+        "".join(r.iter_text())
+    # 检索路（SpyEmbedder）应看到改写后的关键词
+    assert any("司局级" in t and "住宿费" in t for call in embed_calls for t in call)
+    # 生成 LLM 收到的最后一条 user 消息仍是原始短问（展示/落库用原文）
+    fake = c.app.state.test_llm
+    last_user = [m for m in fake.last_messages if m["role"] == "user"][-1]
+    assert q2 in last_user["content"]
+    assert "出差北京司局级住宿费标准是多少" not in last_user["content"]
+    # 落库也是原文
+    msgs = c.get(f"/api/conversations/{conv['id']}/messages").json()
+    user_msgs = [m["content"] for m in msgs if m["role"] == "user"]
+    assert user_msgs[-1] == q2
+
+
+def test_rewriter_false_matches_m2_behavior(tmp_path, fake_embedder):
+    """rewriter=False 显式关闭时行为与 M2（无改写）完全一致：检索用原文。"""
+    c, kb_id, embed_calls = _client_with_rewriter(tmp_path, fake_embedder, False)
+    conv = c.post("/api/conversations", json={"kb_id": kb_id}).json()
+    q1 = "补贴办法.md > 补贴办法 > 第一章 申领条件\n连续工作满两年可申领住房补贴。"
+    with c.stream("POST", f"/api/conversations/{conv['id']}/query",
+                  json={"question": q1}) as r:
+        "".join(r.iter_text())
+    embed_calls.clear()
+    q2 = "那司局级呢？"
+    with c.stream("POST", f"/api/conversations/{conv['id']}/query",
+                  json={"question": q2}) as r:
+        "".join(r.iter_text())
+    assert any(q2 in t for call in embed_calls for t in call)

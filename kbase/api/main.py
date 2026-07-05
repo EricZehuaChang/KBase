@@ -50,6 +50,7 @@ from kbase.models import Chunk, Conversation, Document, KnowledgeBase
 from kbase.plugins.registry import registry
 from kbase.rag.generator import Generator
 from kbase.rag.retriever import Retriever
+from kbase.rag.rewriter import QueryRewriter
 
 
 def _load_builtin_plugins():
@@ -88,6 +89,37 @@ class LazyEnricher:
                     "Enricher 初始化失败，本次摄取跳过上下文增强: %s", e)
                 return leaves
         return self._resolved.enrich(doc_name, markdown, leaves)
+
+
+class LazyRewriter:
+    """包一层，把"改写用哪个 LLM"从"应用启动"推迟到"第一次真正调用 rewrite"。
+
+    动机同 LazyEnricher：QueryRewriter 需要一个 LLM 实例，但构造 LLM
+    （openai-compat）要读 provider 的 api_key 环境变量——如果启动时就急切创建，
+    会让「未配置改写 provider 密钥」的部署也无法启动。是否真的需要改写只有
+    收到会话查询时才知道，所以用一个可调用工厂延迟到首次 rewrite() 调用时
+    再解析真实的 QueryRewriter。解析失败时记录 warning 并原样返回原问题
+    （等价于未改写、rewriter=off），不让查询链路失败。
+    """
+
+    def __init__(self, factory):
+        self._factory = factory
+        self._resolved = None
+        self._resolve_failed = False
+
+    async def rewrite(self, question: str, history: list[dict]):
+        from kbase.rag.rewriter import RewriteResult
+        if self._resolve_failed:
+            return RewriteResult(query=question, triggered=False, rewritten=False)
+        if self._resolved is None:
+            try:
+                self._resolved = self._factory()
+            except Exception as e:  # noqa: BLE001 —— 解析失败不阻塞查询
+                self._resolve_failed = True
+                logging.getLogger(__name__).warning(
+                    "QueryRewriter 初始化失败，本次查询跳过改写: %s", e)
+                return RewriteResult(query=question, triggered=False, rewritten=False)
+        return await self._resolved.rewrite(question, history)
 
 
 class KBCreate(BaseModel):
@@ -154,7 +186,7 @@ class ActiveProviderBody(BaseModel):
 
 def create_app(config_path="config/kbase.yaml", *, embedder=None,
                store=None, llms: dict | None = None, reranker=None,
-               enricher=None, ocr_backend=None) -> FastAPI:
+               enricher=None, ocr_backend=None, rewriter=None) -> FastAPI:
     """reranker: None=按配置加载（生产默认，失败自动降级）；
     False=显式关闭（测试用哨兵，保持既有分数语义不变）；
     传实例=直接注入（测试用 fake reranker）。
@@ -164,7 +196,13 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
     传实例=直接注入（测试用真实 ContextualEnricher 或 fake，跳过 Lazy 包装）。
     ocr_backend: None=按配置加载（cfg.ocr.enabled 为真时创建 monkey-http 后端，
     生产默认；未启用则不装 OCR，扫描件/图片直接判 failed）；
-    传实例=直接注入（测试用 FakeOCR，跳过配置读取与真实网络依赖）。"""
+    传实例=直接注入（测试用 FakeOCR，跳过配置读取与真实网络依赖）。
+    rewriter: None=生产默认，包一层 LazyRewriter 延迟到首次会话查询时才解析
+    真实 QueryRewriter（避免未用到改写的部署也要求配好改写 provider 密钥）；
+    False=显式关闭（测试哨兵/等价 mode=off，会话查询检索用原文，行为与 M2
+    完全一致）；传实例=直接注入（测试用真实 QueryRewriter 搭配 FakeLLM，跳过
+    Lazy 包装）。仅会话查询路由（/api/conversations/{id}/query）使用；
+    旧的 /api/kb/{id}/query 端点不接入改写，行为字节级不变。"""
     _load_builtin_plugins()
     cfg = load_config(config_path)
     cfg.data_dir.mkdir(parents=True, exist_ok=True)
@@ -262,6 +300,20 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
         注意：测试注入的 llm（llms 参数预置进缓存）若被同名 PUT/DELETE，也会被这里清掉——
         这是预期行为：既然通过设置 API 显式改了该 provider，就不应再套用旧的注入实例。"""
         _llm_cache.pop(name, None)
+
+    if rewriter is None:
+        # 生产路径：延迟解析真实 QueryRewriter，避免会话查询链路未真正触发
+        # 改写时也强制要求改写 provider 的密钥就绪（见 LazyRewriter 文档）。
+        def _build_rewriter():
+            llm = get_llm(cfg.retrieval.rewrite.provider)
+            return QueryRewriter(llm=llm, mode=cfg.retrieval.rewrite.mode,
+                                 max_wait_s=cfg.retrieval.rewrite.max_wait_s)
+
+        rewriter = LazyRewriter(_build_rewriter)
+    elif rewriter is False:
+        # 显式关闭：测试哨兵/等价 mode=off。mode="off" 的 should_rewrite 永远
+        # 短路返回 False，不会触碰 llm，因此不需要 Lazy 包装，可直接构造。
+        rewriter = QueryRewriter(llm=None, mode="off")
 
     app = FastAPI(title="KBase")
     # 测试注入路径：暴露被注入的 active llm 实例，便于测试直接断言其记录的
@@ -440,12 +492,16 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
 
     async def _run_query(kb_id: str, body: QueryBody, *,
                          history: list[dict] | None = None,
-                         on_complete=None):
+                         on_complete=None, retrieval_query: str | None = None):
         """共享检索+生成编排：会话端点与旧的 /api/kb/{id}/query 端点复用同一份
         逻辑，保证事件序列（citations→token*→done）与拒答语义完全一致。
 
         on_complete(answer_text, citations, provider): 流结束（含客户端中断）
         后调用，用于会话落库；旧端点不传，行为与改造前完全相同。
+        retrieval_query: 检索实际使用的问题文本；默认 None 时等同 body.question
+        （旧端点 /api/kb/{id}/query 不传，行为字节级不变）。会话端点在触发
+        QueryRewrite 时传入改写后的问题——生成（answer_stream）与落库
+        （on_complete）仍固定使用 body.question（原文），只有检索这一步换词。
         """
         try:
             llm = get_llm(body.provider)
@@ -453,9 +509,10 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
             raise HTTPException(404, str(e)) from e
         except RuntimeError as e:      # 环境变量未设置等初始化失败：给前端可读信息
             raise HTTPException(503, str(e)) from e
+        query_text = retrieval_query if retrieval_query is not None else body.question
         # 检索（含向量化）是同步 CPU/IO 混合操作，进线程池避免阻塞事件循环
         blocks = await run_in_threadpool(
-            retriever.retrieve, kb_id, body.question, body.top_k)
+            retriever.retrieve, kb_id, query_text, body.top_k)
         gen = Generator(llm, min_score=gen_min_score)
         # 关键契约：usable_blocks 只算一次，citations 与 answer_stream 用同一份列表，
         # 保证引用编号与答案中的 [n] 标记对齐（拒答时 citations 为空列表）
@@ -515,12 +572,16 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
         if conv is None:
             raise HTTPException(404, f"会话不存在: {conv_id}")
         history = conv_store.build_history(sf, conv_id)
+        # 改写只影响检索输入；生成与落库仍固定使用 body.question（原文），
+        # 见 _run_query 的 retrieval_query 参数文档。
+        rewrite_res = await rewriter.rewrite(body.question, history)
 
         def _persist(answer: str, citations: list[dict], provider: str):
             conv_store.append_round(sf, conv_id, body.question, answer,
                                     citations, provider)
 
         return await _run_query(conv.kb_id, body, history=history,
+                               retrieval_query=rewrite_res.query,
                                on_complete=_persist)
 
     web_dir = Path(__file__).resolve().parents[2] / "web"
