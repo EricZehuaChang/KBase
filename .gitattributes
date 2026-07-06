@@ -1,0 +1,6 @@
+# H5 实测踩坑：Windows checkout（core.autocrlf=true）下 git archive 会把
+# entrypoint.sh 的 LF 转成 CRLF，Docker 镜像里 `#!/bin/sh\r` shebang 解析失败，
+# 报 "exec /app/entrypoint.sh: no such file or directory"（真实现象是 CRLF
+# 而非文件缺失，报错信息具有误导性）。强制 shell 脚本始终以 LF 入库/检出，
+# 与 checkout 该文件时所在平台无关。
+*.sh text eol=lf

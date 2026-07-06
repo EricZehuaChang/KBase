@@ -39,10 +39,9 @@ services:
       - qdrant-data:/qdrant/storage
     healthcheck:
       # qdrant/qdrant 镜像默认不带 curl/wget，用 TCP 端口探测代替 HTTP 探测。
-      # 注意（H5 待验证）：/dev/tcp 重定向是 bash 内建语法，若该镜像的 shell
-      # 是 dash/busybox ash 而非 bash 则会失败——真实构建时如报错，改用镜像
-      # 内实际可用的探测手段（如镜像自带的 qdrant 自身健康检查工具，或直接
-      # 去掉 healthcheck 只保留 depends_on 的进程存活判断）。
+      # H5 实测（GCP L4 VM，真实 docker compose up --build）：qdrant/qdrant
+      # 镜像自带 bash，/dev/tcp 重定向按预期工作，healthcheck 正常转 healthy，
+      # 无需改用其他探测手段。
       test: ["CMD-SHELL", "bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/6333'"]
       interval: 10s
       timeout: 5s
@@ -52,10 +51,16 @@ services:
 
   tei-embed:
     image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
-    # GPU 部署（GCP VM，与 MonkeyOCR 共存）：把上一行镜像换成不带 -cpu 后缀的
-    # GPU 变体（如 ghcr.io/huggingface/text-embeddings-inference:1.5），并取消
-    # 注释下面的 deploy 段——CPU 镜像作为默认值保证任何机器都能跑通，GPU 是
-    # 生产部署时的显式选择：
+    # GPU 部署（GCP VM，与 MonkeyOCR 共存）：把上一行镜像换成对应 compute
+    # capability 的 GPU 变体，并取消注释下面的 deploy 段——CPU 镜像作为默认值
+    # 保证任何机器都能跑通，GPU 是生产部署时的显式选择。
+    # H5 实测（GCP L4，Ada Lovelace / compute capability 8.9）：GPU 镜像 tag
+    # 用 `89-latest`（TEI 按 compute capability 发布 tag，不是裸版本号 1.5/1.9
+    # 这种——8.9 用 89-latest，其他架构类推，如 Ampere-80 用 80-latest）。
+    # 实测与常驻显存 ~16GB 的 MonkeyOCR 共存：tei-embed(bge-m3)+tei-rerank
+    # (bge-reranker-v2-m3) 两个 GPU 容器共占约 2.7GB 显存，23GB 显存总量下
+    # 富余；若换机器显存不足导致 OOM/重启循环，回退 CPU 镜像即可，正确性
+    # 不受影响、仅吞吐更低。
     # deploy:
     #   resources:
     #     reservations:
@@ -69,8 +74,8 @@ services:
     #   HF_ENDPOINT: https://hf-mirror.com
     volumes:
       - tei-embed-cache:/data
-    # 注意（H5 待验证）：TEI 官方镜像基于 debian-slim 构建，通常含 bash 但
-    # 不含 curl/wget；/dev/tcp 探测同上一处的 H5 待验证说明。
+    # H5 实测：TEI 官方镜像（cpu-latest 与 89-latest 均如此）基于 debian-slim
+    # 构建，含 bash，/dev/tcp 探测按预期工作，healthcheck 正常转 healthy。
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/80'"]
       interval: 15s
@@ -81,7 +86,7 @@ services:
 
   tei-rerank:
     image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
-    # 同 tei-embed：GPU 部署时换镜像 + 取消注释 deploy 段。
+    # 同 tei-embed：GPU 部署时换镜像（如 89-latest）+ 取消注释 deploy 段。
     # deploy:
     #   resources:
     #     reservations:
