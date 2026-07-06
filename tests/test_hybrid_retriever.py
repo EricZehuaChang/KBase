@@ -117,3 +117,79 @@ def test_rerank_failure_degrades_to_fused_order(tmp_path, fake_embedder):
     assert "reranked" not in result.trace
     assert set(result.trace) >= {"dense", "keyword", "fused"}
     assert result.blocks
+    # H6.5：异常降级路径必须打上 "error" 标记（区别于容量 shed 的 "shed_load"）
+    assert result.rerank_status == "error"
+    assert result.trace["rerank_status"] == "error"
+    assert r.rerank_stats["rerank_error_total"] >= 1
+
+
+class OkReranker:
+    """会成功的 reranker——用来验证 shed_load 场景下它根本没被调用
+    （非阻塞跳过，不是"调用了但丢弃结果"）。"""
+
+    def __init__(self):
+        self.calls = 0
+
+    def rerank(self, query, texts):
+        self.calls += 1
+        return [1.0] * len(texts)
+
+
+def test_rerank_status_off_without_reranker(tmp_path, fake_embedder):
+    """未配置 reranker（reranker=None，纯向量/混合档）应标记 rerank_status="off"，
+    不计入 rerank_stats 计数（既不是重排成功、也不是过载/异常降级）。"""
+    factory, emb, store, kw = _setup(tmp_path, fake_embedder)
+    r = Retriever(factory, emb, store, keyword_index=kw)
+    result = r.retrieve("kb1", "新兵办发〔2014〕76号", top_k=3, debug=True)
+    assert result.rerank_status == "off"
+    assert result.trace["rerank_status"] == "off"
+    assert r.rerank_stats == {
+        "rerank_total": 0, "rerank_shed_load_total": 0, "rerank_error_total": 0,
+    }
+
+
+def test_rerank_status_on_when_capacity_available(tmp_path, fake_embedder):
+    """信号量空闲（默认 max_concurrency=8，单线程串行调用不会打满）时应
+    真正重排，rerank_status="on"，reranker 确实被调用了一次。"""
+    factory, emb, store, kw = _setup(tmp_path, fake_embedder)
+    reranker = OkReranker()
+    r = Retriever(factory, emb, store, keyword_index=kw, reranker=reranker)
+    result = r.retrieve("kb1", "新兵办发〔2014〕76号", top_k=3, debug=True)
+    assert result.rerank_status == "on"
+    assert result.trace["rerank_status"] == "on"
+    assert "reranked" in result.trace
+    assert reranker.calls == 1
+    assert r.rerank_stats["rerank_total"] == 1
+    assert r.rerank_stats["rerank_shed_load_total"] == 0
+
+
+def test_rerank_sheds_load_when_semaphore_saturated(tmp_path, fake_embedder):
+    """H6.5 核心行为：max_concurrency=1 且信号量已被外部占满（模拟 100 并发
+    打满 max_concurrency 个真正在跑的重排）时，新查询应非阻塞跳过重排——
+    不调用 reranker（关键：不是调用后丢弃结果，是根本不发起调用），直接
+    返回融合序，rerank_status="shed_load"，无异常，计数器增加。"""
+    factory, emb, store, kw = _setup(tmp_path, fake_embedder)
+    reranker = OkReranker()
+    r = Retriever(factory, emb, store, keyword_index=kw, reranker=reranker,
+                  max_concurrency=1)
+    # 测试直接占满信号量，模拟"已有 1 个查询正在重排中"的饱和态。
+    acquired = r._rerank_sem.acquire(blocking=False)
+    assert acquired
+    try:
+        blocks = r.retrieve("kb1", "新兵办发〔2014〕76号", top_k=3)
+        assert blocks   # 正常返回融合序，没有异常
+        result = r.retrieve("kb1", "新兵办发〔2014〕76号", top_k=3, debug=True)
+        assert result.rerank_status == "shed_load"
+        assert result.trace["rerank_status"] == "shed_load"
+        assert "reranked" not in result.trace   # 确认真的没走重排分支
+    finally:
+        r._rerank_sem.release()
+    assert reranker.calls == 0   # 关键断言：reranker 从未被调用
+    assert r.rerank_stats["rerank_shed_load_total"] == 2
+    assert r.rerank_stats["rerank_total"] == 2
+    assert r.rerank_stats["rerank_error_total"] == 0
+
+    # 信号量释放后（模拟饱和解除），下一次查询应恢复正常重排。
+    result = r.retrieve("kb1", "新兵办发〔2014〕76号", top_k=3, debug=True)
+    assert result.rerank_status == "on"
+    assert reranker.calls == 1

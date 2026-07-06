@@ -57,6 +57,14 @@ class RerankConfig(BaseModel):
     name: str = "bge-local"
     model: str = "BAAI/bge-reranker-v2-m3"
     endpoint: str | None = None   # name="tei" 时必填：TEI 服务地址
+    # M4-2 H6.5：单次查询的重排是一次同步网络调用（TEI 交叉编码器），单卡
+    # GPU 的推理吞吐有物理上限（H6 压测实测约 260ms/次，与批大小/并发无关）。
+    # max_concurrency 限制同时在途的重排调用数——超过这个数的查询不排队，
+    # 直接跳过重排、降级为融合排序（见 kbase/rag/retriever.py 的
+    # threading.BoundedSemaphore 用法）。8 是经验默认值：正常负载下几乎不会
+    # 触碰到这个上限（不引入降级），100 并发这种极端场景下能把多余请求的
+    # 尾延迟从"排队等 GPU"降到"融合排序的毫秒级"，用可控的 shed 率换 P95。
+    max_concurrency: int = 8
 
 
 class RewriteConfig(BaseModel):

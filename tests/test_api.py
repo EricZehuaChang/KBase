@@ -181,6 +181,15 @@ def test_reranker_load_failure_degrades(tmp_path, fake_embedder, monkeypatch):
     assert c.post("/api/kb", json={"name": "x"}).status_code == 200
 
 
+def test_healthz_exposes_rerank_stats(tmp_path, fake_embedder):
+    """H6.5：/healthz 应暴露 rerank_stats 计数器对象，供 ops 观察 shed 率
+    （压测前后对比 rerank_shed_load_total/rerank_total 变化）。"""
+    c = _client(tmp_path, fake_embedder)   # reranker=False（显式关闭），仍应有 stats 键
+    stats = c.get("/healthz").json()["rerank_stats"]
+    assert set(stats) == {"rerank_total", "rerank_shed_load_total", "rerank_error_total"}
+    assert stats == {"rerank_total": 0, "rerank_shed_load_total": 0, "rerank_error_total": 0}
+
+
 def test_query_missing_provider_key_returns_503(tmp_path, fake_embedder, monkeypatch):
     # fake2 在配置里存在但不在注入缓存中，且其密钥环境变量未设置：
     # 走真实懒创建路径 → OpenAICompatProvider 抛 RuntimeError → 503
