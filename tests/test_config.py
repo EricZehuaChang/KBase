@@ -229,3 +229,33 @@ llm:
     cfg = load_config(cfg_file)
     # 不崩溃，且字面 "{" 原样保留（不是 {data_dir} 占位符，不做任何替换）
     assert resolve_db_url(cfg) == "postgresql+psycopg://user:pa{ss@pg-host:5432/kbase"
+
+
+def test_server_threadpool_size_defaults_to_anyio_default(tmp_path: Path):
+    """M4-2 H7：不配置 server 时，threadpool_size 默认 40——与 AnyIO 库自身
+    默认线程池容量一致，保证"不配置=零行为变化"。"""
+    cfg_file = tmp_path / "kbase.yaml"
+    cfg_file.write_text(
+        "data_dir: ./data\nllm:\n  active: a\n  providers:\n    - {name: a, base_url: 'http://x', api_key_env: K, model: m}\n",
+        encoding="utf-8",
+    )
+    cfg = load_config(cfg_file)
+    assert cfg.server.threadpool_size == 40
+
+
+def test_server_threadpool_size_configurable(tmp_path: Path):
+    cfg_file = tmp_path / "kbase.yaml"
+    cfg_file.write_text(
+        """
+data_dir: ./data
+server:
+  threadpool_size: 120
+llm:
+  active: a
+  providers:
+    - {name: a, base_url: 'http://x', api_key_env: K, model: m}
+""",
+        encoding="utf-8",
+    )
+    cfg = load_config(cfg_file)
+    assert cfg.server.threadpool_size == 120
