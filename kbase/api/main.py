@@ -10,6 +10,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Literal
 
+import anyio
 from fastapi import (APIRouter, BackgroundTasks, Depends, FastAPI, HTTPException,
                      Query, Request, Response as FastAPIResponse, UploadFile)
 from fastapi.concurrency import run_in_threadpool
@@ -416,6 +417,19 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
                       openapi_url=None)
     else:
         app = FastAPI(title="KBase")
+
+    # M4-2 H7：AnyIO 的默认线程池容量（run_in_threadpool 用它执行 retrieve()
+    # 等同步阻塞调用）绑定在当前事件循环上，且 create_app() 本身是同步函数、
+    # 运行时还没有事件循环——current_default_thread_limiter() 在无循环上下文
+    # 调用会抛 NoEventLoopError（本地验证过）。必须挪到 startup 钩子里，
+    # 届时 uvicorn 已经启动了事件循环。cfg.server.threadpool_size 与 AnyIO
+    # 默认值（40）相同时不做任何调用，做到"不配置=零行为变化"。
+    if cfg.server.threadpool_size != 40:
+        @app.on_event("startup")
+        def _configure_threadpool_size() -> None:
+            limiter = anyio.to_thread.current_default_thread_limiter()
+            limiter.total_tokens = cfg.server.threadpool_size
+
     # 测试注入路径：暴露被注入的 active llm 实例，便于测试直接断言其记录的
     # last_messages（如 FakeLLM），而不必依赖内部私有变量；生产路径未注入
     # 任何 llm 时为 None。

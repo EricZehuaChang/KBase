@@ -108,6 +108,20 @@ class OCRConfig(BaseModel):
     endpoint: str = "http://localhost:7861"
 
 
+class ServerConfig(BaseModel):
+    # M4-2 H7（H6.5 发现的下一层瓶颈）：Starlette/AnyIO 的 run_in_threadpool
+    # 默认线程池容量是 40（anyio.to_thread.current_default_thread_limiter().
+    # total_tokens），/api/kb/{id}/search 等端点的检索全流程（embed+dense+
+    # keyword+DB 组装）都经这个线程池执行。100 并发压测下，重排信号量把
+    # TEI 侧排队从 2.8s 压到 0.3~0.4s 后，线程池槽位排队成为新的主导延迟
+    # ——40 个线程槽位是与重排完全独立、且发生在请求路径更早阶段的人为上限。
+    # 默认值 40 与 AnyIO 库默认一致，不配置=零行为变化。120 是 standard
+    # profile 的实测调优值（覆盖 100 并发，见 loadtest/report-standard.md
+    # 线程池调优后一节）；对 RAM 影响很小——线程栈是惰性分配的，未被
+    # 实际调度的线程不占用完整栈内存。
+    threadpool_size: int = 40
+
+
 class AppConfig(BaseModel):
     data_dir: Path = Path("./data")
     db: DBConfig = Field(default_factory=DBConfig)
@@ -118,6 +132,7 @@ class AppConfig(BaseModel):
     enrich: EnrichConfig = Field(default_factory=EnrichConfig)
     ocr: OCRConfig = Field(default_factory=OCRConfig)
     ingest: IngestConfig = Field(default_factory=IngestConfig)
+    server: ServerConfig = Field(default_factory=ServerConfig)
     llm: LLMConfig
 
     def get_provider(self, name: str) -> ProviderConfig:

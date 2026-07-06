@@ -37,6 +37,14 @@ retrieval:
 db:
   url: postgresql+psycopg://kbase:PASSWORD@postgres:5432/kbase
 
+# M4-2 H7：AnyIO 默认线程池容量 40 是压测中发现的下一层瓶颈——100 并发 +
+# 重排信号量把 TEI 侧排队压下来之后，检索全流程（run_in_threadpool 执行的
+# retrieve()）本身要抢 40 个线程槽位，槽位排队成为新的主导延迟。120 覆盖
+# 100 并发（略留余量，不是刚好 100，给健康检查等其他线程池调用留空间）；
+# 对内存影响很小——线程栈是惰性分配的，未被实际调度的线程不占完整栈内存。
+server:
+  threadpool_size: 120
+
 # LLM 网关配置与 lite 一致（standard profile 只替换 embedder/vectorstore/
 # rerank/db 四个插槽，LLM 走同一套 DashScope 网关，不受 profile 影响）。
 llm:

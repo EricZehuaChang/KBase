@@ -1,3 +1,4 @@
+import anyio
 from fastapi.testclient import TestClient
 
 from kbase.api.main import create_app
@@ -399,3 +400,46 @@ def test_delete_kb_cascades_everything(tmp_path, fake_embedder):
 def test_delete_kb_unknown_404(tmp_path, fake_embedder):
     c = _client(tmp_path, fake_embedder)
     assert c.delete("/api/kb/not-exist").status_code == 404
+
+
+def test_threadpool_size_configurable(tmp_path, fake_embedder):
+    """M4-2 H7：cfg.server.threadpool_size 通过 startup 钩子设置 AnyIO 默认
+    线程池容量（run_in_threadpool 用它执行 retrieve() 等阻塞调用）。
+    current_default_thread_limiter() 绑定在事件循环上，必须在 startup 钩子
+    里设置（create_app 本身是同步函数，尚无运行中的事件循环）；TestClient
+    只有作为上下文管理器（`with TestClient(app) as c`）使用时才会触发
+    startup/lifespan，裸调用 `TestClient(app).get(...)` 不会（本地验证过），
+    因此这里必须用 `with` 块。"""
+    cfg = tmp_path / "kbase.yaml"
+    cfg.write_text(
+        CFG.format(data_dir=str(tmp_path / "data").replace("\\", "/"))
+        + "server:\n  threadpool_size: 120\n",
+        encoding="utf-8",
+    )
+    app = create_app(config_path=cfg, embedder=fake_embedder,
+                     llms={"fake": object()}, reranker=False, auth="off")
+
+    with TestClient(app) as c:
+        assert c.get("/healthz").status_code == 200
+
+        async def _tokens():
+            return anyio.to_thread.current_default_thread_limiter().total_tokens
+
+        # portal 复用同一个事件循环，startup 钩子已在这个循环上设置过 tokens
+        tokens = c.portal.call(_tokens)
+        assert tokens == 120
+
+
+def test_threadpool_size_default_unchanged(tmp_path, fake_embedder):
+    """不配置 server.threadpool_size 时，AnyIO 默认线程池容量保持 40
+    （零行为变化）——不注册 startup 钩子，也不触碰 limiter。"""
+    c = _client(tmp_path, fake_embedder)
+
+    with c:
+        assert c.get("/healthz").status_code == 200
+
+        async def _tokens():
+            return anyio.to_thread.current_default_thread_limiter().total_tokens
+
+        tokens = c.portal.call(_tokens)
+        assert tokens == 40
