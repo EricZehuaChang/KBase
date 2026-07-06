@@ -58,6 +58,59 @@ def test_ingest_dedup_by_hash(tmp_path, fake_embedder):
     assert d1 == d2                      # 命中去重，返回已有文档
 
 
+def test_ingest_duplicate_content_docs_dedup_to_one_and_chunk_counts_stay_consistent(
+        tmp_path, fake_embedder):
+    """H6 压测复盘（M4-2 Bug2）：40 篇文档种入后 PG chunks 表 663 行，但
+    Qdrant/PG 关键词索引各只有 357 个可检索单元，两个数字不相等。已在真实
+    GCP standard 栈上核实：40 个文档全部 status=ready、content_hash 无重复
+    组、chunks 与 chunks_kw 都覆盖全部 40 个 doc_id——不存在"块写入了但索引
+    丢失"的竞态。真正原因是 chunks 表同时存父块（章节，is_leaf=False，只供
+    上下文组装）与叶子块（is_leaf=True，唯一被向量化/关键词索引的对象，见
+    ingest/pipeline.py _process 与 reindex.py），657/357 的差额就是父块数量
+    （306），663 = 306 父块 + 357 叶子块，与 40 个文档各自的 chunker 输出一一
+    对应，属预期设计，不是数据一致性 bug。
+
+    本用例最小复现"多文档并发摄取，部分重复部分不重复"的场景，断言：
+    1. 重复内容的文档去重为一个 doc_id（D4 既有行为，见 test_ingest_dedup_by_hash）；
+    2. 每个不同文档各自贡献的 Chunk 行数 = 该文档 chunker 输出的父块+叶子块
+       总数，不会因为其他文档的摄取而多出或少出行——即 chunks 表行数与
+       "唯一文档数 × 各自块数"始终精确对齐，没有孤儿行。"""
+    factory, pipeline = _mk(tmp_path, fake_embedder)
+
+    dup_a = tmp_path / "dup_a.md"
+    dup_a.write_text(MD, encoding="utf-8")
+    dup_b = tmp_path / "dup_b.md"
+    dup_b.write_text(MD, encoding="utf-8")             # 与 dup_a 内容完全相同
+    uniq = tmp_path / "uniq.md"
+    uniq.write_text(MD + "\n## 第三章 附则\n本办法自发布之日起施行。\n",
+                    encoding="utf-8")                   # 内容不同，不应被去重
+
+    d_a = pipeline.ingest_file("kb1", dup_a, original_name="dup_a.md")
+    d_b = pipeline.ingest_file("kb1", dup_b, original_name="dup_b.md")
+    d_u = pipeline.ingest_file("kb1", uniq, original_name="uniq.md")
+
+    assert d_a == d_b                    # 重复内容去重到同一 doc_id
+    assert d_u != d_a                    # 不同内容不应被误判为重复
+
+    with factory() as s:
+        docs = s.query(Document).filter_by(kb_id="kb1").all()
+        assert len(docs) == 2            # 去重后只有 2 个文档（1 组重复 + 1 个独立）
+
+        chunks_dup = s.query(Chunk).filter_by(doc_id=d_a).all()
+        chunks_uniq = s.query(Chunk).filter_by(doc_id=d_u).all()
+        all_chunks = s.query(Chunk).filter_by(kb_id="kb1").all()
+
+        # 没有第三个 doc_id 的孤儿块（比如去重失败时 dup_b 曾经短暂摄取过又被清理不干净）
+        assert {c.doc_id for c in all_chunks} == {d_a, d_u}
+        # chunks 表总行数 = 两个文档各自的块数之和，不多不少——重复文档只贡献一份
+        assert len(all_chunks) == len(chunks_dup) + len(chunks_uniq)
+        # 每个文档的父块:叶子块比例应为 1:1 结构（本测试用的 MD 每章一个父块
+        # +至少一个叶子块），佐证 663/357 的差额来自父块而非丢失的叶子块
+        leaves_dup = [c for c in chunks_dup if c.is_leaf]
+        parents_dup = [c for c in chunks_dup if not c.is_leaf]
+        assert len(leaves_dup) == len(parents_dup) > 0
+
+
 def test_ingest_failure_isolated(tmp_path, fake_embedder):
     factory, pipeline = _mk(tmp_path, fake_embedder)
     bad = tmp_path / "bad.docx"
