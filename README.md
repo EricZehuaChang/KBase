@@ -282,16 +282,125 @@ ocr:
 - `enabled: false`（或服务不可达）时，扫描件/图片摄取优雅降级为 `pending_ocr` / `failed`，不阻塞同批次其余文档，可在 OCR 服务就绪后用「批量重试 OCR」或 `POST /api/documents/{id}/retry` 补跑。
 - 仓库当前提交的 `endpoint` 指向开发期一台 GPU 服务器的 SSH 隧道转发地址（本机 7861 转发到远端实际跑 MonkeyOCR 的 GPU 机器），方便开箱即用地演示 OCR 流程；**生产部署必须把它换成生产环境自己的 MonkeyOCR 服务地址**，不能依赖这条开发期隧道。
 
-### Docker 部署（lite / standard）
+### 部署（lite / standard）
 
-仓库根目录提供 `Dockerfile` + 两套 `docker-compose.*.yml`：
+仓库根目录提供 `Dockerfile` + 两套 `docker-compose.*.yml`。两种 profile 共享同一个应用镜像，区别只是 `config/kbase.*.yaml` 里 embedder/vectorstore/rerank/db 四个插槽指向进程内实现还是外部服务。
 
-- `docker-compose.lite.yml`：单容器，SQLite + Chroma 嵌入式 + 进程内 bge-m3/reranker（对应 `config/kbase.yaml`），适合演示/小规模验证。
-- `docker-compose.standard.yml`：`app` + `postgres:16-alpine` + `qdrant/qdrant` + 两个 `text-embeddings-inference`（embed/rerank）实例（对应 `config/kbase.standard.yaml`），面向 100+ 并发生产部署。
+#### lite 一键部署
 
-两者都需要先设置 `KBASE_SECRET_KEY`（会话签名密钥，见上文）、`KBASE_ADMIN_PASSWORD`（可选，首启管理员密码）、`DASHSCOPE_API_KEY`（LLM 网关密钥），standard 额外需要 `POSTGRES_PASSWORD`；这些变量可写进项目根目录的 `.env`（已 gitignore）供 `docker compose` 自动读取。
+单容器：SQLite + Chroma 嵌入式 + 进程内 bge-m3/reranker（`config/kbase.yaml`），适合演示/小规模验证（单机、无需额外服务）。
 
-完整的部署运维手册（备份/恢复、lite→standard 迁移步骤、压测结论）见后续「运维文档」章节；本节仅是最小指路，真实 VM 构建与实测见 M4-2 的 H5/H6 任务记录。
+```bash
+# 项目根目录 .env（已 gitignore）：
+#   KBASE_SECRET_KEY=...
+#   KBASE_ADMIN_PASSWORD=...       # 可选
+#   DASHSCOPE_API_KEY=...
+docker compose -f docker-compose.lite.yml up -d --build
+```
+
+首次启动注意事项：
+
+- **首次启动会从 HuggingFace 下载 bge-m3/bge-reranker-v2-m3 模型权重**（体积不小），已用命名卷 `hf-cache` 持久化到 `/root/.cache/huggingface`，重建容器不会重新下载；国内网络下载缓慢，可在容器 `environment` 里加 `HF_ENDPOINT=https://hf-mirror.com`。
+- **`KBASE_SECRET_KEY` 必须显式设置**（`docker-compose.lite.yml` 用 `${KBASE_SECRET_KEY:?...}` 语法强制要求，未设置直接拒绝启动）——不设置的话每次重建容器都会生成新的会话签名密钥，导致所有已登录用户的 Cookie 一夜之间全部失效。
+- `KBASE_ADMIN_PASSWORD`（可选）：首启 admin 的初始密码；不设置则随机生成 16 位密码并打印到容器日志（`docker compose logs app`），只打印这一次，请在首次启动后立即查日志登录并改密。
+- 端口：应用监听容器内 `8100`，compose 已映射到宿主机 `8100:8100`（`http://localhost:8100`）。
+
+#### standard 一键部署
+
+`app` + `postgres:16-alpine` + `qdrant/qdrant` + 两个 `text-embeddings-inference`（TEI，embed 一个 + rerank 一个）共 5 个服务，面向生产/较高并发部署（`config/kbase.standard.yaml`）。
+
+```bash
+# 项目根目录 .env：
+#   KBASE_SECRET_KEY=...
+#   KBASE_ADMIN_PASSWORD=...      # 可选
+#   DASHSCOPE_API_KEY=...
+#   POSTGRES_PASSWORD=...         # standard 独有，PG 元数据库密码
+docker compose -f docker-compose.standard.yml up -d --build
+```
+
+5 个服务各自的角色：
+
+| 服务 | 作用 |
+|---|---|
+| `app` | FastAPI 主应用，构建自本仓库 `Dockerfile` |
+| `postgres` | 元数据库（kb/document/chunk/用户/审计等关系数据），替代 lite 的 SQLite |
+| `qdrant` | 向量库，替代 lite 的 Chroma 嵌入式实例 |
+| `tei-embed` | 独立的 embedding 推理服务（`BAAI/bge-m3`），替代 lite 的进程内推理 |
+| `tei-rerank` | 独立的重排推理服务（`BAAI/bge-reranker-v2-m3`） |
+
+`config/kbase.standard.yaml` 采用 **bind-mount 约定**：compose 里 `- ./config/kbase.standard.yaml:/app/config/kbase.yaml:ro`，把它只读挂载覆盖镜像内默认的 `config/kbase.yaml`（lite 配置），这样 `create_app()` 的默认参数 `"config/kbase.yaml"` 不用改也能加载 standard 配置——修改这份 YAML（如调 `retrieval.rerank.max_concurrency`、`server.threadpool_size`）后 `docker compose restart app` 即可生效，不需要重新 build。
+
+**GPU vs CPU TEI（计算能力镜像 tag 的坑）**：`docker-compose.standard.yml` 里 `tei-embed`/`tei-rerank` 默认用 `ghcr.io/huggingface/text-embeddings-inference:cpu-latest`（任何机器都能跑通的默认值，正确性不受影响，只是吞吐低得多）。生产 GPU 部署需要手工把镜像 tag 换成对应 **compute capability** 的 GPU 变体、并取消注释 `deploy.resources.reservations.devices`（`driver: nvidia`）——TEI 按 compute capability 发布 tag，不是裸版本号：实测 GCP L4（Ada Lovelace，compute capability 8.9）要用 `89-latest`，其他架构类推（如 Ampere-80 用 `80-latest`）；查错架构会直接启动失败或静默退化到极低吞吐。GPU 与 CPU 镜像输出结果一致，可以先用 CPU 镜像验证功能、确认 GPU 卡型号后再切换。
+
+**国内镜像源要点**：
+
+- `postgres:16-alpine` / `qdrant/qdrant` / TEI 镜像拉取缓慢时，三选一（不要同时改镜像名又配镜像源）：本机 Docker daemon 配置 `registry-mirrors`（如 `docker.m.daocloud.io`）；或把 compose 里的镜像名换成对应的国内加速仓库地址。
+- TEI 启动时从 HuggingFace 下载模型权重，国内网络建议给 `tei-embed`/`tei-rerank` 的 `environment` 加 `HF_ENDPOINT=https://hf-mirror.com`（compose 文件里已给出对应行，默认注释，按需打开）。
+
+### 环境变量清单
+
+| 变量 | 必需/可选 | 说明 |
+|---|---|---|
+| `KBASE_SECRET_KEY` | **必需** | 会话 JWT 签名密钥；未设置会每次重建容器生成新密钥，所有会话失效 |
+| `KBASE_ADMIN_PASSWORD` | 可选 | 首启 admin 初始密码；不设置则随机生成并只打印一次到日志 |
+| `DASHSCOPE_API_KEY` | **必需** | LLM 网关（百炼/DashScope）密钥，`config/kbase*.yaml` 里 `api_key_env` 指向它 |
+| `POSTGRES_PASSWORD` | standard 必需 | PG 元数据库密码，写进 `.env` 供 `postgres` 与 `db.url` 双侧一致 |
+| `KBASE_API_KEY`（MCP） | 可选 | `kbase_mcp/` 反调 KBase API 时用的 Bearer key，在设置页「API Key」卡片创建；auth="off" 部署或不用 MCP 时不需要 |
+| `KBASE_WAIT_FOR` | 内部/可选 | standard compose 自动设置为 `postgres:5432,qdrant:6333,tei-embed:80,tei-rerank:80`，entrypoint.sh 据此等依赖端口就绪再启动 uvicorn；lite 不设，手工部署一般无需关心 |
+
+### 备份与恢复
+
+**lite**：数据全部在 `./data`（宿主机挂载目录：`kbase.sqlite` + `chroma/` + `files/` 原始文件），停机复制即可保证一致性快照。
+
+```bash
+docker compose -f docker-compose.lite.yml stop app
+tar -czf kbase-lite-backup-$(date +%F).tar.gz data/
+docker compose -f docker-compose.lite.yml start app
+```
+
+恢复：停 app，用备份包解压覆盖 `./data`，再启动 app。
+
+**standard**：元数据在 PG，向量在 Qdrant，原始文件在 bind-mount 的 `./data/files`，三者需要分别备份。
+
+```bash
+# PG：pg_dump 逻辑备份（建议 nightly cron）
+docker compose -f docker-compose.standard.yml exec -T postgres \
+  pg_dump -U kbase kbase | gzip > pg-backup-$(date +%F).sql.gz
+
+# Qdrant：官方 snapshot API，对运行中的实例做一致性快照，不需要停机
+curl -X POST http://localhost:6333/collections/<collection>/snapshots
+
+# 原始文件卷：直接打包（可在线做，允许有极小的时间窗口不一致，摄取中的文档下次重试即可）
+tar -czf kbase-files-backup-$(date +%F).tar.gz data/files
+```
+
+恢复各一行：PG 用 `gunzip -c pg-backup-*.sql.gz | docker compose exec -T postgres psql -U kbase kbase` 灌回；Qdrant 用其 snapshot 恢复 API（`PUT /collections/<collection>/snapshots/recover`，指向快照文件）；文件卷解压覆盖 `data/files` 即可。
+
+cron 示例（每天凌晨 3 点跑 PG 备份）：
+
+```
+0 3 * * * cd /path/to/kbase-standard && docker compose -f docker-compose.standard.yml exec -T postgres pg_dump -U kbase kbase | gzip > /backups/pg-$(date +\%F).sql.gz
+```
+
+### lite → standard 手工迁移
+
+当前**没有自动化迁移工具**，如实说明：lite 的 SQLite/Chroma 数据模型与 standard 的 PG/Qdrant 不是同一套 schema/索引结构，字节级搬迁不现实。迁移思路是**原件重摄取**——lite 环境保留了每个文档的原始文件（`data/files/`），把这些原件重新上传到新建的 standard 栈，让 standard 侧重新走一遍分块/向量化/索引管线：
+
+1. 从 lite 的 `data/files/` 取出所有原始文档（文件名与 `GET /api/kb/{id}/documents` 返回的 `filename` 对应）。
+2. 在 standard 栈上建同名知识库（`POST /api/kb`），把原件通过 `POST /api/kb/{id}/documents` 逐个重新上传。
+3. 等待摄取完成（`status: ready`），核对文档数量与 lite 侧一致。
+4. 会话历史/审计日志等运行时数据不在迁移范围内（如需保留，另行导出 lite 的 SQLite 相应表）。
+
+### 性能与容量规划
+
+诚实记录基于 M4-2 H6/H6.5/H7 三轮实测（GCP `g2-standard-4`，NVIDIA L4 单卡，与常驻 MonkeyOCR 共存，仅 4 vCPU）：
+
+- **全精排舒适区大致在 10 并发以内**：10 并发以下 `POST /api/kb/{id}/search`（TEI-embed 向量化 + Qdrant 稠密检索 + PG 关键词检索 + RRF 融合 + TEI-rerank 重排）P95 亚秒级（约 860ms，接近但尚未完全达到 spec 定的 500ms 线，取决于具体并发量）。
+- **100 并发靠自适应降级支撑**：`retrieval.rerank.max_concurrency`（默认 8）限制同时在途的重排调用数，超出的查询不排队等 GPU，直接降级为融合排序（跳过重排但仍走真实的稠密+关键词双路检索，带引用，不是空结果）。降级状态通过 `/healthz` 的 `rerank_stats`（`rerank_total`/`rerank_shed_load_total`/`rerank_error_total`）以及检索 debug trace 的 `rerank_status` 字段可观测，不是静默丢质量。
+- **100 并发 P95 实测约 4.2～5.2s**（H6 基线 9.25s → H6.5 重排信号量优化后 4.2s → H7 尝试调大线程池后反而回退到约 5.1～5.2s，详见下一条），是 spec 500ms 验收线的约 8～10 倍，**未达标**；100 并发下 shed-rate 约 62～64%（多数查询走的是降级后的融合排序，非全精排）。
+- **要 100 并发下全精排 P95 < 500ms，需要独立的重排 GPU 或更强算力卡**——显存不是瓶颈：实测 24GB 显存的 L4 卡在压测全程只用到约 16GB，且这 16GB 里包含与 MonkeyOCR 共存占用的部分，即使额外释放 13.5GB 显存也无助于改善（瓶颈是 GPU 的计算吞吐与调度排队，不是显存容量）；H7 还实测验证了"调大 AnyIO 线程池容量"这条路线在当前 4-vCPU 机器上无效（甚至略有回退，根因是物理核心数而非线程槽位数）。真正有希望的方向是横向扩展重排算力（独立 GPU 实例、更高算力卡）或减少每次查询的 rerank candidates 数量。
+
+详细压测方法论、逐级数据表、shed-rate 明细与本节结论的完整推导过程见 [`loadtest/report-standard.md`](loadtest/report-standard.md)。
 
 ## 架构
 
