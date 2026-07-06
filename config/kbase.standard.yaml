@@ -1,0 +1,71 @@
+# KBase standard profile 运行配置：搭配 docker-compose.standard.yml 使用，
+# 各 endpoint 指向 compose 内的服务名（Docker 内置 DNS 按 service name 解析），
+# 与 config/kbase.yaml（lite，进程内模型 + SQLite + Chroma）互不影响。
+#
+# 密钥一律走环境变量：db.url 里的密码、DASHSCOPE_API_KEY 等在生产环境由
+# docker-compose.standard.yml 的 environment/.env 注入，本文件不写明文密钥
+# ——下面的 PASSWORD 占位符会在部署时被环境变量渲染 / 替换，不要直接照抄入库。
+data_dir: ./data
+
+embedder:
+  name: tei
+  endpoint: http://tei-embed:80
+
+vectorstore:
+  name: qdrant
+  endpoint: http://qdrant:6333
+  # Qdrant 本身未在 compose 里开鉴权（局域网内部访问），云端托管 Qdrant 才需要：
+  # api_key: ${QDRANT_API_KEY}
+
+chunker:
+  name: structure
+  chunk_size: 512
+  chunk_overlap: 64
+
+retrieval:
+  rerank:
+    name: tei
+    endpoint: http://tei-rerank:80
+
+# PostgreSQL 元数据库：密码来自环境变量渲染，不要把真实密码提交进仓库。
+# 生产部署时把 PASSWORD 替换成实际值（或用支持 env 插值的部署工具处理）。
+db:
+  url: postgresql+psycopg://kbase:PASSWORD@postgres:5432/kbase
+
+# LLM 网关配置与 lite 一致（standard profile 只替换 embedder/vectorstore/
+# rerank/db 四个插槽，LLM 走同一套 DashScope 网关，不受 profile 影响）。
+llm:
+  active: qwen-plus
+  providers:
+    - name: qwen-plus
+      base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      api_key_env: DASHSCOPE_API_KEY
+      model: qwen-plus
+      max_concurrency: 4
+    - name: qwen-max
+      base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      api_key_env: DASHSCOPE_API_KEY
+      model: qwen-max
+      max_concurrency: 4
+    - name: deepseek-v3
+      base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      api_key_env: DASHSCOPE_API_KEY
+      model: deepseek-v3
+      max_concurrency: 4
+    - name: qwen3-32b
+      base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      api_key_env: DASHSCOPE_API_KEY
+      model: qwen3-32b
+      max_concurrency: 4
+      params:
+        extra_body:
+          enable_thinking: false
+
+# OCR：MonkeyOCR 运行在 compose 之外（GPU 服务，与 standard 栈共存但独立
+# 生命周期管理，见设计文档 §4）。host.docker.internal 让容器访问宿主机端口
+# ——Linux 宿主需要在 compose 里额外加 extra_hosts（见 docker-compose.standard.yml
+# 里 app 服务的 extra_hosts 段），Docker Desktop（Windows/Mac）默认已支持。
+ocr:
+  enabled: true
+  backend: monkey-http
+  endpoint: "http://host.docker.internal:7861"

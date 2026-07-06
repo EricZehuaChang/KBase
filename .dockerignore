@@ -1,0 +1,32 @@
+# 构建镜像不需要的内容：保持镜像精简、避免把开发态数据/密钥/大文件带进镜像。
+# 运行期数据（SQLite/Chroma 持久化目录）——生产走 volume 挂载，不进镜像
+data/
+# 前端源码与依赖：web/ 是已构建产物，镜像不需要 Node/npm 也不需要源码
+web-app/node_modules/
+web-app/
+# Python 虚拟环境：镜像内用 pip 装到系统 site-packages，不需要宿主 venv
+.venv/
+# 内部材料/交付物，与镜像运行无关
+材料/
+材料.rar
+*.pptx
+# git 元数据
+.git/
+.gitignore
+# 运行期数据库文件（防止误把开发期 sqlite 打进镜像）
+*.sqlite
+*.sqlite3
+# 密钥/环境变量文件——绝不进镜像
+.env
+.env.*
+# 测试与文档：应用运行不需要，减小镜像体积
+tests/
+docs/
+eval/
+loadtest/
+# 杂项缓存
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
