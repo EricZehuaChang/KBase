@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>KBase 私有化智能知识库 —— 技术方案演示</title>
+<style>
+  :root{
+    --bg: #0b0d13;
+    --bg-alt: #12151d;
+    --panel: #171b26;
+    --accent: #6e8bff;
+    --accent-2: #6ee7c4;
+    --text: #eef1fa;
+    --text-dim: #9aa3b8;
+    --line: #2a2f3d;
+    --danger: #ff8a8a;
+    --warn: #ffd166;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", "Noto Sans CJK SC", system-ui, sans-serif;
+    height: 100%;
+    overflow: hidden;
+  }
+  #deck {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+  }
+  .slide {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    padding: 5vh 7vw;
+    background:
+      radial-gradient(1200px 600px at 85% -10%, rgba(110,139,255,0.14), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(110,231,196,0.10), transparent 60%),
+      var(--bg);
+  }
+  .slide.active { display: flex; }
+  .kicker {
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-size: 13px;
+    color: var(--accent-2);
+    font-weight: 600;
+    margin-bottom: 18px;
+  }
+  h1 {
+    font-size: 46px;
+    line-height: 1.25;
+    margin: 0 0 20px 0;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+  }
+  h2 {
+    font-size: 30px;
+    margin: 0 0 26px 0;
+    font-weight: 600;
+    color: var(--text);
+  }
+  p, li { font-size: 18px; line-height: 1.75; color: var(--text-dim); }
+  .lead { font-size: 21px; color: var(--text); line-height: 1.8; max-width: 900px; }
+  ul { padding-left: 22px; margin: 0; }
+  li { margin-bottom: 10px; }
+  li::marker { color: var(--accent); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: start; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; align-items: stretch; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 26px 28px;
+  }
+  .card h3 { margin: 0 0 12px 0; font-size: 20px; color: var(--accent-2); font-weight: 600; }
+  .bignum {
+    font-size: 68px;
+    font-weight: 800;
+    color: var(--accent-2);
+    line-height: 1;
+    letter-spacing: -0.02em;
+  }
+  .bignum-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 10px; }
+  .bignum-item { text-align: left; }
+  .bignum-label { font-size: 15px; color: var(--text-dim); margin-top: 8px; }
+  .tag {
+    display: inline-block;
+    font-size: 13px;
+    padding: 3px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--accent);
+    color: var(--accent-2);
+    margin-right: 8px;
+    margin-bottom: 6px;
+  }
+  table { border-collapse: collapse; width: 100%; font-size: 16px; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  th { color: var(--accent-2); font-weight: 600; }
+  td { color: var(--text-dim); }
+  code, .mono {
+    font-family: "Cascadia Code", Consolas, "Courier New", monospace;
+    background: rgba(255,255,255,0.06);
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 15px;
+    color: var(--accent-2);
+  }
+  .arch-box {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 16px 22px;
+    margin-bottom: 10px;
+    font-size: 17px;
+    color: var(--text);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .arch-box .role { color: var(--accent-2); font-weight: 600; min-width: 90px; }
+  .footer-num {
+    position: absolute;
+    bottom: 26px;
+    right: 40px;
+    font-size: 14px;
+    color: var(--text-dim);
+    font-variant-numeric: tabular-nums;
+  }
+  .footer-brand {
+    position: absolute;
+    bottom: 26px;
+    left: 40px;
+    font-size: 14px;
+    color: var(--text-dim);
+    letter-spacing: 0.08em;
+  }
+  .cover-brand { font-size: 15px; letter-spacing: 0.3em; color: var(--accent); text-transform: uppercase; margin-bottom: 36px; }
+  .cover-sub { font-size: 20px; color: var(--text-dim); margin-top: 10px; }
+  .cover-meta { margin-top: 60px; display: flex; gap: 40px; color: var(--text-dim); font-size: 15px; }
+  .flow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+  .flow-step {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 10px 16px;
+    font-size: 15px;
+    color: var(--text);
+  }
+  .flow-arrow { color: var(--accent); font-size: 18px; }
+  .quote {
+    border-left: 3px solid var(--accent);
+    padding-left: 20px;
+    font-size: 20px;
+    color: var(--text);
+    font-style: normal;
+    margin: 14px 0;
+  }
+  .progress-bar {
+    position: absolute;
+    top: 0; left: 0;
+    height: 4px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    transition: width 0.25s ease;
+    z-index: 20;
+  }
+  .nav-hint {
+    position: absolute;
+    bottom: 26px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 13px;
+    color: var(--text-dim);
+    opacity: 0.7;
+  }
+  .end-cta {
+    display: flex; gap: 18px; margin-top: 30px;
+  }
+  .end-cta .card { flex: 1; }
+  .risk-hi { color: var(--danger); font-weight: 600; }
+  .ok-hi { color: var(--accent-2); font-weight: 600; }
+
+  @media print {
+    html, body { overflow: visible; height: auto; background: var(--bg); }
+    #deck { height: auto; }
+    .slide {
+      display: flex !important;
+      position: relative;
+      page-break-after: always;
+      height: 100vh;
+    }
+    .progress-bar, .nav-hint { display: none; }
+  }
+</style>
+</head>
+<body>
+<div id="deck">
+  <div class="progress-bar" id="progressBar"></div>
+
+  <!-- 1. 封面 -->
+  <section class="slide active">
+    <div class="cover-brand">KBase · 私有化智能知识库</div>
+    <h1>让政策与制度知识<br>"可检索、可生成、可溯源"</h1>
+    <div class="cover-sub">面向新疆生产建设兵团的技术测试演示</div>
+    <div class="cover-meta">
+      <span>2026-07-08 技术测试演示</span>
+      <span>全私有化部署 · 数据不出域</span>
+    </div>
+  </section>
+
+  <!-- 2. 背景与三场景 -->
+  <section class="slide">
+    <div class="kicker">背景与需求</div>
+    <h2>三个真实场景，一个共同难点</h2>
+    <div class="grid3">
+      <div class="card">
+        <h3>① 政策方案生成</h3>
+        <p>给定主题 → 大纲 → 逐节检索生成 → 全文引用重编号 → docx 导出</p>
+      </div>
+      <div class="card">
+        <h3>② 政策摘编 / 定期汇编</h3>
+        <p>多文档定期汇总，逐文档摘要 + 总览，供领导快速通览</p>
+      </div>
+      <div class="card">
+        <h3>③ 财务报销多轮问答</h3>
+        <p>连续追问（"那司局级呢？"）需要理解上下文指代，不能拒答</p>
+      </div>
+    </div>
+    <p class="lead" style="margin-top:30px;">共同难点：答案必须<b style="color:var(--text)">有据可查</b>、专有名词<b style="color:var(--text)">不能漏召回</b>、数据<b style="color:var(--text)">不能出域</b>、AI<b style="color:var(--text)">不能编造</b>。</p>
+  </section>
+
+  <!-- 3. 总体架构 -->
+  <section class="slide">
+    <div class="kicker">总体方案</div>
+    <h2>分层可插拔架构</h2>
+    <div class="arch-box"><span class="role">接入层</span><span>Web 管理与问答界面 / REST API / MCP Server</span></div>
+    <div class="arch-box"><span class="role">应用层</span><span>逐轮问答(RAG) / 定期汇编 / 方案生成（内置编排）</span></div>
+    <div class="arch-box"><span class="role">内核层</span><span>摄取 → 分块 → 索引 → 混合检索(+重排) → 生成</span></div>
+    <div class="arch-box"><span class="role">插件层</span><span>Embedder / VectorStore / LLMProvider / OCR / Chunker（均可替换）</span></div>
+    <div class="arch-box"><span class="role">存储层</span><span>向量库 / 元数据库 / 原始文件+Markdown 双存</span></div>
+    <p style="margin-top:16px;">同一套内核代码，配置切换即可从单机演示（lite）平滑升级到集群生产（standard）。</p>
+  </section>
+
+  <!-- 4. 场景一 -->
+  <section class="slide">
+    <div class="kicker">场景一 · 政策方案生成</div>
+    <h2>从主题到成文方案，逐节有据</h2>
+    <div class="flow">
+      <div class="flow-step">主题 + 要求</div><div class="flow-arrow">→</div>
+      <div class="flow-step">大纲生成（可编辑）</div><div class="flow-arrow">→</div>
+      <div class="flow-step">逐节检索+生成</div><div class="flow-arrow">→</div>
+      <div class="flow-step">引用全局重编号</div><div class="flow-arrow">→</div>
+      <div class="flow-step">Markdown / docx 导出</div>
+    </div>
+    <div class="grid2" style="margin-top:34px;">
+      <div class="card">
+        <h3>关键设计</h3>
+        <ul>
+          <li>某节检索不到依据时不编造，写入"无相关依据，本节未生成"</li>
+          <li>单节失败不影响其余节继续生成</li>
+          <li>全文引用按文档+标题路径去重，统一编号</li>
+        </ul>
+      </div>
+      <div class="card" style="display:flex; flex-direction:column; justify-content:center; align-items:center;">
+        <div class="bignum">439s</div>
+        <div class="bignum-label">7 节方案实测总耗时，全节成功</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. 场景二 -->
+  <section class="slide">
+    <div class="kicker">场景二 · 政策摘编与定期汇编</div>
+    <h2>多文档汇总，一键成文</h2>
+    <div class="flow">
+      <div class="flow-step">选定文档集（或全库）</div><div class="flow-arrow">→</div>
+      <div class="flow-step">逐文档摘要</div><div class="flow-arrow">→</div>
+      <div class="flow-step">总览生成</div><div class="flow-arrow">→</div>
+      <div class="flow-step">汇编文档导出</div>
+    </div>
+    <div class="card" style="margin-top:34px;">
+      <h3>产物结构固定</h3>
+      <p>标题 → 总览 → 逐文档摘要段落；与方案生成共用同一套后台任务/进度轮询机制；单文档失败不影响其余文档。</p>
+    </div>
+  </section>
+
+  <!-- 6. 场景三 -->
+  <section class="slide">
+    <div class="kicker">场景三 · 财务报销多轮问答</div>
+    <h2>追问式提问，系统听得懂上下文</h2>
+    <div class="quote">"出差住宿费标准是多少？" → "那司局级呢？"</div>
+    <div class="grid2" style="margin-top:20px;">
+      <div class="card">
+        <h3>QueryRewrite 查询改写</h3>
+        <p>检索前用 LLM 把指代性追问改写为语义完整、可独立检索的问题；仅影响检索这一步，回答与会话记录仍用用户原文。</p>
+      </div>
+      <div class="card">
+        <h3>三态触发，避免误改写</h3>
+        <p>启发式判断：问题较短 / 含指代词 / 与历史几乎无重叠才触发；完整问题不受影响。改写失败静默回退原问题，不阻塞主流程。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7. 引用溯源与防幻觉 -->
+  <section class="slide">
+    <div class="kicker">核心可信机制</div>
+    <h2>引用溯源与防幻觉门</h2>
+    <div class="grid2">
+      <div class="card">
+        <h3>全链路引用溯源</h3>
+        <p>每句答案的引用角标可点击，弹出引用抽屉查看命中片段、相关度分数，并可跳转原文全文定位。</p>
+      </div>
+      <div class="card">
+        <h3>拒答门</h3>
+        <p>证据相关度不足时明确回答"未找到依据"，不编造；拒答计入运营指标而非错误。</p>
+      </div>
+      <div class="card">
+        <h3>冲突证据保留</h3>
+        <p>检索到冲突信息时不做静默取舍，保留证据交模型辨析并提示用户注意。</p>
+      </div>
+      <div class="card">
+        <h3>混合检索</h3>
+        <p>向量语义 + 关键词双路 + RRF 融合 + 重排，文号/人名/专有名词精确词不丢。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8. OCR -->
+  <section class="slide">
+    <div class="kicker">扫描件处理</div>
+    <h2>OCR 自动识别，纳入同一套检索管线</h2>
+    <div class="grid2">
+      <div class="card">
+        <h3>自动路由</h3>
+        <p>文档摄取时自动探测是否有文本层；扫描件/图片路由至 MonkeyOCR（GPU 服务）转换为 Markdown 后进入统一分块/索引流程；服务不可用时优雅降级为"待 OCR"，不阻塞批次。</p>
+      </div>
+      <div class="card" style="display:flex; flex-direction:column; justify-content:center; align-items:center;">
+        <div class="bignum">13s</div>
+        <div class="bignum-label">扫描 PNG 样本识别耗时，置信度 1.0</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 9. 安全合规 -->
+  <section class="slide">
+    <div class="kicker">安全合规</div>
+    <h2>面向私有化政务交付的安全设计</h2>
+    <table>
+      <tr><th>机制</th><th>说明</th></tr>
+      <tr><td>三级角色</td><td>admin / editor / viewer 严格序权限，路由级校验</td></tr>
+      <tr><td>审计日志</td><td>记录变更请求、登录成败、问答行为，管理员可查询</td></tr>
+      <tr><td>API Key</td><td>可创建/吊销，完整密钥仅展示一次，仅存哈希</td></tr>
+      <tr><td>会话安全</td><td>JWT 签名密钥可配置；生产要求 TLS 终结</td></tr>
+      <tr><td>许可证</td><td>轻量校验（机构/有效期/签名），v1 不锁功能</td></tr>
+      <tr><td>数据不出域</td><td>全私有化部署，模型与数据均可留在客户内网</td></tr>
+    </table>
+  </section>
+
+  <!-- 10. 性能实测与硬件建议 -->
+  <section class="slide">
+    <div class="kicker">性能实测</div>
+    <h2>如实汇报：这是硬件预算的依据</h2>
+    <p style="margin-bottom:6px;">测试环境：4 vCPU + 单张 NVIDIA L4（与 OCR 服务共卡）</p>
+    <div class="bignum-row">
+      <div class="bignum-item"><div class="bignum">0.86s</div><div class="bignum-label">10 并发检索 P95（全精排）</div></div>
+      <div class="bignum-item"><div class="bignum">4.2s</div><div class="bignum-label">100 并发检索 P95（63% 自动降级）</div></div>
+      <div class="bignum-item"><div class="bignum">GPU</div><div class="bignum-label">瓶颈是重排算力，非显存</div></div>
+    </div>
+    <div class="card" style="margin-top:30px;">
+      <h3>硬件分档建议</h3>
+      <table>
+        <tr><th>场景</th><th>建议配置</th></tr>
+        <tr><td>演示 / 小组级</td><td>单机 CPU（lite，即开即用）</td></tr>
+        <tr><td>部门级（≤30 并发）</td><td>单张 L4 / 4090 级 GPU</td></tr>
+        <tr><td>全员级（100 并发全精排 &lt;500ms）</td><td>重排独立 GPU 一张 + 主卡一张</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <!-- 11. 部署形态 -->
+  <section class="slide">
+    <div class="kicker">部署形态</div>
+    <h2>lite / standard 双形态，同一内核</h2>
+    <table>
+      <tr><th>对比项</th><th>lite（演示/小规模）</th><th>standard（生产）</th></tr>
+      <tr><td>元数据库</td><td>SQLite</td><td>PostgreSQL</td></tr>
+      <tr><td>向量库</td><td>Chroma（嵌入式）</td><td>Qdrant（独立服务）</td></tr>
+      <tr><td>向量化/重排</td><td>进程内加载</td><td>TEI 独立推理服务</td></tr>
+      <tr><td>容器数量</td><td>1 个</td><td>5 个</td></tr>
+    </table>
+    <p style="margin-top:20px;">两种形态已在真实 GCP L4 环境完整部署验证，一键 <span class="mono">docker compose up</span> 即可起对应形态。</p>
+  </section>
+
+  <!-- 12. 质量保障 -->
+  <section class="slide">
+    <div class="kicker">质量保障</div>
+    <h2>数字说话，非纸面设计</h2>
+    <div class="bignum-row">
+      <div class="bignum-item"><div class="bignum">333</div><div class="bignum-label">后端自动化测试</div></div>
+      <div class="bignum-item"><div class="bignum">76</div><div class="bignum-label">前端自动化测试</div></div>
+      <div class="bignum-item"><div class="bignum">5/5</div><div class="bignum-label">检索评测三档（基础/混合/混合+重排）全对</div></div>
+    </div>
+    <p class="lead" style="margin-top:34px;">真实 GCP L4 部署 standard 全栈验证，非仅本地/纸面设计。</p>
+  </section>
+
+  <!-- 13. 路线图 -->
+  <section class="slide">
+    <div class="kicker">后续路线图</div>
+    <h2>已完成能力之上的可选方向</h2>
+    <div class="grid2">
+      <div class="card"><h3>SSO / LDAP 对接</h3><p>与现有身份认证体系集成</p></div>
+      <div class="card"><h3>语义缓存</h3><p>高重复率政策问答场景提速</p></div>
+      <div class="card"><h3>公文模板系统</h3><p>方案/汇编产物按公文规范定制</p></div>
+      <div class="card"><h3>评测集共建扩充</h3><p>与业务方共建更大规模检索评测集</p></div>
+    </div>
+  </section>
+
+  <!-- 14. 现场演示环节 -->
+  <section class="slide">
+    <div class="kicker">现场演示</div>
+    <h1 style="font-size:52px;">接下来，进入现场演示环节</h1>
+    <p class="lead">登录 → 财务报销多轮问答 → 检索分析四路对比 → 知识库扫描件展示 → 生成向导 → 设置页权限/审计 → viewer 账号权限差异</p>
+  </section>
+
+</div>
+
+<div class="footer-brand">KBase · 私有化智能知识库</div>
+<div class="footer-num" id="pageNum">1 / 14</div>
+<div class="nav-hint">← → 翻页 · 点击翻页</div>
+
+<script>
+(function(){
+  var slides = document.querySelectorAll('.slide');
+  var total = slides.length;
+  var idx = 0;
+
+  function render(){
+    slides.forEach(function(s, i){ s.classList.toggle('active', i === idx); });
+    document.getElementById('pageNum').textContent = (idx+1) + ' / ' + total;
+    document.getElementById('progressBar').style.width = ((idx+1)/total*100) + '%';
+  }
+
+  function next(){ if (idx < total - 1) { idx++; render(); } }
+  function prev(){ if (idx > 0) { idx--; render(); } }
+
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { next(); e.preventDefault(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { prev(); e.preventDefault(); }
+    else if (e.key === 'Home') { idx = 0; render(); }
+    else if (e.key === 'End') { idx = total - 1; render(); }
+  });
+
+  document.getElementById('deck').addEventListener('click', function(e){
+    var w = window.innerWidth;
+    if (e.clientX < w/2) { prev(); } else { next(); }
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
