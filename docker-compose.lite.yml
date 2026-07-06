@@ -1,0 +1,41 @@
+# lite profile：单容器一键部署——SQLite + Chroma 嵌入式 + 进程内 bge-m3/
+# reranker（config/kbase.yaml 默认配置，无需额外服务）。适合演示/小规模验证；
+# 面向 100+ 并发的生产部署见 docker-compose.standard.yml。
+#
+# 用法：
+#   KBASE_ADMIN_PASSWORD=... KBASE_SECRET_KEY=... DASHSCOPE_API_KEY=... \
+#     docker compose -f docker-compose.lite.yml up -d --build
+# 或把同名变量写进项目根目录的 .env 文件，docker compose 会自动读取。
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: kbase:lite
+    ports:
+      - "8100:8100"
+    environment:
+      # 会话 JWT 签名密钥：生产必须显式设置，否则每次重建容器都会生成新
+      # 密钥，导致所有已登录会话失效（见 README「安全与部署」）。
+      KBASE_SECRET_KEY: ${KBASE_SECRET_KEY:?请设置 KBASE_SECRET_KEY（会话签名密钥）}
+      # 首启 admin 密码：不设置时会随机生成并仅打印一次到容器日志。
+      KBASE_ADMIN_PASSWORD: ${KBASE_ADMIN_PASSWORD:-}
+      # LLM 网关密钥：config/kbase.yaml 里的 api_key_env 指向的变量名，按需增减。
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+    volumes:
+      # 应用数据（SQLite 数据库 + Chroma 持久化目录 + 上传原件），持久化到宿主。
+      - ./data:/app/data
+      # bge-m3/reranker 模型权重缓存：首次启动会从 HuggingFace 下载，用命名卷
+      # 避免容器重建后重新下载（体积不小，国内网络下载耗时更久）。
+      - hf-cache:/root/.cache/huggingface
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8100/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  hf-cache:

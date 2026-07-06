@@ -282,6 +282,17 @@ ocr:
 - `enabled: false`（或服务不可达）时，扫描件/图片摄取优雅降级为 `pending_ocr` / `failed`，不阻塞同批次其余文档，可在 OCR 服务就绪后用「批量重试 OCR」或 `POST /api/documents/{id}/retry` 补跑。
 - 仓库当前提交的 `endpoint` 指向开发期一台 GPU 服务器的 SSH 隧道转发地址（本机 7861 转发到远端实际跑 MonkeyOCR 的 GPU 机器），方便开箱即用地演示 OCR 流程；**生产部署必须把它换成生产环境自己的 MonkeyOCR 服务地址**，不能依赖这条开发期隧道。
 
+### Docker 部署（lite / standard）
+
+仓库根目录提供 `Dockerfile` + 两套 `docker-compose.*.yml`：
+
+- `docker-compose.lite.yml`：单容器，SQLite + Chroma 嵌入式 + 进程内 bge-m3/reranker（对应 `config/kbase.yaml`），适合演示/小规模验证。
+- `docker-compose.standard.yml`：`app` + `postgres:16-alpine` + `qdrant/qdrant` + 两个 `text-embeddings-inference`（embed/rerank）实例（对应 `config/kbase.standard.yaml`），面向 100+ 并发生产部署。
+
+两者都需要先设置 `KBASE_SECRET_KEY`（会话签名密钥，见上文）、`KBASE_ADMIN_PASSWORD`（可选，首启管理员密码）、`DASHSCOPE_API_KEY`（LLM 网关密钥），standard 额外需要 `POSTGRES_PASSWORD`；这些变量可写进项目根目录的 `.env`（已 gitignore）供 `docker compose` 自动读取。
+
+完整的部署运维手册（备份/恢复、lite→standard 迁移步骤、压测结论）见后续「运维文档」章节；本节仅是最小指路，真实 VM 构建与实测见 M4-2 的 H5/H6 任务记录。
+
 ## 架构
 
 内核只依赖抽象接口，具体实现（Embedder/VectorStore/LLMProvider/Chunker）在插件层注册、YAML 配置选择；完整设计（分块策略、混合检索、性能设计、部署 profile、Roadmap）见 [`docs/superpowers/specs/2026-07-04-kbase-knowledge-base-design.md`](docs/superpowers/specs/2026-07-04-kbase-knowledge-base-design.md)，M1 阶段的实施拆解见 [`docs/superpowers/plans/`](docs/superpowers/plans/) 下对应计划文档。
