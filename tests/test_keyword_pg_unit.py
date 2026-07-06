@@ -74,17 +74,36 @@ def test_index_upsert_on_conflict_chunk_id():
     assert "DO UPDATE" in sql
 
 
-def test_search_uses_plainto_tsquery_and_ts_rank_desc():
+def test_search_uses_to_tsquery_or_join_and_ts_rank_desc():
+    """Bug 1 修复：不能用 plainto_tsquery/websearch_to_tsquery——两者对
+    多词查询都是 AND 语义连接，自然语言问句（jieba 分词后虚词多）几乎
+    总会被至少一个虚词拖累到 0 命中。改用 to_tsquery + 应用层拼好的
+    ' | ' OR 表达式（_to_query），与 FTS5 版 _fts_query 的 OR 语义对齐。"""
     session = _FakeSession(fetch_rows=[("c3", 0.5)])
     idx = PGKeywordIndex(_sf_factory(session))
     hits = idx.search("kb1", "公务卡的结算范围", top_k=3)
     sql, params = session.calls[0]
-    assert "plainto_tsquery('simple'" in sql
+    assert "plainto_tsquery" not in sql
+    assert "websearch_to_tsquery" not in sql
+    assert "to_tsquery('simple'" in sql
     assert "ts_rank" in sql
     assert "ORDER BY r DESC" in sql
-    assert params["q"] == _tokenize("公务卡的结算范围")
+    assert " | " in params["q"]        # OR 连接，不是 AND
+    tokens = _tokenize("公务卡的结算范围").split(" ")
+    assert params["q"] == " | ".join(f"'{t}'" for t in tokens)
     assert params["k"] == "kb1" and params["n"] == 3
     assert hits == [type(hits[0])(chunk_id="c3", score=0.5, meta={"route": "keyword"})]
+
+
+def test_search_empty_query_returns_no_hits_without_querying_db():
+    """query 分词后为空（如纯空白/纯停用符号）时，_to_query 返回空字符串，
+    search 应直接短路返回 []，不应该拼出空的 to_tsquery('simple', '') 送进
+    数据库（那会是语法错误或匹配空结果集的低效查询）。"""
+    session = _FakeSession(fetch_rows=[("c1", 0.5)])
+    idx = PGKeywordIndex(_sf_factory(session))
+    hits = idx.search("kb1", "   ", top_k=3)
+    assert hits == []
+    assert session.calls == []
 
 
 def test_search_score_is_positive_and_higher_is_better():
