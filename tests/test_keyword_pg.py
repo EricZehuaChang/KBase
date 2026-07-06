@@ -78,3 +78,19 @@ def test_reindex_upsert_overwrites_same_chunk_id(pg_index):
     hits = idx.search(kb_id, "住房补贴", top_k=3)
     assert hits and hits[0].chunk_id == "c1"
     assert idx.search(kb_id, "旧内容占位", top_k=3) == []
+
+
+def test_natural_language_query_with_filler_words_returns_hits(pg_index):
+    """Bug 1 回归用例：H6 压测发现的真实 0 命中场景——自然语言问句
+    "住房补贴的申领条件是什么" 经 jieba 切出"的/是/什么"等虚词
+    （见 kbase/index/tokenize._tokenize），plainto_tsquery 的 AND 语义
+    下这些虚词在语料里几乎不出现，整句被拖累到 0 命中；to_tsquery 的
+    OR 语义下只要"住房/补贴/住房补贴/申领/条件"任一 lexeme 命中即可。"""
+    _factory, idx, kb_id = pg_index
+    idx.index(kb_id, [
+        ("c1", "d1", "住房补贴的申领条件为连续工作满两年"),
+        ("c2", "d2", "差旅费报销标准按级别分档执行"),
+    ])
+    hits = idx.search(kb_id, "住房补贴的申领条件是什么", top_k=3)
+    assert hits, "自然语言问句（含虚词）不应 0 命中——OR 语义下应命中 c1"
+    assert hits[0].chunk_id == "c1"
