@@ -26,6 +26,11 @@ retrieval:
   rerank:
     name: tei
     endpoint: http://tei-rerank:80
+    # M4-2 H6.5：单卡 L4 上 TEI-rerank 的交叉编码器推理吞吐是固定物理上限
+    # （H6 压测实测约 260ms/次，与批大小/并发无关）。max_concurrency 限制
+    # 同时在途的重排调用数，超出的查询非阻塞跳过重排、降级为融合排序（见
+    # kbase/rag/retriever.py）。8 是默认值，此处显式写出以便压测时调参。
+    max_concurrency: 8
 
 # PostgreSQL 元数据库：密码来自环境变量渲染，不要把真实密码提交进仓库。
 # 生产部署时把 PASSWORD 替换成实际值（或用支持 env 插值的部署工具处理）。

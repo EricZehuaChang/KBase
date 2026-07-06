@@ -362,7 +362,8 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
                           reranker=reranker,
                           candidates=cfg.retrieval.candidates,
                           rrf_k=cfg.retrieval.rrf_k,
-                          max_parent_chars=cfg.retrieval.max_parent_chars)
+                          max_parent_chars=cfg.retrieval.max_parent_chars,
+                          max_concurrency=cfg.retrieval.rerank.max_concurrency)
     gen_min_score = (cfg.retrieval.min_score_rerank if retriever.rerank_active
                      else cfg.retrieval.min_score_dense)
 
@@ -592,7 +593,8 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
             reranker_status = "off"
         return {"status": "ok", "embedder": type(embedder).__name__,
                 "vectorstore": type(store).__name__,
-                "reranker": reranker_status}
+                "reranker": reranker_status,
+                "rerank_stats": retriever.rerank_stats}
 
     @router.get("/providers", dependencies=[require_viewer])
     def providers():
