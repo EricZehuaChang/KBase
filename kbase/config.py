@@ -115,10 +115,10 @@ class ServerConfig(BaseModel):
     # keyword+DB 组装）都经这个线程池执行。100 并发压测下，重排信号量把
     # TEI 侧排队从 2.8s 压到 0.3~0.4s 后，线程池槽位排队成为新的主导延迟
     # ——40 个线程槽位是与重排完全独立、且发生在请求路径更早阶段的人为上限。
-    # 默认值 40 与 AnyIO 库默认一致，不配置=零行为变化。120 是 standard
-    # profile 的实测调优值（覆盖 100 并发，见 loadtest/report-standard.md
-    # 线程池调优后一节）；对 RAM 影响很小——线程栈是惰性分配的，未被
-    # 实际调度的线程不占用完整栈内存。
+    # 默认值 40 与 AnyIO 库默认一致，不配置=零行为变化。注意：4 vCPU 参考机
+    # 实测调到 120 反而使 P95 回退约 20%（线程数超过 CPU 真并行能力后只增加
+    # GIL/调度争抢，见 loadtest/report-standard.md 线程池调优后一节）——仅当
+    # 部署机 vCPU 充裕（≥16）且压测验证有收益时才调大。
     threadpool_size: int = 40
 
 
