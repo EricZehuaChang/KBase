@@ -1,3 +1,10 @@
-{"question": "住房补贴的申领条件是什么？", "expect_doc": "补贴办法", "expect_keywords": ["满两年", "在编在岗"]}
-{"question": "补贴标准是每月多少？", "expect_doc": "补贴办法", "expect_keywords": ["一千元"]}
-{"question": "差旅费报销需要什么凭证？", "expect_doc": "报销制度", "expect_keywords": ["发票", "审批单"]}
+{"question": "北京出差，部级干部住宿费标准是多少？", "expect_doc": "差旅费管理办法", "expect_keywords": ["800"]}
+{"question": "出差司局级干部的住宿费标准和其他人员有什么区别？", "expect_doc": "差旅费管理办法", "expect_keywords": ["500", "350"]}
+{"question": "市内交通费是怎么包干计算的？", "expect_doc": "差旅费管理办法", "expect_keywords": ["80元", "包干"]}
+{"question": "五万元以下的零星购买支出应该怎么结算？", "expect_doc": "公务卡", "expect_keywords": ["公务卡"]}
+{"question": "填写公务卡消费记录时，多笔支出应该怎么列示？", "expect_doc": "公务卡", "expect_keywords": ["a+b"]}
+{"question": "第一师出差人员在内部食堂用餐，早中晚餐分别收费多少？", "expect_doc": "用餐用车标准", "expect_keywords": ["10", "20"]}
+{"question": "186团小镇发展规划的规划范围和总面积是多少？", "expect_doc": "186团小镇发展规划", "expect_keywords": ["6624.63公顷"]}
+{"question": "北屯市国家综合物流枢纽基地的选址规划面积是多少平方公里？", "expect_doc": "综合物流枢纽基地创建方案", "expect_keywords": ["8.71平方公里"]}
+{"question": "新兵办发〔2014〕76号文件是关于什么内容的？", "expect_doc": "差旅费管理办法", "expect_keywords": ["差旅费管理办法"]}
+{"question": "员工出差在外，交通费、住宿费和伙食补助费分别应该怎么报销，是凭据报销还是包干使用？", "expect_doc": "差旅费管理办法", "expect_keywords": ["凭据报销", "包干"]}
