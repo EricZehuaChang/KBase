@@ -94,7 +94,15 @@ services:
     #         - driver: nvidia
     #           count: 1
     #           capabilities: [gpu]
-    command: ["--model-id", "BAAI/bge-reranker-v2-m3"]
+    # M4-2 H6 压测发现：100 并发下 tei-rerank 默认 max-concurrent-requests=512
+    # 仍会打满内部 infer 队列 permit（core/src/infer.rs try_acquire_permit
+    # "no permits available"，对客户端表现为 429），检索器把 429 当"重排服务
+    # 不可达"降级为融合排序（不重排但不报错）。压测口径下这表现为"0 HTTP
+    # 错误但结果质量大面积降级"，不是真正的 0 错误——如实记录在
+    # loadtest/report-standard.md。调高 max-concurrent-requests 作为第一个
+    # 尝试的旋钮（GPU 计算本身单次 rerank 仍在 ~260ms 量级未饱和，说明是排队
+    # 策略而非算力瓶颈）。
+    command: ["--model-id", "BAAI/bge-reranker-v2-m3", "--max-concurrent-requests", "2048"]
     # environment:
     #   HF_ENDPOINT: https://hf-mirror.com
     volumes:
