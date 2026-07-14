@@ -24,63 +24,74 @@ chunker:
 # retrieval 各键默认值见 kbase/config.py RetrievalConfig，按需在此覆盖。
 # 注意：rewrite.mode 必须带引号（"off" 不加引号会被 YAML 解析为布尔 False，启动时报校验错误）。
 llm:
-  # 模型清单为当前 API Key 实测可用集合；qwen2.5 开源系列未开通(403)，如需 36B/72B 对比需在百炼控制台开通或改用其他服务商。
-  # qwen3-32b 需通过 params.extra_body 关闭 thinking（否则首 token 延迟 ~11.6s），代表 32B 开源可私有化部署档位
-  active: qwen-plus
+  # 四厂商 × 两档（性价比 + 最强），2026-07-15 按各家 /models 端点实测清单选定。
+  # 关键经验：2026 代旗舰默认开思考模式，首 token 会拖到 5~10s+，非深推理
+  # 场景一律用 params 关闭（qwen 系 enable_thinking:false；智谱/deepseek 系
+  # thinking.type=disabled，均实测有效）。密钥走环境变量，或在管理端设置页
+  # 对任一 provider 直接填 API Key（存 DB，优先于环境变量）。
+  active: glm-5-turbo             # 性价比档实测延迟最稳（约1s）且国内网络可靠
   providers:
-    - name: qwen-plus
-      base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
-      api_key_env: DASHSCOPE_API_KEY
-      model: qwen-plus
-      max_concurrency: 4
-    - name: qwen-max
-      base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
-      api_key_env: DASHSCOPE_API_KEY
-      model: qwen-max
-      max_concurrency: 4
-    - name: deepseek-v3
-      base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
-      api_key_env: DASHSCOPE_API_KEY
-      model: deepseek-v3
-      max_concurrency: 4
-    - name: qwen3-32b
-      base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
-      api_key_env: DASHSCOPE_API_KEY
-      model: qwen3-32b
-      max_concurrency: 4
-      params:
-        extra_body:
-          enable_thinking: false
-    # 更快档位与多厂商强力模型（M5-2）：密钥可走环境变量，也可在管理端
-    # 设置页对任一 provider 直接填 API Key（存 DB，优先于环境变量）。
-    - name: qwen-turbo            # 通义最快档，日常问答提速首选
-      base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
-      api_key_env: DASHSCOPE_API_KEY
-      model: qwen-turbo
-      max_concurrency: 4
-    - name: glm-4-flash           # 智谱快档
+    - name: glm-5-turbo           # 智谱·性价比档
       base_url: https://open.bigmodel.cn/api/paas/v4
       api_key_env: ZHIPU_API_KEY
-      model: glm-4-flash
-      max_concurrency: 4
-    - name: glm-4.6               # 智谱强力档；必须关思考模式，否则首 token
-      base_url: https://open.bigmodel.cn/api/paas/v4   # 超 10s（实测关闭后 ~0.7s）
-      api_key_env: ZHIPU_API_KEY
-      model: glm-4.6
+      model: glm-5-turbo
       max_concurrency: 4
       params:
         extra_body:
           thinking:
             type: disabled
-    - name: deepseek-chat
+    - name: glm-5.2               # 智谱·最强档
+      base_url: https://open.bigmodel.cn/api/paas/v4
+      api_key_env: ZHIPU_API_KEY
+      model: glm-5.2
+      max_concurrency: 4
+      params:
+        extra_body:
+          thinking:
+            type: disabled
+    - name: qwen3.7-plus          # 通义·性价比档
+      base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      api_key_env: DASHSCOPE_API_KEY
+      model: qwen3.7-plus
+      max_concurrency: 4
+      params:
+        extra_body:
+          enable_thinking: false
+    - name: qwen3.7-max           # 通义·最强档
+      base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      api_key_env: DASHSCOPE_API_KEY
+      model: qwen3.7-max
+      max_concurrency: 4
+      params:
+        extra_body:
+          enable_thinking: false
+    - name: deepseek-v4-flash     # DeepSeek·性价比档（实测 ~1s）
       base_url: https://api.deepseek.com/v1
       api_key_env: DEEPSEEK_API_KEY
-      model: deepseek-chat
+      model: deepseek-v4-flash
       max_concurrency: 4
-    - name: gpt-4o-mini           # OpenAI；国内网络直连可能不可达，接入前先在设置页点"测试"
+      params:
+        extra_body:
+          thinking:
+            type: disabled
+    - name: deepseek-v4-pro       # DeepSeek·最强档（深推理，首响应 ~5s，复杂问题用）
+      base_url: https://api.deepseek.com/v1
+      api_key_env: DEEPSEEK_API_KEY
+      model: deepseek-v4-pro
+      max_concurrency: 4
+      params:
+        extra_body:
+          thinking:
+            type: disabled
+    - name: gpt-5.4-mini          # OpenAI·性价比档；国内网络直连能否可达
+      base_url: https://api.openai.com/v1   # 因环境而异，接入前先在设置页点"测试"
+      api_key_env: OPENAI_API_KEY
+      model: gpt-5.4-mini
+      max_concurrency: 4
+    - name: gpt-5.4               # OpenAI·最强档
       base_url: https://api.openai.com/v1
       api_key_env: OPENAI_API_KEY
-      model: gpt-4o-mini
+      model: gpt-5.4
       max_concurrency: 4
 # OCR：扫描件/图片摄取时转 Markdown。两种后端：
 # - glm-ocr（默认推荐）：智谱云 layout_parsing（kbase/plugins/ocr/glm_http.py），

@@ -45,25 +45,27 @@ export interface ProviderPreset {
   api_key_env: string;
 }
 
+// 模型名为 2026-07-15 按各家 /models 端点实测清单更新（moonshot/siliconflow
+// 无本机 key 未验证，保留常见型号作占位，接入前先点"测试"确认）。
 export const PROVIDER_PRESETS: ProviderPreset[] = [
-  { key: "dashscope", label: "通义千问（阿里云 DashScope）",
-    base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    models: ["qwen-plus", "qwen-max", "qwen-turbo"], api_key_env: "DASHSCOPE_API_KEY" },
-  { key: "deepseek", label: "DeepSeek",
-    base_url: "https://api.deepseek.com/v1",
-    models: ["deepseek-chat", "deepseek-reasoner"], api_key_env: "DEEPSEEK_API_KEY" },
   { key: "zhipu", label: "智谱 GLM",
     base_url: "https://open.bigmodel.cn/api/paas/v4",
-    models: ["glm-4.6", "glm-4-flash"], api_key_env: "ZHIPU_API_KEY" },
-  { key: "moonshot", label: "月之暗面 Kimi",
-    base_url: "https://api.moonshot.cn/v1",
-    models: ["kimi-k2-turbo-preview"], api_key_env: "MOONSHOT_API_KEY" },
-  { key: "siliconflow", label: "硅基流动 SiliconFlow",
-    base_url: "https://api.siliconflow.cn/v1",
-    models: ["Qwen/Qwen3-32B", "deepseek-ai/DeepSeek-V3"], api_key_env: "SILICONFLOW_API_KEY" },
+    models: ["glm-5-turbo", "glm-5.2"], api_key_env: "ZHIPU_API_KEY" },
+  { key: "dashscope", label: "通义千问（阿里云 DashScope）",
+    base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    models: ["qwen3.7-plus", "qwen3.7-max", "qwen-flash"], api_key_env: "DASHSCOPE_API_KEY" },
+  { key: "deepseek", label: "DeepSeek",
+    base_url: "https://api.deepseek.com/v1",
+    models: ["deepseek-v4-flash", "deepseek-v4-pro"], api_key_env: "DEEPSEEK_API_KEY" },
   { key: "openai", label: "OpenAI",
     base_url: "https://api.openai.com/v1",
-    models: ["gpt-4o-mini", "gpt-4o"], api_key_env: "OPENAI_API_KEY" },
+    models: ["gpt-5.4-mini", "gpt-5.4"], api_key_env: "OPENAI_API_KEY" },
+  { key: "moonshot", label: "月之暗面 Kimi",
+    base_url: "https://api.moonshot.cn/v1",
+    models: ["kimi-k2.6"], api_key_env: "MOONSHOT_API_KEY" },
+  { key: "siliconflow", label: "硅基流动 SiliconFlow",
+    base_url: "https://api.siliconflow.cn/v1",
+    models: ["ZHIPU/GLM-5", "deepseek-ai/DeepSeek-V3"], api_key_env: "SILICONFLOW_API_KEY" },
 ];
 
 /** Provider 表单提交体构建（纯函数，直接单测）。
