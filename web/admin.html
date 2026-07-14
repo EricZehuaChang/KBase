@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- 独立 <title>：既是给用户看的区分，也是后端 SPA 分流测试用来断言
+         "GET /admin 命中的确实是 admin.html 而不是 index.html" 的 marker
+         （见 tests/test_api.py 新增的 SPA serving 测试）。 -->
+    <title>KBase 管理端</title>
+    <script>
+      // FOUC 预绘制：逻辑与 index.html 完全一致（同一份 localStorage key，
+      // 两个入口共享同一套主题判定，但运行期彼此是独立的 JS 上下文，不共享
+      // src/lib/theme.ts 的模块级状态，只是恰好读同一个 key）。
+      (function () {
+        var KEY = "kbase-theme";
+        var stored = localStorage.getItem(KEY);
+        var theme = stored === "light" || stored === "dark"
+          ? stored
+          : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark" : "light");
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
+    <script type="module" crossorigin src="/assets/admin-BqYXwIjf.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/button-Cdpb3MuX.js">
+    <link rel="modulepreload" crossorigin href="/assets/LoginView-CwovnkrH.js">
+    <link rel="stylesheet" crossorigin href="/assets/LoginView-3LEJulFN.css">
+  </head>
+  <body>
+    <div id="app"></div>
+    <!-- 管理端入口：src/admin/main.ts。见 index.html 的对应注释。 -->
+  </body>
+</html>

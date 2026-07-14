@@ -24,8 +24,15 @@ from starlette.types import Scope
 
 
 class SPAStaticFiles(StaticFiles):
-    """SPA 回退路由：真实静态资源正常返回；404 时（如 /kb 这类前端路由深链接）
-    回退到 index.html，交由前端 router 接管——标准 FastAPI SPA 托管模式。
+    """双 SPA 回退路由（M5-1 F1）：真实静态资源正常返回；404 时按路径前缀回退
+    到两个不同的入口 HTML，分别交给使用端/管理端各自独立的 vue-router 接管
+    ——标准 FastAPI SPA 托管模式的双入口版本：
+      - 路径为 "admin" 或以 "admin/" 开头（如 /admin/kb 这类管理端前端路由
+        深链接）→ 回退 admin.html（管理端 bundle，见 web-app/admin.html）；
+        用前缀匹配而不是简单的 in 判断，避免误伤形如 "/administrators" 这类
+        恰好以 admin 打头但语义无关的路径。
+      - 其余非文件 404（如 /kb 这类使用端路由深链接）→ 回退 index.html
+        （使用端 bundle），与分端改造前行为完全一致。
     该 mount 挂在 "/"，未匹配到任何 API 路由的 /api/* 请求也会落到这里——
     必须显式排除，否则 /api/nonexistent 会被错误地回退成 200 的 index.html
     而不是 404，掩盖真正的路由错误。同理 /openapi.json、/docs、/redoc 在
@@ -48,6 +55,8 @@ class SPAStaticFiles(StaticFiles):
         except StarletteHTTPException as exc:
             if exc.status_code != 404:
                 raise
+            if normalized == "admin" or normalized.startswith("admin/"):
+                return await super().get_response("admin.html", scope)
             return await super().get_response("index.html", scope)
 
 from kbase import conversations as conv_store
