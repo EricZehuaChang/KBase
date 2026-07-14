@@ -79,6 +79,17 @@ class PGKeywordIndex:
         return [Hit(chunk_id=r[0], score=float(r[1]), meta={"route": "keyword"})
                 for r in rows]
 
+    def delete_ids(self, chunk_ids: list[str]) -> None:
+        """按 chunk id 精确删除（M6-1 chunk 启停；与 FTS5 版语义一致）。
+        PG 版 index() 本身是 upsert，编辑重索引不依赖先删，但停用必须删行。"""
+        if not chunk_ids:
+            return
+        with self._sf() as s:
+            for cid in chunk_ids:
+                s.execute(text("DELETE FROM chunks_kw WHERE chunk_id = :c"),
+                          {"c": cid})
+            s.commit()
+
     def delete_doc(self, doc_id: str) -> None:
         with self._sf() as s:
             s.execute(text("DELETE FROM chunks_kw WHERE doc_id = :d"),

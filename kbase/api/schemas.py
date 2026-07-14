@@ -94,6 +94,21 @@ class ActiveProviderBody(BaseModel):
     name: str
 
 
+class ChunkUpdate(BaseModel):
+    """PUT /api/chunks/{id}：enabled 启停与 text 编辑，至少给一项。
+    叶子块编辑触发重嵌入+重索引；父块编辑仅落库（见 kbase/chunk_admin.py）。"""
+    enabled: bool | None = None
+    text: str | None = None
+
+    @model_validator(mode="after")
+    def _check_any_field(self):
+        if self.enabled is None and self.text is None:
+            raise ValueError("enabled 与 text 至少提供一项")
+        if self.text is not None and not self.text.strip():
+            raise ValueError("text 不能为空白（要移除请用 enabled=false 停用）")
+        return self
+
+
 class ModelRefreshBody(BaseModel):
     """POST /api/settings/models/refresh：拉取某端点的模型清单。
     凭据解析顺序：provider_name（用已存 provider 的 base_url+密钥）>

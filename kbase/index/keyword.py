@@ -47,6 +47,17 @@ class KeywordIndex:
         return [Hit(chunk_id=r[0], score=-float(r[1]), meta={"route": "keyword"})
                 for r in rows]
 
+    def delete_ids(self, chunk_ids: list[str]) -> None:
+        """按 chunk id 精确删除（M6-1 chunk 启停/编辑重索引前清旧行——
+        index() 是纯 INSERT，不先删会留重复行）。"""
+        if not chunk_ids:
+            return
+        with self._sf() as s:
+            for cid in chunk_ids:
+                s.execute(text("DELETE FROM chunks_fts WHERE chunk_id = :c"),
+                          {"c": cid})
+            s.commit()
+
     def delete_doc(self, doc_id: str) -> None:
         with self._sf() as s:
             s.execute(text("DELETE FROM chunks_fts WHERE doc_id = :d"),

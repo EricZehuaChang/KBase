@@ -15,6 +15,7 @@ import {
 import UploadZone from "@/components/UploadZone.vue";
 import DocumentTable from "@/components/DocumentTable.vue";
 import KbConfigDialog from "@/components/KbConfigDialog.vue";
+import ChunkManagerDialog from "@/components/ChunkManagerDialog.vue";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -168,6 +169,15 @@ async function handleRetry(doc: DocumentItem) {
 
 const deleteTarget = ref<DocumentItem | null>(null);
 
+// ---- 分块管理（M6-1）----
+const chunkDoc = ref<DocumentItem | null>(null);
+const chunkOpen = ref(false);
+
+function openChunks(doc: DocumentItem) {
+  chunkDoc.value = doc;
+  chunkOpen.value = true;
+}
+
 async function confirmDelete() {
   if (!deleteTarget.value || !kbId.value) return;
   try {
@@ -275,6 +285,7 @@ onMounted(loadKbs);
         :can-manage="canManage"
         @retry="handleRetry"
         @delete="(doc) => (deleteTarget = doc)"
+        @chunks="openChunks"
       />
     </template>
   </div>
@@ -329,6 +340,7 @@ onMounted(loadKbs);
   </Dialog>
 
   <KbConfigDialog v-model:open="configOpen" :kb="currentKb" @saved="loadKbs" />
+  <ChunkManagerDialog v-model:open="chunkOpen" :doc="chunkDoc" />
 
   <!-- 删除知识库确认 Dialog -->
   <Dialog :open="!!kbDeleteTarget" @update:open="(v) => { if (!v) kbDeleteTarget = null; }">

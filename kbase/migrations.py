@@ -27,6 +27,11 @@ _COLUMN_MIGRATIONS = [
     # M5-2：块级源文件页码（引用定位）。老库存量块补列后为 NULL=不支持定位，
     # 重新摄取（或重试）后回填。
     ("chunks", "page", "INTEGER"),
+    # M6-1：chunk 运营开关。老库补列为 NULL，读取端按"非 False 即启用"解释
+    # （SQLite ALTER 无法带 DEFAULT true 回填，NULL 语义=历史块默认启用）。
+    ("chunks", "enabled", "BOOLEAN"),
+    # M6-6 预埋：GLM-OCR 版式元数据（bbox/表格 JSON）。
+    ("chunks", "layout", "TEXT"),
 ]
 
 _FTS_DDL = (

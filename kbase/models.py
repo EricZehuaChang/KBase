@@ -47,6 +47,12 @@ class Chunk(Base):
     # 回填（pdfminer 逐页文本前缀匹配，见 ingest/pipeline.py）；其他格式或
     # 匹配失败为 NULL——引用定位是尽力而为的增强，不是硬保证。
     page: Mapped[int | None] = mapped_column(nullable=True)
+    # M6-1 chunk 运营开关：false=从向量库+关键词索引摘除（不可被检索），
+    # 行保留可随时恢复。默认 true 与存量行为一致。
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # M6-6 预埋：GLM-OCR layout_details 的版式元数据（JSON：bbox_2d/label/
+    # 表格结构等），本迁移波一并加列避免二次迁移；当前摄取暂不写入。
+    layout: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class Conversation(Base):
