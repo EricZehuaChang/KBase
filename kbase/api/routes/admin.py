@@ -3,6 +3,7 @@ import uuid
 
 from fastapi import HTTPException, Query
 
+from kbase import qa_stats
 from kbase.api.routes import RouteDeps
 from kbase.api.schemas import ApiKeyCreate, UserCreate, UserUpdate
 from kbase.api.services import Services
@@ -19,6 +20,17 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
     def audit_list(limit: int = Query(default=50, ge=1, le=200),
                   offset: int = Query(default=0, ge=0)):
         return list_audit(sf, limit=limit, offset=offset)
+
+    # ---- 运营看板（C）：问答量/拒答率 + 无答案问题清单 ----
+
+    @router.get("/stats/qa", dependencies=[deps.require_admin])
+    def stats_qa(days: int = Query(default=7, ge=1, le=90)):
+        return qa_stats.qa_overview(sf, days=days)
+
+    @router.get("/stats/unanswered", dependencies=[deps.require_admin])
+    def stats_unanswered(limit: int = Query(default=50, ge=1, le=200)):
+        """无答案（拒答）问题清单——运营看'用户问了什么答不上'补知识。"""
+        return {"items": qa_stats.unanswered_questions(sf, limit=limit)}
 
     @router.post("/settings/api-keys",
                  dependencies=[deps.require_admin, deps.audit_mutation])

@@ -630,3 +630,34 @@ export interface LicenseInfo {
 export function getLicense(): Promise<LicenseInfo> {
   return req("/api/license");
 }
+
+// ---- 运营看板（C）----
+
+export interface QaTrendPoint {
+  date: string;
+  total: number;
+  refused: number;
+}
+
+export interface QaOverview {
+  days: number;
+  total: number;
+  refused: number;
+  refusal_rate: number;
+  trend: QaTrendPoint[];
+}
+
+export interface UnansweredItem {
+  ts: string;
+  question: string | null;
+  actor: string;
+  resource: string | null;
+}
+
+export function getQaStats(days = 7): Promise<QaOverview> {
+  return req(`/api/stats/qa?days=${days}`);
+}
+
+export function getUnanswered(limit = 50): Promise<{ items: UnansweredItem[] }> {
+  return req(`/api/stats/unanswered?limit=${limit}`);
+}

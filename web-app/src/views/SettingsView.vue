@@ -14,6 +14,7 @@ import ProviderFormDialog from "@/components/ProviderFormDialog.vue";
 import UserManagementCard from "@/components/UserManagementCard.vue";
 import ApiKeyCard from "@/components/ApiKeyCard.vue";
 import LicenseCard from "@/components/LicenseCard.vue";
+import OpsDashboardCard from "@/components/OpsDashboardCard.vue";
 import {
   settingsListProviders, deleteProvider, setActiveProvider, testProvider, healthz,
   currentRole,
@@ -174,6 +175,7 @@ onMounted(async () => {
       <section class="mt-8">
         <h2 class="mb-3 text-sm font-medium text-[var(--text-2)]">管理</h2>
         <div class="flex flex-col gap-4">
+          <OpsDashboardCard />
           <UserManagementCard />
           <ApiKeyCard />
           <LicenseCard />
