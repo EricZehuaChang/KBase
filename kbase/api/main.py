@@ -174,6 +174,10 @@ class ConversationCreate(BaseModel):
     kb_id: str
 
 
+class ConversationRename(BaseModel):
+    title: str
+
+
 class EnrichConfigBody(BaseModel):
     enabled: StrictBool
 
@@ -889,24 +893,56 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
                     "trace": result.trace}
         return {"blocks": [asdict(b) for b in result]}
 
-    @router.post("/conversations", dependencies=[require_editor, audit_mutation])
-    def create_conversation(body: ConversationCreate):
-        return conv_store.create_conversation(sf, body.kb_id)
+    # 会话创建/查看要求 require_viewer 而不是 require_editor：spec（M4-1 §3
+    # 角色矩阵）"问答/会话/检索/生成任务查看"一整行都是 viewer 可过——使用端
+    # （M5-1 F2）的主力用户就是 viewer，如果连"新建会话"都要 editor 权限，
+    # viewer 就完全没法用问答页，这是与设计文档矛盾的实现疏漏，这里一并修正。
+    @router.post("/conversations", dependencies=[require_viewer, audit_mutation])
+    def create_conversation(body: ConversationCreate, request: Request):
+        actor = request.state.actor
+        return conv_store.create_conversation(sf, body.kb_id, user_id=actor.get("user_id"))
 
     @router.get("/conversations", dependencies=[require_viewer])
-    def list_conversations(kb_id: str | None = None,
+    def list_conversations(request: Request, kb_id: str | None = None,
                            limit: int = Query(default=30, ge=1, le=100),
                            offset: int = Query(default=0, ge=0)):
-        return conv_store.list_conversations(sf, kb_id, limit=limit, offset=offset)
+        actor = request.state.actor
+        return conv_store.list_conversations(sf, kb_id, limit=limit, offset=offset,
+                                             user_id=actor.get("user_id"))
 
     @router.get("/conversations/{conv_id}/messages", dependencies=[require_viewer])
-    def list_conversation_messages(conv_id: str):
+    def list_conversation_messages(conv_id: str, request: Request):
+        actor = request.state.actor
+        # 归属校验先行：不可见（不存在/不是你的）统一 404，不把"存在但无权"
+        # 泄漏成 403（403 会暴露 conv_id 确实存在，见 conv_store.get_conversation）。
+        if conv_store.get_conversation(sf, conv_id, user_id=actor.get("user_id")) is None:
+            raise HTTPException(404, f"会话不存在: {conv_id}")
         return conv_store.list_messages(sf, conv_id)
+
+    @router.put("/conversations/{conv_id}", dependencies=[require_viewer, audit_mutation])
+    def rename_conversation(conv_id: str, body: ConversationRename, request: Request):
+        actor = request.state.actor
+        title = body.title.strip()
+        if not title:
+            raise HTTPException(422, "会话标题不能为空")
+        result = conv_store.rename_conversation(sf, conv_id, title,
+                                                user_id=actor.get("user_id"))
+        if result is None:
+            raise HTTPException(404, f"会话不存在: {conv_id}")
+        return result
+
+    @router.delete("/conversations/{conv_id}", dependencies=[require_viewer, audit_mutation])
+    def delete_conversation(conv_id: str, request: Request):
+        actor = request.state.actor
+        ok = conv_store.delete_conversation(sf, conv_id, user_id=actor.get("user_id"))
+        if not ok:
+            raise HTTPException(404, f"会话不存在: {conv_id}")
+        return {"ok": True}
 
     @router.post("/conversations/{conv_id}/query", dependencies=[require_viewer])
     async def query_conversation(conv_id: str, body: QueryBody, request: Request):
-        with sf() as s:
-            conv = s.get(Conversation, conv_id)
+        actor = request.state.actor
+        conv = conv_store.get_conversation(sf, conv_id, user_id=actor.get("user_id"))
         if conv is None:
             raise HTTPException(404, f"会话不存在: {conv_id}")
         write_query_audit(sf, request, resource=f"conv_id={conv_id}", question=body.question)

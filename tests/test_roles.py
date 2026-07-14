@@ -56,6 +56,16 @@ def test_viewer_can_read_and_query_but_not_mutate(tmp_path, fake_embedder, monke
                   json={"question": "住房补贴条件", "provider": "fake"}).status_code == 200
     assert c.post(f"/api/kb/{kb_id}/search", json={"query": "住房"}).status_code == 200
 
+    # 会话：spec 角色矩阵"问答/会话/检索/生成任务查看"整行 viewer 可过——
+    # 使用端（M5-1 F2）的主力用户就是 viewer，新建/查看/重命名/删除自己的
+    # 会话都应放行（M5-1 F2 修正：曾经 POST /conversations 误挂
+    # require_editor，viewer 完全没法用问答页）。
+    conv = c.post("/api/conversations", json={"kb_id": kb_id}).json()
+    assert c.get("/api/conversations", params={"kb_id": kb_id}).status_code == 200
+    assert c.put(f"/api/conversations/{conv['id']}",
+                json={"title": "改个名"}).status_code == 200
+    assert c.delete(f"/api/conversations/{conv['id']}").status_code == 200
+
     # 内容管理类 mutating 端点：viewer 应被拒
     assert c.post(f"/api/kb/{kb_id}/documents",
                   files=[("files", ("x.md", b"x", "text/markdown"))]).status_code == 403

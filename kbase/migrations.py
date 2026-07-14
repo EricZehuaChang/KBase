@@ -18,6 +18,9 @@ _COLUMN_MIGRATIONS = [
     ("documents", "ocr_confidence", "REAL"),
     ("documents", "source_path", "TEXT"),
     ("messages", "seq", "INTEGER"),
+    # M5-1 F2：会话归属列，鉴权改造前建的库没有这一列，老库存量会话补列后
+    # 天然是 NULL（历史遗留、两边可见，见 kbase/conversations.py 归属过滤）。
+    ("conversations", "user_id", "TEXT"),
 ]
 
 _FTS_DDL = (

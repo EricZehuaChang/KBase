@@ -110,6 +110,31 @@ def test_existing_m1_db_upgrades(tmp_path):
         assert "enrich_context" in {c["name"] for c in insp.get_columns("chunks")}
 
 
+def test_existing_conversations_table_gets_user_id_column(tmp_path):
+    """模拟鉴权改造前（M5-1 之前）的旧库：conversations 表没有 user_id 列，
+    迁移后应补上（列缺失守卫，见 _COLUMN_MIGRATIONS），且既有会话行迁移后
+    该列取值为 NULL——不倒推补全归属人（见 kbase/conversations.py
+    _visible_filter 的设计取舍）。"""
+    import sqlite3
+    db = tmp_path / "pre-m5-1.sqlite"
+    conn = sqlite3.connect(db)
+    conn.executescript("""
+        CREATE TABLE conversations (id VARCHAR(36) PRIMARY KEY, kb_id VARCHAR(36),
+            title VARCHAR(200), created_at DATETIME, updated_at DATETIME);
+    """)
+    conn.execute(
+        "INSERT INTO conversations (id, kb_id, title, created_at, updated_at) "
+        "VALUES ('c1', 'kb1', '旧会话', '2026-01-01 00:00:00', '2026-01-01 00:00:00')")
+    conn.commit()
+    conn.close()
+    factory = make_session_factory(f"sqlite:///{db}")
+    with factory() as s:
+        insp = inspect(s.get_bind())
+        assert "user_id" in {c["name"] for c in insp.get_columns("conversations")}
+        got = s.execute(text("SELECT user_id FROM conversations WHERE id='c1'")).scalar()
+        assert got is None
+
+
 # ---- M4-2 H3：方言感知分支（纯逻辑单测，无需真实 PG 连接） -------------------
 #
 # run_migrations 内部按 engine.dialect.name 分派到 _run_sqlite_migrations /
