@@ -87,9 +87,14 @@ class GLMOCRBackend:
         except httpx.HTTPStatusError as e:
             raise OCRUnavailable(
                 f"GLM-OCR 服务错误: {e.response.status_code}") from e
-        markdown = resp.json().get("md_results")
+        data = resp.json()
+        markdown = data.get("md_results")
         if not markdown or not str(markdown).strip():
             # 契约防御：正常响应必含非空 md_results；缺失视为服务侧异常，
             # 按可重试处理（而不是把文档判 failed）。
             raise OCRUnavailable("GLM-OCR 响应缺少 md_results，无法取得解析结果")
-        return OCRResult(markdown=str(markdown))
+        # layout_details：逐页 bbox/label/content 版式明细（M6 表格版存档）。
+        # 表格语义已随 md_results 的 Markdown 表格进表格感知分块，这份明细
+        # 供 bbox 引用高亮等后续能力使用，缺失不影响任何现有链路。
+        return OCRResult(markdown=str(markdown),
+                         layout=data.get("layout_details") or None)

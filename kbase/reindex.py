@@ -10,12 +10,13 @@ def reindex_kb(session_factory, keyword_index, embedder, store, kb_id: str) -> i
         leaves = s.query(Chunk).filter_by(kb_id=kb_id, is_leaf=True).all()
     if not leaves:
         return 0
+    from kbase.embed_text import embed_input, keyword_input
     keyword_index.delete_kb(kb_id)
-    keyword_index.index(kb_id, [(c.id, c.doc_id, f"{c.heading_path}\n{c.text}")
+    keyword_index.index(kb_id, [(c.id, c.doc_id,
+                                 keyword_input(c.heading_path, c.text, c.layout))
                                 for c in leaves])
-    # 向量化文本组成与摄取管道一致：enrich_context（若有）作为前缀，见
-    # ingest/pipeline.py 中相同的 lstrip 组合逻辑
-    texts = [f"{(c.enrich_context or '')}\n{c.heading_path}\n{c.text}".lstrip()
+    # 嵌入/关键词文本组成统一走 kbase/embed_text.py（与摄取管道同源）
+    texts = [embed_input(c.enrich_context, c.heading_path, c.text, c.layout)
              for c in leaves]
     vectors = embedder.embed(texts)
     store.upsert(kb_id, ids=[c.id for c in leaves], vectors=vectors,
