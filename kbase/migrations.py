@@ -24,6 +24,9 @@ _COLUMN_MIGRATIONS = [
     # M5-2：provider 页面直配密钥列。老库补列后为 NULL=沿用 api_key_env，
     # 行为与升级前完全一致。
     ("providers", "api_key", "TEXT"),
+    # M5-2：块级源文件页码（引用定位）。老库存量块补列后为 NULL=不支持定位，
+    # 重新摄取（或重试）后回填。
+    ("chunks", "page", "INTEGER"),
 ]
 
 _FTS_DDL = (

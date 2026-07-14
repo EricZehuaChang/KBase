@@ -143,3 +143,20 @@ export function highlightSegments(haystack: string, needle: string): HighlightSe
   if (lastIndex < haystack.length) segments.push({ type: "text", text: haystack.slice(lastIndex) });
   return segments.length ? segments : [{ type: "text", text: haystack }];
 }
+
+// ---- 原始文件预览类型判定（M5-2 引用定位）----
+
+export type PreviewKind = "pdf" | "image" | null;
+
+const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "bmp", "webp"]);
+
+/** 按文件名判断原始文件能否在浏览器内联预览：pdf → 浏览器自带查看器
+ * （支持 #page=N 跳页定位）；图片 → <img> 直显；其余（docx/xlsx 等）
+ * 浏览器无法原生渲染，返回 null——调用方回退到"Markdown 全文定位 +
+ * 下载原件"。与后端 _INLINE_MEDIA_TYPES 白名单语义对齐。 */
+export function originalPreviewKind(filename: string | null | undefined): PreviewKind {
+  const ext = (filename ?? "").split(".").pop()?.toLowerCase() ?? "";
+  if (ext === "pdf") return "pdf";
+  if (IMAGE_EXTS.has(ext)) return "image";
+  return null;
+}

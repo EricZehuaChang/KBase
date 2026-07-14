@@ -44,6 +44,9 @@ export interface Citation {
   heading_path: string;
   snippet: string;
   score: number;
+  // M5-2 引用定位：命中内容在源文件中的页码（文本层 PDF 才有；老消息/其他
+  // 格式为 null 或缺失）。预览原文件时用 #page= 跳页。
+  page?: number | null;
 }
 
 export interface ContextBlock {
@@ -293,9 +296,16 @@ export function getDocContent(docId: string): Promise<DocumentContent> {
 }
 
 // 原始文件直链（识别前的 .docx/.pdf/扫描图原件，Content-Disposition 恢复
-// 上传原名）：用于 <a href> / window.open 浏览器原生下载，不经 fetch+blob。
-export function docOriginalUrl(docId: string): string {
-  return `/api/documents/${docId}/original`;
+// 上传原名）：用于 <a href> / iframe 浏览器原生处理，不经 fetch+blob。
+// inline=true 时服务端对白名单类型（pdf/图片/纯文本）改回 inline 内联渲染，
+// PDF 可再带 page 生成 #page=N 让浏览器查看器跳页（M5-2 引用定位）。
+export function docOriginalUrl(
+  docId: string,
+  opts?: { inline?: boolean; page?: number | null },
+): string {
+  const base = `/api/documents/${docId}/original`;
+  if (!opts?.inline) return base;
+  return `${base}?disposition=inline${opts.page ? `#page=${opts.page}` : ""}`;
 }
 
 export function search(

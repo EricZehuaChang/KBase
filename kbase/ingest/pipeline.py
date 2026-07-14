@@ -25,6 +25,39 @@ def pdf_has_text_layer(path, sample_pages: int = 3, min_chars_per_page: int = 50
     return chars / len(pages) >= min_chars_per_page
 
 
+def _pdf_page_texts(path) -> list[str]:
+    """逐页提取 PDF 文本（pdfminer，与 markitdown 的 PDF 解析同引擎，
+    文本形态一致度最高）。供引用定位的页码匹配用。"""
+    from pdfminer.high_level import extract_pages
+    from pdfminer.layout import LTTextContainer
+    pages: list[str] = []
+    for layout in extract_pages(str(path)):
+        pages.append("".join(el.get_text() for el in layout
+                             if isinstance(el, LTTextContainer)))
+    return pages
+
+
+def locate_chunk_pages(page_texts: list[str], leaves, prefix_chars: int = 30) -> None:
+    """引用定位（M5-2）：把每个叶子块映射到源 PDF 页码，写进 leaf.meta["page"]。
+
+    匹配策略：取叶子文本去空白后的前 prefix_chars 个字符，在同样去空白的
+    逐页文本里顺序查找，命中即记页码（1 起）。从上一次命中的页开始向后找
+    ——块顺序与页序一致，避免重复内容（页眉/条款套话）误匹配到更早的页。
+    找不到置 None（尽力而为：定位失败不影响检索与问答，只是前端少一个
+    "第N页"跳转）。纯函数（除写 meta 外无副作用），可直接单测。"""
+    norm_pages = ["".join(p.split()) for p in page_texts]
+    start_page = 0
+    for leaf in leaves:
+        needle = "".join(leaf.text.split())[:prefix_chars]
+        if not needle:
+            continue
+        for i in range(start_page, len(norm_pages)):
+            if needle in norm_pages[i]:
+                leaf.meta["page"] = i + 1
+                start_page = i          # 后续块从本页起找（同页多块常见）
+                break
+
+
 class IngestPipeline:
     def __init__(self, session_factory, chunker: Chunker, embedder: Embedder,
                  store: VectorStore, files_dir: Path, keyword_index=None,
@@ -109,6 +142,12 @@ class IngestPipeline:
         else:
             from markitdown import MarkItDown
             markdown = MarkItDown(enable_plugins=False).convert(str(path)).text_content
+        # \x0c（form feed）是 pdfminer/markitdown 的**页分隔符**，属于合法
+        # 解析产物而非二进制垃圾——必须在下面的控制字符防线之前归一为换行，
+        # 否则任何多页文本层 PDF 都会被误判"损坏"而摄取失败（M5-2 引用定位
+        # 测试撞出的存量 bug：此前评测/压测语料全是 .md，该路径未被真实
+        # 多页 PDF 走过）。
+        markdown = markdown.replace("\x0c", "\n")
         if not markdown.strip():
             raise ValueError("解析结果为空（可能是扫描件，未正确路由到 OCR）")
         # markitdown 对不认识/损坏的二进制文件会静默降级为纯文本转换器，
@@ -126,6 +165,14 @@ class IngestPipeline:
         chunker = self._chunker_for(kb_config)
         chunks = chunker.chunk(markdown, doc_name=name)
         leaves = [c for c in chunks if c.parent_id is not None]
+
+        # 引用定位（M5-2）：文本层 PDF 逐页匹配叶子块页码。任何失败只损失
+        # 定位能力，不阻塞摄取（页码是增强元数据，不是硬依赖）。
+        if suffix == ".pdf" and not needs_ocr and leaves:
+            try:
+                locate_chunk_pages(_pdf_page_texts(path), leaves)
+            except Exception:  # noqa: BLE001
+                pass
 
         if leaves and self._enricher is not None and kb_config.get("enrich", {}).get("enabled"):
             leaves = self._enricher.enrich(name, markdown, leaves)
@@ -153,7 +200,8 @@ class IngestPipeline:
                             parent_id=c.parent_id, prev_id=c.prev_id,
                             next_id=c.next_id, heading_path=c.heading_path,
                             text=c.text, is_leaf=c.parent_id is not None,
-                            enrich_context=c.meta.get("enrich_context")))
+                            enrich_context=c.meta.get("enrich_context"),
+                            page=c.meta.get("page")))
             s.commit()
 
         if self._keyword_index and leaves:
