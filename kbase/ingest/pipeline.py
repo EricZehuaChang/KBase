@@ -7,6 +7,7 @@ from pathlib import Path
 
 from sqlalchemy.exc import IntegrityError
 
+from kbase.embed_text import embed_input, keyword_input
 from kbase.models import Chunk, Document, KnowledgeBase
 from kbase.plugins.base import Chunker, Embedder, OCRUnavailable, VectorStore
 from kbase.plugins.chunkers.structure import StructureChunker
@@ -133,12 +134,17 @@ class IngestPipeline:
         needs_ocr = suffix in _IMAGE_EXTS or (
             suffix == ".pdf" and not pdf_has_text_layer(path))
         ocr_confidence = None
+        ocr_layout = None
         if needs_ocr:
             if self._ocr is None:
                 raise ValueError("扫描件/图片需要 OCR，当前未配置 OCR 后端")
             result = self._ocr.to_markdown(path)      # OCRUnavailable 向上抛，由 _run 捕获
             markdown = result.markdown
             ocr_confidence = result.confidence
+            # GLM-OCR 的版式明细（bbox/label/表格结构，M6 表格版）：整份存档
+            # 供后续 bbox 引用高亮等使用；表格语义本身已随 md_results 里的
+            # Markdown 表格进入表格感知分块，不依赖这份明细。
+            ocr_layout = getattr(result, "layout", None)
         else:
             from markitdown import MarkItDown
             markdown = MarkItDown(enable_plugins=False).convert(str(path)).text_content
@@ -160,6 +166,9 @@ class IngestPipeline:
         out_dir = self._files_dir / doc_id
         out_dir.mkdir(parents=True, exist_ok=True)
         (out_dir / "content.md").write_text(markdown, encoding="utf-8")
+        if ocr_layout:
+            (out_dir / "layout.json").write_text(
+                json.dumps(ocr_layout, ensure_ascii=False), encoding="utf-8")
 
         kb_config = self._load_kb_config(kb_id)
         chunker = self._chunker_for(kb_config)
@@ -180,12 +189,12 @@ class IngestPipeline:
         if leaves:
             # 只嵌入叶子块；父块仅存 SQLite 供上下文组装。
             # 超长文本会被 embedding 模型静默截断，叶子块 512 字符远低于上限。
-            # enrich_context（若有）作为前缀参与向量化，帮助稠密检索理解片段
-            # 在全文中的定位；lstrip 去掉无增强时开头多余的换行。
+            # 嵌入文本组成（enrich 前缀/表格线性化）统一走 kbase/embed_text.py。
             embedder = (self._embedder_resolver(kb_id)
                         if self._embedder_resolver else self._embedder)
             vectors = embedder.embed(
-                [f"{c.meta.get('enrich_context', '')}\n{c.heading_path}\n{c.text}".lstrip()
+                [embed_input(c.meta.get("enrich_context"), c.heading_path,
+                             c.text, c.meta.get("layout"))
                  for c in leaves])
             self._store.upsert(
                 collection=kb_id,
@@ -201,16 +210,18 @@ class IngestPipeline:
                             next_id=c.next_id, heading_path=c.heading_path,
                             text=c.text, is_leaf=c.parent_id is not None,
                             enrich_context=c.meta.get("enrich_context"),
-                            page=c.meta.get("page")))
+                            page=c.meta.get("page"),
+                            layout=(json.dumps(c.meta["layout"], ensure_ascii=False)
+                                    if c.meta.get("layout") else None)))
             s.commit()
 
         if self._keyword_index and leaves:
-            # 关键词索引保持索引原始文本（heading_path+text，无 enrich 前缀）：
-            # 增强句是"这段话在讲什么"的摘要，有利于语义向量匹配同义表达；
-            # 但关键词检索要的是文中原样出现的词/编号（如文件号），加增强前缀
-            # 反而会稀释 BM25 对原文关键词的权重，因此这里刻意不用增强后的文本。
+            # 关键词索引文本组成统一走 kbase/embed_text.py（无 enrich 前缀；
+            # 表格块用行线性化文本让单元格值可被 BM25 精确命中）。
             self._keyword_index.index(
-                kb_id, [(c.id, doc_id, f"{c.heading_path}\n{c.text}") for c in leaves])
+                kb_id, [(c.id, doc_id,
+                         keyword_input(c.heading_path, c.text, c.meta.get("layout")))
+                        for c in leaves])
 
         return ocr_confidence
 

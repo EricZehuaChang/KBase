@@ -67,6 +67,10 @@ class Enricher(Protocol):
 class OCRResult:
     markdown: str
     confidence: float = 1.0
+    # M6 表格版：解析引擎的版式明细（如 GLM-OCR layout_details：逐页
+    # bbox/label/表格结构）。摄取管道整份存档 files/{doc_id}/layout.json，
+    # 供 bbox 引用高亮等后续能力使用；无明细的后端（MonkeyOCR）保持 None。
+    layout: list | None = None
 
 
 class OCRUnavailable(RuntimeError):
