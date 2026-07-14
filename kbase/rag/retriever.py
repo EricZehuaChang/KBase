@@ -132,10 +132,14 @@ class Retriever:
     def __init__(self, session_factory, embedder: Embedder, store: VectorStore,
                  keyword_index=None, reranker=None,
                  candidates: int = 20, rrf_k: int = 60,
-                 max_parent_chars: int = 4000, max_concurrency: int = 8):
+                 max_parent_chars: int = 4000, max_concurrency: int = 8,
+                 embedder_resolver=None):
         self._sf = session_factory
         self._embedder = embedder
         self._store = store
+        # M5-2 KB 级向量模型：查询向量必须与该库摄取时用的是同一个模型，
+        # resolver(kb_id) 保证这一点；未提供时退回单一 embedder（既有行为）。
+        self._embedder_resolver = embedder_resolver
         self._kw = keyword_index
         self._reranker = reranker
         self._candidates = candidates
@@ -176,7 +180,9 @@ class Retriever:
         """debug=False 返回 list[ContextBlock]（向后兼容）；
         debug=True 返回 RetrievalResult(blocks, trace)。"""
         trace: dict = {}
-        vec = self._embedder.embed([query])[0]
+        embedder = (self._embedder_resolver(kb_id)
+                    if self._embedder_resolver else self._embedder)
+        vec = embedder.embed([query])[0]
         dense_hits = self._store.search(kb_id, vec, top_k=self._candidates)
         dense = [(h.chunk_id, h.score) for h in dense_hits]
         cosine = {h.chunk_id: h.score for h in dense_hits}

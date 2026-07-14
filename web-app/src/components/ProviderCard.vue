@@ -8,7 +8,7 @@ import { Loader2, Pencil, Trash2 } from "@lucide/vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
-import { paramsSummary, type ProviderTestState } from "@/lib/settings-utils";
+import { keySourceLabel, paramsSummary, type ProviderTestState } from "@/lib/settings-utils";
 import type { Provider } from "@/lib/api";
 
 defineProps<{ provider: Provider; isActive: boolean; testState?: ProviderTestState }>();
@@ -28,6 +28,7 @@ const emit = defineEmits<{ setActive: []; edit: []; delete: []; test: [] }>();
       <dl class="mt-2 flex flex-col gap-1 text-sm text-[var(--text-2)]">
         <div class="truncate"><dt class="inline text-[var(--text-3)]">模型：</dt>{{ provider.model }}</div>
         <div class="truncate"><dt class="inline text-[var(--text-3)]">base_url：</dt>{{ provider.base_url }}</div>
+        <div><dt class="inline text-[var(--text-3)]">密钥：</dt>{{ keySourceLabel(provider) }}</div>
         <div><dt class="inline text-[var(--text-3)]">并发：</dt>{{ provider.max_concurrency }}</div>
         <div class="truncate" :title="paramsSummary(provider.params)">
           <dt class="inline text-[var(--text-3)]">params：</dt>{{ paramsSummary(provider.params) }}

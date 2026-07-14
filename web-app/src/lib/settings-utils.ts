@@ -31,6 +31,82 @@ export function validateParamsJson(text: string): ParamsValidation {
   return { ok: true, value: parsed as Record<string, unknown> };
 }
 
+// ---- 主流厂商预设（M5-2）----
+// 只收 OpenAI 兼容端点的厂商（后端 openai-compat 插件通吃）；model 是建议
+// 起点，用户可改。Anthropic/Gemini 原生 API 非 OpenAI 兼容，不在此列。
+
+export interface ProviderPreset {
+  key: string;
+  label: string;
+  base_url: string;
+  /** 建议模型（预填第一个，可编辑） */
+  models: string[];
+  /** 建议的密钥环境变量名（用户也可页面直配 api_key，二选一） */
+  api_key_env: string;
+}
+
+export const PROVIDER_PRESETS: ProviderPreset[] = [
+  { key: "dashscope", label: "通义千问（阿里云 DashScope）",
+    base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    models: ["qwen-plus", "qwen-max", "qwen-turbo"], api_key_env: "DASHSCOPE_API_KEY" },
+  { key: "deepseek", label: "DeepSeek",
+    base_url: "https://api.deepseek.com/v1",
+    models: ["deepseek-chat", "deepseek-reasoner"], api_key_env: "DEEPSEEK_API_KEY" },
+  { key: "zhipu", label: "智谱 GLM",
+    base_url: "https://open.bigmodel.cn/api/paas/v4",
+    models: ["glm-4.6", "glm-4-flash"], api_key_env: "ZHIPU_API_KEY" },
+  { key: "moonshot", label: "月之暗面 Kimi",
+    base_url: "https://api.moonshot.cn/v1",
+    models: ["kimi-k2-turbo-preview"], api_key_env: "MOONSHOT_API_KEY" },
+  { key: "siliconflow", label: "硅基流动 SiliconFlow",
+    base_url: "https://api.siliconflow.cn/v1",
+    models: ["Qwen/Qwen3-32B", "deepseek-ai/DeepSeek-V3"], api_key_env: "SILICONFLOW_API_KEY" },
+  { key: "openai", label: "OpenAI",
+    base_url: "https://api.openai.com/v1",
+    models: ["gpt-4o-mini", "gpt-4o"], api_key_env: "OPENAI_API_KEY" },
+];
+
+/** Provider 表单提交体构建（纯函数，直接单测）。
+ * 密钥字段规则：创建时 api_key 非空才带上；编辑时"留空=不动"（不带字段），
+ * clearKey=true 显式清除（带 api_key: ""，后端置 NULL 回退环境变量）。 */
+export interface ProviderFormShape {
+  base_url: string;
+  api_key_env: string;
+  api_key: string;
+  model: string;
+  max_concurrency: number;
+  params: Record<string, unknown>;
+}
+
+export function buildProviderBody(
+  form: ProviderFormShape,
+  opts: { editing: boolean; clearKey?: boolean },
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    base_url: form.base_url.trim(),
+    api_key_env: form.api_key_env.trim(),
+    model: form.model.trim(),
+    max_concurrency: form.max_concurrency,
+    params: form.params,
+  };
+  const typed = form.api_key.trim();
+  if (opts.editing) {
+    if (opts.clearKey) body.api_key = "";
+    else if (typed) body.api_key = typed;
+    // 留空且未勾清除：不带 api_key 字段（后端 exclude_unset 不动它）
+  } else if (typed) {
+    body.api_key = typed;
+  }
+  return body;
+}
+
+/** 卡片"密钥"行文案：直配 > 环境变量 > 未配置。 */
+export function keySourceLabel(p: { has_api_key: boolean; api_key_hint: string | null; api_key_env: string }): string {
+  if (p.has_api_key) return `已配置 ${p.api_key_hint ?? "****"}`;
+  if (p.api_key_env) return `环境变量 ${p.api_key_env}`;
+  return "未配置";
+}
+
 /** params 对象 → 卡片摘要文本（如 "temperature=0.7, top_p=0.9"）；空对象返回
  * 占位符 "—" 避免卡片出现空白行。 */
 export function paramsSummary(params: Record<string, unknown> | null | undefined): string {

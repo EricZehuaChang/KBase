@@ -28,7 +28,7 @@ def pdf_has_text_layer(path, sample_pages: int = 3, min_chars_per_page: int = 50
 class IngestPipeline:
     def __init__(self, session_factory, chunker: Chunker, embedder: Embedder,
                  store: VectorStore, files_dir: Path, keyword_index=None,
-                 enricher=None, ocr_backend=None):
+                 enricher=None, ocr_backend=None, embedder_resolver=None):
         self._sf = session_factory
         self._chunker = chunker
         self._embedder = embedder
@@ -37,6 +37,9 @@ class IngestPipeline:
         self._keyword_index = keyword_index
         self._enricher = enricher
         self._ocr = ocr_backend
+        # M5-2 KB 级向量模型：resolver(kb_id) 返回该库绑定的 embedder；
+        # 未提供（直接构造 pipeline 的测试/脚本）时退回构造参数里的单一 embedder。
+        self._embedder_resolver = embedder_resolver
 
     def ingest_file(self, kb_id: str, path: Path, original_name: str) -> str:
         content_hash = hashlib.sha256(Path(path).read_bytes()).hexdigest()
@@ -132,7 +135,9 @@ class IngestPipeline:
             # 超长文本会被 embedding 模型静默截断，叶子块 512 字符远低于上限。
             # enrich_context（若有）作为前缀参与向量化，帮助稠密检索理解片段
             # 在全文中的定位；lstrip 去掉无增强时开头多余的换行。
-            vectors = self._embedder.embed(
+            embedder = (self._embedder_resolver(kb_id)
+                        if self._embedder_resolver else self._embedder)
+            vectors = embedder.embed(
                 [f"{c.meta.get('enrich_context', '')}\n{c.heading_path}\n{c.text}".lstrip()
                  for c in leaves])
             self._store.upsert(

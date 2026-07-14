@@ -58,6 +58,12 @@ async function save() {
         <DialogDescription>分块大小与上下文增强设置，仅影响后续新上传的文档</DialogDescription>
       </DialogHeader>
       <div class="flex flex-col gap-4">
+        <!-- 向量模型绑定只读展示（M5-2）：建库时定死，改绑=全库向量作废，
+             故这里不提供修改入口，仅让管理员看清当前库用的是哪个模型 -->
+        <div class="flex items-center justify-between text-sm">
+          <span class="text-[var(--text-2)]">向量模型（建库时绑定，不可更改）</span>
+          <span class="text-[var(--text-3)]">{{ kb?.config?.embedder ?? "默认" }}</span>
+        </div>
         <label class="flex flex-col gap-1">
           <span class="text-sm text-[var(--text-2)]">分块大小 chunk_size（64-4096）</span>
           <Input v-model.number="chunkSize" type="number" min="64" max="4096" />

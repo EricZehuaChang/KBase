@@ -10,6 +10,21 @@ class EmbedderConfig(BaseModel):
     endpoint: str | None = None   # name="tei" 时必填：TEI 服务地址
 
 
+class EmbedderOption(BaseModel):
+    """cfg.embedders 清单中的一个 KB 级可选向量模型（M5-2）。
+
+    id 是 KB 绑定引用的稳定标识（写进 KnowledgeBase.config JSON），**改名等于
+    让已绑定的库失联**——上线后只增不改。"default" 为保留 id，指默认 embedder。
+    plugin: bge-local（进程内）| tei（自建推理服务）| openai-embed（云 API）。"""
+    id: str
+    plugin: str
+    model: str | None = None
+    endpoint: str | None = None    # tei 用
+    base_url: str | None = None    # openai-embed 用
+    api_key_env: str = ""          # openai-embed 用；密钥不进配置文件
+    batch_size: int | None = None  # openai-embed 用；默认 10（DashScope 上限）
+
+
 class DBConfig(BaseModel):
     # {data_dir} 占位符由 create_app 替换成实际路径，保持 sqlite 默认语义
     # 与改造前的 f"sqlite:///{cfg.data_dir}/kbase.sqlite" 字节级一致；
@@ -102,10 +117,17 @@ class IngestConfig(BaseModel):
 
 class OCRConfig(BaseModel):
     # enabled=False（默认）：不创建 OCR 后端，扫描件/图片直接判 failed（M1 行为）。
-    # backend 目前只有 monkey-http 一种实现（kbase/plugins/ocr/monkey_http.py）。
+    # backend 两种实现：
+    # - monkey-http：MonkeyOCR 自建服务（kbase/plugins/ocr/monkey_http.py）
+    # - glm-ocr：智谱云 layout_parsing / vLLM 本地同模型（kbase/plugins/ocr/glm_http.py）
+    # endpoint 留空用各后端自己的默认值（monkey-http=http://localhost:7861，
+    # glm-ocr=智谱官方云端点）；显式配置则覆盖。
     enabled: bool = False
     backend: str = "monkey-http"
-    endpoint: str = "http://localhost:7861"
+    endpoint: str = ""
+    # 仅 glm-ocr 用：密钥环境变量名与模型名（密钥不进配置文件，与 LLM 同规矩）
+    api_key_env: str = "ZHIPU_API_KEY"
+    model: str = "glm-ocr"
 
 
 class ServerConfig(BaseModel):
@@ -126,6 +148,9 @@ class AppConfig(BaseModel):
     data_dir: Path = Path("./data")
     db: DBConfig = Field(default_factory=DBConfig)
     embedder: EmbedderConfig = Field(default_factory=EmbedderConfig)
+    # KB 级可选向量模型清单（M5-2）：建库时可从 [default]+embedders 中选一个
+    # 绑定；空清单=只有默认模型可选（改造前行为）。
+    embedders: list[EmbedderOption] = Field(default_factory=list)
     vectorstore: VectorStoreConfig = Field(default_factory=VectorStoreConfig)
     chunker: ChunkerConfig = Field(default_factory=ChunkerConfig)
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
@@ -140,6 +165,15 @@ class AppConfig(BaseModel):
             if p.name == name:
                 return p
         raise KeyError(f"LLM provider 未配置: {name}")
+
+    @model_validator(mode="after")
+    def _check_embedder_option_ids(self) -> "AppConfig":
+        ids = [o.id for o in self.embedders]
+        if len(ids) != len(set(ids)):
+            raise ValueError(f"embedders 清单存在重复 id: {ids}")
+        if "default" in ids:
+            raise ValueError('embedders 清单不得使用保留 id "default"（它指默认 embedder）')
+        return self
 
 
 def load_config(path: str | Path) -> AppConfig:

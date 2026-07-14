@@ -25,8 +25,10 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
 
     @router.get("/settings/providers", dependencies=[deps.require_admin])
     def settings_list_providers():
+        # 脱敏视图：api_key 原文永不出站，只回 has_api_key + 尾4位提示
         return {"active": providers_store.get_active(sf),
-                "providers": providers_store.list_providers(sf)}
+                "providers": [providers_store.to_public(p)
+                              for p in providers_store.list_providers(sf)]}
 
     @router.post("/settings/providers",
                  dependencies=[deps.require_admin, deps.audit_mutation])

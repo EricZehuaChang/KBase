@@ -26,6 +26,8 @@ def seed_from_config(sf, cfg) -> None:
 
 
 def _row_to_dict(row: ProviderRow) -> dict:
+    """内部完整视图（含 api_key 原文），仅供 get_llm 等服务端消费；
+    任何要返回给客户端的地方必须先过 to_public()。"""
     return {
         "name": row.name,
         "base_url": row.base_url,
@@ -33,7 +35,18 @@ def _row_to_dict(row: ProviderRow) -> dict:
         "model": row.model,
         "max_concurrency": row.max_concurrency,
         "params": json.loads(row.params) if row.params else {},
+        "api_key": row.api_key,
     }
+
+
+def to_public(p: dict) -> dict:
+    """对外脱敏视图：剥掉 api_key 原文，改为 has_api_key + 尾 4 位提示
+    （创建后管理员仍能分辨"配没配过 key、配的是哪个"，但拿不回原文）。"""
+    out = {k: v for k, v in p.items() if k != "api_key"}
+    key = p.get("api_key")
+    out["has_api_key"] = bool(key)
+    out["api_key_hint"] = f"****{key[-4:]}" if key and len(key) >= 4 else None
+    return out
 
 
 def get_provider_dict(sf, name: str) -> dict | None:
@@ -71,9 +84,12 @@ def create_provider(sf, data: dict) -> None:
     with sf() as s:
         s.add(ProviderRow(
             name=data["name"], base_url=data["base_url"],
-            api_key_env=data["api_key_env"], model=data["model"],
+            api_key_env=data.get("api_key_env") or "",
+            model=data["model"],
             max_concurrency=data.get("max_concurrency", 4),
-            params=json.dumps(params, ensure_ascii=False) if params else None))
+            params=json.dumps(params, ensure_ascii=False) if params else None,
+            # 空字符串归一为 NULL：has_api_key 语义只认"真的存了 key"
+            api_key=data.get("api_key") or None))
         s.commit()
 
 
@@ -93,6 +109,10 @@ def update_provider(sf, name: str, data: dict) -> bool:
             row.max_concurrency = data["max_concurrency"]
         if "params" in data and data["params"] is not None:
             row.params = json.dumps(data["params"], ensure_ascii=False)
+        # api_key 与其他字段不同：出现即生效（值为 ""/None 表示清除，回退到
+        # api_key_env）——PATCH 语义靠调用方 exclude_unset 保证"没提到就不动"。
+        if "api_key" in data:
+            row.api_key = data["api_key"] or None
         s.commit()
         return True
 
