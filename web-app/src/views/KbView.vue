@@ -16,9 +16,12 @@ import UploadZone from "@/components/UploadZone.vue";
 import DocumentTable from "@/components/DocumentTable.vue";
 import KbConfigDialog from "@/components/KbConfigDialog.vue";
 import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
   listKbs, createKb, deleteKb, listDocs, uploadDocs, deleteDoc, retryDoc, retryOcr,
-  currentRole,
-  type Kb, type DocumentItem,
+  listEmbedders, currentRole,
+  type Kb, type DocumentItem, type EmbeddersCatalog,
 } from "@/lib/api";
 import { hasPendingOcr } from "@/lib/kb-utils";
 import { canManageContent } from "@/lib/auth-utils";
@@ -65,14 +68,37 @@ function backToGrid() {
 // ---- 新建知识库 ----
 const createOpen = ref(false);
 const newKbName = ref("");
+const newKbEmbedder = ref("default");
 const creating = ref(false);
+
+// KB 级向量模型清单（M5-2）：首次打开建库对话框时拉取一次；清单只有默认
+// 一项时不渲染下拉（部署未配 embedders 清单 = 原有极简建库体验不变）。
+const embedders = ref<EmbeddersCatalog | null>(null);
+
+function embedderLabel(info: { id: string; plugin: string; model: string | null }): string {
+  const modelPart = info.model ?? info.plugin;
+  return info.id === "default" ? `默认 · ${modelPart}` : `${info.id} · ${modelPart}`;
+}
+
+async function openCreateDialog() {
+  createOpen.value = true;
+  newKbEmbedder.value = "default";
+  if (embedders.value === null) {
+    try {
+      embedders.value = await listEmbedders();
+    } catch {
+      // 清单拉取失败不阻塞建库——按默认模型创建（后端兜底校验）
+      embedders.value = { default: { id: "default", plugin: "", model: null }, options: [] };
+    }
+  }
+}
 
 async function submitCreate() {
   const name = newKbName.value.trim();
   if (!name) return;
   creating.value = true;
   try {
-    const kb = await createKb(name);
+    const kb = await createKb(name, newKbEmbedder.value);
     createOpen.value = false;
     newKbName.value = "";
     await loadKbs();
@@ -207,7 +233,7 @@ onMounted(loadKbs);
           v-if="canManage"
           type="button"
           class="flex flex-col items-center justify-center gap-2 rounded-[var(--radius-card)] border-2 border-dashed border-[var(--border-strong)] p-4 text-[var(--text-3)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent-text)]"
-          @click="createOpen = true"
+          @click="openCreateDialog"
         >
           <Plus class="size-5" />
           <span class="text-sm">新建知识库</span>
@@ -258,9 +284,27 @@ onMounted(loadKbs);
     <DialogContent>
       <DialogHeader>
         <DialogTitle>新建知识库</DialogTitle>
-        <DialogDescription>输入知识库名称</DialogDescription>
+        <DialogDescription>输入知识库名称并选择向量模型</DialogDescription>
       </DialogHeader>
-      <Input v-model="newKbName" placeholder="知识库名称" @keydown.enter="submitCreate" />
+      <div class="flex flex-col gap-3">
+        <Input v-model="newKbName" placeholder="知识库名称" @keydown.enter="submitCreate" />
+        <!-- 向量模型绑定（M5-2）：建库后不可改（不同模型向量空间不可比，
+             换模型=全库重建），清单只有默认一项时不渲染，保持极简体验 -->
+        <label v-if="embedders && embedders.options.length > 0" class="flex flex-col gap-1">
+          <span class="text-sm text-[var(--text-2)]">向量模型（建库后不可更改）</span>
+          <Select v-model="newKbEmbedder">
+            <SelectTrigger class="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="default">{{ embedderLabel(embedders.default) }}</SelectItem>
+              <SelectItem v-for="o in embedders.options" :key="o.id" :value="o.id">
+                {{ embedderLabel(o) }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </label>
+      </div>
       <DialogFooter>
         <Button variant="outline" @click="createOpen = false">取消</Button>
         <Button :disabled="creating || !newKbName.trim()" @click="submitCreate">创建</Button>

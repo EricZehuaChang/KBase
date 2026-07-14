@@ -14,6 +14,9 @@ class LoginBody(BaseModel):
 
 class KBCreate(BaseModel):
     name: str
+    # M5-2：建库时绑定向量模型（GET /api/embedders 清单里的 id）。
+    # None/"default" = 默认模型。建库后不可改（换模型=全库向量作废，需重建）。
+    embedder: str | None = None
 
 
 class QueryBody(BaseModel):
@@ -60,15 +63,28 @@ class KBConfigBody(BaseModel):
 class ProviderCreate(BaseModel):
     name: str
     base_url: str
-    api_key_env: str
+    # M5-2：密钥两种来源二选一（也可都给，api_key 优先）——
+    # api_key：页面直配，存 DB（私有化内网部署的主路径）；
+    # api_key_env：环境变量名，密钥不进 DB（运维托管密钥的部署用）。
+    api_key_env: str = ""
+    api_key: str | None = None
     model: str
     max_concurrency: int = 4
     params: dict = {}
+
+    @model_validator(mode="after")
+    def _check_key_source(self):
+        if not self.api_key and not self.api_key_env:
+            raise ValueError("必须提供 api_key（页面直配）或 api_key_env（环境变量名）之一")
+        return self
 
 
 class ProviderUpdate(BaseModel):
     base_url: str | None = None
     api_key_env: str | None = None
+    # PATCH 语义：请求体不含 api_key 字段则不动；显式传 ""/null 表示清除
+    # 直配密钥、回退到 api_key_env（见 providers_store.update_provider）。
+    api_key: str | None = None
     model: str | None = None
     max_concurrency: int | None = None
     params: dict | None = None

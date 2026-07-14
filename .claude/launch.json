@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--prefix", "web-app"],
       "port": 5173
+    },
+    {
+      "name": "api-dev",
+      "runtimeExecutable": "../RAG/.venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "--factory", "scripts.dev_app:create_dev_app", "--port", "8100"],
+      "port": 8100
     }
   ]
 }

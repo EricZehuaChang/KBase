@@ -3,6 +3,18 @@ data_dir: ./data
 embedder:
   name: bge-local
   model: BAAI/bge-m3
+# KB 级可选向量模型清单（M5-2）：建库时可在 [默认模型]+此清单中选一个绑定，
+# 绑定后该库所有摄取/查询固定用它（不同模型向量空间不可比，建库后不可改，
+# 换模型需重建库）。id 是 KB 绑定引用的稳定标识，上线后只增不改名。
+# embedders:
+#   - id: qwen-embed-v3            # 阿里云 DashScope 向量模型（云 API）
+#     plugin: openai-embed
+#     base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+#     api_key_env: DASHSCOPE_API_KEY
+#     model: text-embedding-v3
+#   - id: tei-bge                  # 自建 TEI 推理服务
+#     plugin: tei
+#     endpoint: http://localhost:8080
 vectorstore:
   name: chroma
 chunker:
@@ -39,12 +51,20 @@ llm:
       params:
         extra_body:
           enable_thinking: false
-# OCR：扫描件/图片摄取时调用 MonkeyOCR 服务转 Markdown（kbase/plugins/ocr/monkey_http.py）。
-# endpoint 当前指向开发期 GPU 服务器的 SSH 隧道（本机 7861 转发到远端 MonkeyOCR），
-# 生产部署应把 endpoint 换成生产环境自己的 MonkeyOCR 服务地址。
+# OCR：扫描件/图片摄取时转 Markdown。两种后端：
+# - glm-ocr（默认推荐）：智谱云 layout_parsing（kbase/plugins/ocr/glm_http.py），
+#   密钥走 ZHIPU_API_KEY 环境变量（api_key_env 可改名）；endpoint 留空用官方云，
+#   本地 vLLM 跑同一模型时指到本地服务即可（云本同源，切档零适配）。
+# - monkey-http：自建 MonkeyOCR 服务（kbase/plugins/ocr/monkey_http.py），
+#   endpoint 留空默认 http://localhost:7861。
 # enabled=false 或服务不可达时，扫描件摄取会优雅降级为 pending_ocr（不阻塞其余文档），
-# 不会导致摄取流程报错。
+# 不会导致摄取流程报错；密钥未配置同样降级为 pending_ocr，配好后批量重试即可。
 ocr:
   enabled: true
-  backend: monkey-http
-  endpoint: "http://localhost:7861"
+  backend: glm-ocr
+  # endpoint: ""                   # 留空=智谱官方云；vLLM 本地部署时改这里
+  # api_key_env: ZHIPU_API_KEY
+  # model: glm-ocr
+  # --- 切回自建 MonkeyOCR 时使用 ---
+  # backend: monkey-http
+  # endpoint: "http://localhost:7861"

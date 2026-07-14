@@ -1,83 +1,83 @@
 {
-  "_LoginView-B-BOF023.css": {
-    "file": "assets/LoginView-B-BOF023.css",
-    "src": "_LoginView-B-BOF023.css"
+  "_LoginView-C7Rsd8XH.css": {
+    "file": "assets/LoginView-C7Rsd8XH.css",
+    "src": "_LoginView-C7Rsd8XH.css"
   },
-  "_LoginView-C-hZH3Lt.js": {
-    "file": "assets/LoginView-C-hZH3Lt.js",
+  "_LoginView-CUDhkpQ7.js": {
+    "file": "assets/LoginView-CUDhkpQ7.js",
     "name": "LoginView",
     "imports": [
-      "_button-C8ET2rXp.js"
+      "_button-DwkilbQY.js"
     ],
     "css": [
-      "assets/LoginView-B-BOF023.css"
+      "assets/LoginView-C7Rsd8XH.css"
     ]
   },
-  "_PopperContent-CfM6cVEB.js": {
-    "file": "assets/PopperContent-CfM6cVEB.js",
-    "name": "PopperContent",
+  "_SelectGroup-DCFSAmWk.js": {
+    "file": "assets/SelectGroup-DCFSAmWk.js",
+    "name": "SelectGroup",
     "imports": [
-      "_button-C8ET2rXp.js"
+      "_button-DwkilbQY.js",
+      "_SelectValue-ChB9irzw.js"
     ]
   },
-  "_SelectValue-sbgXOZYI.js": {
-    "file": "assets/SelectValue-sbgXOZYI.js",
+  "_SelectValue-ChB9irzw.js": {
+    "file": "assets/SelectValue-ChB9irzw.js",
     "name": "SelectValue",
     "imports": [
-      "_button-C8ET2rXp.js",
-      "_PopperContent-CfM6cVEB.js"
+      "_button-DwkilbQY.js"
     ]
   },
-  "_Switch-Cb3i7y8M.js": {
-    "file": "assets/Switch-Cb3i7y8M.js",
+  "_Switch-cFWO34bX.js": {
+    "file": "assets/Switch-cFWO34bX.js",
     "name": "Switch",
     "imports": [
-      "_button-C8ET2rXp.js",
-      "_PopperContent-CfM6cVEB.js"
+      "_button-DwkilbQY.js",
+      "_SelectValue-ChB9irzw.js"
     ]
   },
-  "_badge-NlkxRX_J.js": {
-    "file": "assets/badge-NlkxRX_J.js",
+  "_badge-DE3bB8a1.js": {
+    "file": "assets/badge-DE3bB8a1.js",
     "name": "badge",
     "imports": [
-      "_button-C8ET2rXp.js"
+      "_button-DwkilbQY.js"
     ]
   },
-  "_button-C8ET2rXp.js": {
-    "file": "assets/button-C8ET2rXp.js",
+  "_button-DwkilbQY.js": {
+    "file": "assets/button-DwkilbQY.js",
     "name": "button"
   },
-  "_dialog-B5g9K4SM.js": {
-    "file": "assets/dialog-B5g9K4SM.js",
+  "_dialog-DKWTeSZK.js": {
+    "file": "assets/dialog-DKWTeSZK.js",
     "name": "dialog",
     "imports": [
-      "_button-C8ET2rXp.js",
-      "_LoginView-C-hZH3Lt.js",
-      "_PopperContent-CfM6cVEB.js"
+      "_button-DwkilbQY.js",
+      "_LoginView-CUDhkpQ7.js",
+      "_SelectValue-ChB9irzw.js"
     ]
   },
-  "_pencil-B2PtHWWQ.js": {
-    "file": "assets/pencil-B2PtHWWQ.js",
+  "_pencil-vHxGPMBf.js": {
+    "file": "assets/pencil-vHxGPMBf.js",
     "name": "pencil",
     "imports": [
-      "_button-C8ET2rXp.js"
+      "_button-DwkilbQY.js"
     ]
   },
-  "_trash-2-CGvNx4Kz.js": {
-    "file": "assets/trash-2-CGvNx4Kz.js",
+  "_trash-2-DadOdCki.js": {
+    "file": "assets/trash-2-DadOdCki.js",
     "name": "trash-2",
     "imports": [
-      "_button-C8ET2rXp.js"
+      "_button-DwkilbQY.js"
     ]
   },
   "admin.html": {
-    "file": "assets/admin-D28-bHDq.js",
+    "file": "assets/admin-DI2muCNQ.js",
     "name": "admin",
     "src": "admin.html",
     "isEntry": true,
     "imports": [
-      "_button-C8ET2rXp.js",
-      "_LoginView-C-hZH3Lt.js"
+      "_button-DwkilbQY.js",
+      "_LoginView-CUDhkpQ7.js"
     ],
     "dynamicImports": [
       "src/views/KbView.vue",
@@ -87,74 +87,77 @@
     ]
   },
   "index.html": {
-    "file": "assets/main-DpyXeOBF.js",
+    "file": "assets/main-AwTNtXx-.js",
     "name": "main",
     "src": "index.html",
     "isEntry": true,
     "imports": [
-      "_button-C8ET2rXp.js",
-      "_LoginView-C-hZH3Lt.js",
-      "_SelectValue-sbgXOZYI.js",
-      "_pencil-B2PtHWWQ.js",
-      "_trash-2-CGvNx4Kz.js",
-      "_PopperContent-CfM6cVEB.js",
-      "_dialog-B5g9K4SM.js"
+      "_button-DwkilbQY.js",
+      "_LoginView-CUDhkpQ7.js",
+      "_SelectValue-ChB9irzw.js",
+      "_pencil-vHxGPMBf.js",
+      "_trash-2-DadOdCki.js",
+      "_dialog-DKWTeSZK.js",
+      "_SelectGroup-DCFSAmWk.js"
     ]
   },
   "src/views/AnalysisView.vue": {
-    "file": "assets/AnalysisView-cu3jaR2s.js",
+    "file": "assets/AnalysisView-kdngjbJQ.js",
     "name": "AnalysisView",
     "src": "src/views/AnalysisView.vue",
     "isDynamicEntry": true,
     "imports": [
-      "_button-C8ET2rXp.js",
-      "_LoginView-C-hZH3Lt.js",
-      "_SelectValue-sbgXOZYI.js"
+      "_button-DwkilbQY.js",
+      "_LoginView-CUDhkpQ7.js",
+      "_SelectValue-ChB9irzw.js",
+      "_SelectGroup-DCFSAmWk.js"
     ]
   },
   "src/views/GenerateView.vue": {
-    "file": "assets/GenerateView-vOz2DNa_.js",
+    "file": "assets/GenerateView-Bssho4lx.js",
     "name": "GenerateView",
     "src": "src/views/GenerateView.vue",
     "isDynamicEntry": true,
     "imports": [
-      "_button-C8ET2rXp.js",
-      "_LoginView-C-hZH3Lt.js",
-      "_SelectValue-sbgXOZYI.js",
-      "_trash-2-CGvNx4Kz.js",
-      "_PopperContent-CfM6cVEB.js",
-      "_badge-NlkxRX_J.js"
+      "_button-DwkilbQY.js",
+      "_LoginView-CUDhkpQ7.js",
+      "_SelectValue-ChB9irzw.js",
+      "_trash-2-DadOdCki.js",
+      "_SelectGroup-DCFSAmWk.js",
+      "_badge-DE3bB8a1.js"
     ]
   },
   "src/views/KbView.vue": {
-    "file": "assets/KbView-Ljt-FiEv.js",
+    "file": "assets/KbView-DnN9uDAb.js",
     "name": "KbView",
     "src": "src/views/KbView.vue",
     "isDynamicEntry": true,
     "imports": [
-      "_button-C8ET2rXp.js",
-      "_LoginView-C-hZH3Lt.js",
-      "_trash-2-CGvNx4Kz.js",
-      "_Switch-Cb3i7y8M.js",
-      "_dialog-B5g9K4SM.js",
-      "_badge-NlkxRX_J.js"
+      "_button-DwkilbQY.js",
+      "_LoginView-CUDhkpQ7.js",
+      "_SelectValue-ChB9irzw.js",
+      "_trash-2-DadOdCki.js",
+      "_Switch-cFWO34bX.js",
+      "_dialog-DKWTeSZK.js",
+      "_badge-DE3bB8a1.js"
     ]
   },
   "src/views/SettingsView.vue": {
-    "file": "assets/SettingsView-B-NrpANP.js",
+    "file": "assets/SettingsView-ky_Q7h21.js",
     "name": "SettingsView",
     "src": "src/views/SettingsView.vue",
     "isDynamicEntry": true,
     "imports": [
-      "_button-C8ET2rXp.js",
-      "_LoginView-C-hZH3Lt.js",
-      "_SelectValue-sbgXOZYI.js",
-      "_pencil-B2PtHWWQ.js",
-      "_trash-2-CGvNx4Kz.js",
-      "_Switch-Cb3i7y8M.js",
-      "_dialog-B5g9K4SM.js",
+      "_button-DwkilbQY.js",
+      "_LoginView-CUDhkpQ7.js",
+      "_SelectValue-ChB9irzw.js",
+      "_pencil-vHxGPMBf.js",
+      "_trash-2-DadOdCki.js",
+      "_Switch-cFWO34bX.js",
+      "_dialog-DKWTeSZK.js",
+      "_SelectGroup-DCFSAmWk.js",
       "admin.html",
-      "_badge-NlkxRX_J.js"
+      "_badge-DE3bB8a1.js"
     ]
   }
 }

@@ -82,6 +82,10 @@ class ProviderRow(Base):
     model: Mapped[str] = mapped_column(String(200))
     max_concurrency: Mapped[int] = mapped_column(default=4)
     params: Mapped[str | None] = mapped_column(Text, nullable=True)      # JSON
+    # M5-2：管理端页面直配密钥（私有化内网部署场景）。非空时优先于
+    # api_key_env 环境变量；对外 API 永不返回原文（只回 has_api_key+尾4位
+    # 提示，见 providers_store.to_public）。
+    api_key: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class AppSetting(Base):

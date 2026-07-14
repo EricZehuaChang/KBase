@@ -11,6 +11,9 @@ export interface KbConfig {
   chunk_size?: number;
   chunk_overlap?: number;
   enrich?: EnrichConfig;
+  // M5-2：建库时绑定的向量模型 id（GET /api/embedders 清单）；缺省=默认模型。
+  // 只读展示——建库后不可改（换模型=全库向量作废，需重建）。
+  embedder?: string;
 }
 
 export interface Kb {
@@ -89,12 +92,16 @@ export interface Provider {
   model: string;
   max_concurrency: number;
   params: Record<string, unknown>;
+  // M5-2 页面直配密钥：后端脱敏视图——原文永不出站，只回"配没配"与尾4位提示
+  has_api_key: boolean;
+  api_key_hint: string | null;
 }
 
 export interface ProviderCreateBody {
   name: string;
   base_url: string;
-  api_key_env: string;
+  api_key_env?: string;
+  api_key?: string;          // 页面直配密钥（与 api_key_env 至少给一个）
   model: string;
   max_concurrency?: number;
   params?: Record<string, unknown>;
@@ -103,9 +110,23 @@ export interface ProviderCreateBody {
 export interface ProviderUpdateBody {
   base_url?: string;
   api_key_env?: string;
+  api_key?: string;          // 缺省=不动；""=清除直配密钥（回退环境变量）
   model?: string;
   max_concurrency?: number;
   params?: Record<string, unknown>;
+}
+
+// ---- KB 级向量模型（M5-2）----
+
+export interface EmbedderInfo {
+  id: string;                // "default" 或 cfg.embedders 清单里的选项 id
+  plugin: string;            // bge-local | tei | openai-embed
+  model: string | null;
+}
+
+export interface EmbeddersCatalog {
+  default: EmbedderInfo;
+  options: EmbedderInfo[];
 }
 
 export interface ProvidersResponse {
@@ -229,8 +250,14 @@ export function listKbs(): Promise<Kb[]> {
   return req("/api/kb");
 }
 
-export function createKb(name: string): Promise<Kb> {
-  return req("/api/kb", jsonInit({ name }));
+export function createKb(name: string, embedder?: string): Promise<Kb> {
+  // embedder 缺省/"default" 不传字段——后端绑定默认模型，与改造前行为一致
+  const body = embedder && embedder !== "default" ? { name, embedder } : { name };
+  return req("/api/kb", jsonInit(body));
+}
+
+export function listEmbedders(): Promise<EmbeddersCatalog> {
+  return req("/api/embedders");
 }
 
 export function deleteKb(kbId: string): Promise<{ ok: boolean }> {

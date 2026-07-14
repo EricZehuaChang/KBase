@@ -56,6 +56,56 @@ def test_provider_connectivity_test_endpoint(tmp_path, fake_embedder):
     assert r["ok"] is True and "latency_ms" in r
 
 
+def test_provider_direct_api_key_masked_in_listing(tmp_path, fake_embedder):
+    """M5-2：页面直配 api_key 存 DB；GET 列表永不返回原文，只返回
+    has_api_key + 尾4位提示。"""
+    c = _client(tmp_path, fake_embedder)
+    r = c.post("/api/settings/providers", json={
+        "name": "keyed", "base_url": "http://x/v1",
+        "api_key": "sk-secret-value-abcd", "model": "m"})
+    assert r.status_code == 200
+    got = next(p for p in c.get("/api/settings/providers").json()["providers"]
+               if p["name"] == "keyed")
+    assert "api_key" not in got                       # 原文永不出站
+    assert got["has_api_key"] is True
+    assert got["api_key_hint"] == "****abcd"
+    # 未配直配 key 的种子 provider：has_api_key=False，hint 为空
+    seeded = next(p for p in c.get("/api/settings/providers").json()["providers"]
+                  if p["name"] == "fake")
+    assert seeded["has_api_key"] is False and seeded["api_key_hint"] is None
+
+
+def test_provider_api_key_update_and_clear(tmp_path, fake_embedder):
+    """PATCH 语义：不传 api_key 不动；传新值覆盖；传 "" 清除（回退 env）。"""
+    c = _client(tmp_path, fake_embedder)
+    c.post("/api/settings/providers", json={
+        "name": "kp", "base_url": "http://x/v1",
+        "api_key": "sk-first-key-1111", "model": "m"})
+    # 只改 model，key 不动
+    c.put("/api/settings/providers/kp", json={"model": "m2"})
+    got = next(p for p in c.get("/api/settings/providers").json()["providers"]
+               if p["name"] == "kp")
+    assert got["has_api_key"] is True and got["model"] == "m2"
+    # 覆盖 key
+    c.put("/api/settings/providers/kp", json={"api_key": "sk-second-key-2222"})
+    got = next(p for p in c.get("/api/settings/providers").json()["providers"]
+               if p["name"] == "kp")
+    assert got["api_key_hint"] == "****2222"
+    # 清除 key
+    c.put("/api/settings/providers/kp", json={"api_key": ""})
+    got = next(p for p in c.get("/api/settings/providers").json()["providers"]
+               if p["name"] == "kp")
+    assert got["has_api_key"] is False
+
+
+def test_provider_create_requires_some_key_source(tmp_path, fake_embedder):
+    """api_key 与 api_key_env 至少给一个，否则 422（建出来也用不了，前置拦截）。"""
+    c = _client(tmp_path, fake_embedder)
+    r = c.post("/api/settings/providers", json={
+        "name": "nokey", "base_url": "http://x/v1", "model": "m"})
+    assert r.status_code == 422
+
+
 def test_document_fulltext_and_delete(tmp_path, fake_embedder):
     c = _client(tmp_path, fake_embedder)
     kb_id = c.post("/api/kb", json={"name": "库"}).json()["id"]

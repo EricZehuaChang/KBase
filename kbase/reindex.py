@@ -41,10 +41,12 @@ def _main() -> None:
         dialect = _s.get_bind().dialect.name
     kw = make_keyword_index(sf, dialect=dialect)
 
-    import kbase.plugins.embedders.bge_local      # noqa: F401
     import kbase.plugins.vectorstores.chroma_store  # noqa: F401
 
-    embedder = registry.create("embedder", cfg.embedder.name, model=cfg.embedder.model)
+    # M5-2：重建必须用该 KB 绑定的向量模型（KB.config JSON 的 embedder 键），
+    # 不能一律用默认模型——否则重建后的向量与查询向量空间不一致，检索报废。
+    from kbase.plugins.embedders.factory import EmbedderPool, kb_embedder_id
+    embedder = EmbedderPool(cfg).get(kb_embedder_id(sf, args.kb))
     store = registry.create("vectorstore", cfg.vectorstore.name,
                             persist_dir=str(cfg.data_dir / "chroma"))
 

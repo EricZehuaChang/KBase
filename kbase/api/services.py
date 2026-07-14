@@ -19,6 +19,7 @@ from kbase.config import AppConfig, load_config, resolve_db_url
 from kbase.db import make_session_factory
 from kbase.index.factory import make_keyword_index
 from kbase.ingest.pipeline import IngestPipeline
+from kbase.plugins.embedders.factory import EmbedderPool, kb_embedder_id
 from kbase.plugins.registry import registry
 from kbase.rag.retriever import Retriever
 from kbase.rag.rewriter import QueryRewriter
@@ -53,6 +54,10 @@ class Services:
     get_llm: Callable                # (name: str | None) -> LLM
     invalidate_llm_cache: Callable   # (name: str) -> None
     test_llm: object | None          # 测试注入的 active llm（无注入时 None）
+    # KB 级向量模型（M5-2）：embedder_catalog 给 GET /api/embedders 用；
+    # embedder_ids 给建库校验用；embedder 字段本身仍是"默认 embedder"实例。
+    embedder_catalog: dict = None
+    embedder_ids: set = None
 
 
 def build_services(config_path, *, embedder=None, store=None,
@@ -64,18 +69,21 @@ def build_services(config_path, *, embedder=None, store=None,
     sf = make_session_factory(resolve_db_url(cfg))
     providers_store.seed_from_config(sf, cfg)   # providers 表为空时才导入 YAML，之后 DB 为唯一真源
 
-    if embedder is None:   # 测试注入 FakeEmbedder，生产走配置
-        if cfg.embedder.name == "tei":
-            import kbase.plugins.embedders.tei  # noqa: F401
-            if not cfg.embedder.endpoint:
-                raise ValueError("embedder.name=tei 但未配置 embedder.endpoint")
-            embedder = registry.create("embedder", "tei",
-                                       endpoint=cfg.embedder.endpoint)
-        else:
-            # bge_local 依赖 local-embed extra 且加载慢，仅在真正需要时 import 注册
-            import kbase.plugins.embedders.bge_local  # noqa: F401
-            embedder = registry.create("embedder", cfg.embedder.name,
-                                       model=cfg.embedder.model)
+    # KB 级向量模型池（M5-2）：注入的 embedder（测试 FakeEmbedder）作为
+    # default 预置进池；未注入时池按 cfg.embedder 构建默认实例（启动即建，
+    # 与改造前时序一致——生产 bge-m3 的加载耗时仍发生在启动阶段而不是首查询）。
+    # cfg.embedders 清单里的可选模型全部惰性构建（首个使用它的 KB 摄取/查询时）。
+    pool = EmbedderPool(cfg, default_embedder=embedder)
+    embedder = pool.get(None)
+
+    def embedder_for_kb(kb_id: str):
+        """按 KB 绑定解析 embedder。绑定的选项若已从配置删除，宁可失败也不
+        静默换默认模型（向量空间不可比，静默替换=该库检索打分悄悄失效）。"""
+        try:
+            return pool.get(kb_embedder_id(sf, kb_id))
+        except KeyError as e:
+            raise RuntimeError(
+                f"知识库 {kb_id} 绑定的向量模型不可用: {e}") from e
     if store is None:
         if cfg.vectorstore.name == "qdrant":
             if not cfg.vectorstore.endpoint:
@@ -119,7 +127,9 @@ def build_services(config_path, *, embedder=None, store=None,
             _llm_cache[pname] = registry.create(
                 "llm", "openai-compat", base_url=p["base_url"],
                 api_key_env=p["api_key_env"], model=p["model"],
-                max_concurrency=p["max_concurrency"], params=p["params"])
+                max_concurrency=p["max_concurrency"], params=p["params"],
+                # M5-2：页面直配密钥优先于环境变量（见 openai_compat 解析顺序）
+                api_key=p.get("api_key"))
         return _llm_cache[pname]
 
     def invalidate_llm_cache(name: str) -> None:
@@ -141,14 +151,24 @@ def build_services(config_path, *, embedder=None, store=None,
         enricher = None    # 显式关闭：测试哨兵
 
     if ocr_backend is None and cfg.ocr.enabled:
-        import kbase.plugins.ocr.monkey_http  # noqa: F401
-        ocr_backend = registry.create("ocr", cfg.ocr.backend, endpoint=cfg.ocr.endpoint)
+        # endpoint 留空时不传参，让各后端用自己的默认值（monkey=localhost:7861，
+        # glm-ocr=智谱官方云端点）；显式配置则覆盖（如 vLLM 本地跑 GLM-OCR）。
+        ocr_kwargs = {"endpoint": cfg.ocr.endpoint} if cfg.ocr.endpoint else {}
+        if cfg.ocr.backend == "glm-ocr":
+            import kbase.plugins.ocr.glm_http  # noqa: F401
+            ocr_backend = registry.create(
+                "ocr", "glm-ocr", api_key_env=cfg.ocr.api_key_env,
+                model=cfg.ocr.model, **ocr_kwargs)
+        else:
+            import kbase.plugins.ocr.monkey_http  # noqa: F401
+            ocr_backend = registry.create("ocr", cfg.ocr.backend, **ocr_kwargs)
 
     pipeline = IngestPipeline(sf, chunker, embedder, store,
                               files_dir=cfg.data_dir / "files",
                               keyword_index=keyword_index,
                               enricher=enricher,
-                              ocr_backend=ocr_backend)
+                              ocr_backend=ocr_backend,
+                              embedder_resolver=embedder_for_kb)
 
     rerank_degraded = False
     if reranker is False:
@@ -175,7 +195,8 @@ def build_services(config_path, *, embedder=None, store=None,
                           candidates=cfg.retrieval.candidates,
                           rrf_k=cfg.retrieval.rrf_k,
                           max_parent_chars=cfg.retrieval.max_parent_chars,
-                          max_concurrency=cfg.retrieval.rerank.max_concurrency)
+                          max_concurrency=cfg.retrieval.rerank.max_concurrency,
+                          embedder_resolver=embedder_for_kb)
     gen_min_score = (cfg.retrieval.min_score_rerank if retriever.rerank_active
                      else cfg.retrieval.min_score_dense)
 
@@ -202,4 +223,6 @@ def build_services(config_path, *, embedder=None, store=None,
         # 测试注入路径：暴露被注入的 active llm 实例，便于测试直接断言其记录的
         # last_messages（如 FakeLLM）；生产路径未注入任何 llm 时为 None。
         test_llm=(llms or {}).get(cfg.llm.active),
+        embedder_catalog=pool.catalog(),
+        embedder_ids=pool.known_ids(),
     )

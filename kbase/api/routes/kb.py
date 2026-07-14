@@ -21,13 +21,26 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
     sf, cfg, store, keyword_index, pipeline = (
         svc.sf, svc.cfg, svc.store, svc.keyword_index, svc.pipeline)
 
+    @router.get("/embedders", dependencies=[deps.require_viewer])
+    def list_embedders():
+        """建库下拉用：默认向量模型 + cfg.embedders 可选清单（M5-2）。"""
+        return svc.embedder_catalog
+
     @router.post("/kb", dependencies=[deps.require_editor, deps.audit_mutation])
     def create_kb(body: KBCreate):
-        kb = KnowledgeBase(id=str(uuid.uuid4()), name=body.name)
+        # 绑定校验先行：向量模型 id 必须在配置清单内，建完不可改
+        #（换模型=向量空间不可比，该库全部向量作废，只能重建）。
+        embedder_id = body.embedder or "default"
+        if embedder_id not in svc.embedder_ids:
+            raise HTTPException(
+                422, f"未知的向量模型: {embedder_id}，可选: {sorted(svc.embedder_ids)}")
+        config = (json.dumps({"embedder": embedder_id}, ensure_ascii=False)
+                  if embedder_id != "default" else None)
+        kb = KnowledgeBase(id=str(uuid.uuid4()), name=body.name, config=config)
         with sf() as s:
             s.add(kb)
             s.commit()
-        return {"id": kb.id, "name": kb.name}
+        return {"id": kb.id, "name": kb.name, "embedder": embedder_id}
 
     @router.get("/kb", dependencies=[deps.require_viewer])
     def list_kb():
@@ -72,7 +85,17 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
             kb = s.get(KnowledgeBase, kb_id)
             if kb is None:
                 raise HTTPException(404, f"知识库不存在: {kb_id}")
-            kb.config = json.dumps(body.model_dump(exclude_none=True), ensure_ascii=False)
+            # KBConfigBody 只管分块/增强字段；embedder 绑定（M5-2）是建库时
+            # 定死的，必须从旧 config 原样带过来——否则一次分块参数调整就会把
+            # 绑定冲掉、让该库静默回落默认模型（检索打分随即失效）。
+            new_config = body.model_dump(exclude_none=True)
+            try:
+                old_config = json.loads(kb.config) if kb.config else {}
+            except (json.JSONDecodeError, TypeError):
+                old_config = {}
+            if "embedder" in old_config:
+                new_config["embedder"] = old_config["embedder"]
+            kb.config = json.dumps(new_config, ensure_ascii=False)
             s.commit()
         return {"ok": True}
 

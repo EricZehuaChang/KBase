@@ -9,13 +9,17 @@ from kbase.plugins.registry import registry
 class OpenAICompatProvider:
     """一个实现通吃所有 OpenAI 兼容端点（DashScope/硅基流动/vLLM/DeepSeek）。"""
 
-    def __init__(self, base_url: str, api_key_env: str, model: str,
-                 max_concurrency: int = 4, params: dict | None = None):
+    def __init__(self, base_url: str, api_key_env: str = "", model: str = "",
+                 max_concurrency: int = 4, params: dict | None = None,
+                 api_key: str | None = None):
         from openai import AsyncOpenAI
-        key = os.environ.get(api_key_env)
+        # 密钥解析顺序（M5-2）：页面直配的 api_key（DB 存储）优先，
+        # 其次 api_key_env 指向的环境变量——两者都没有才报错。
+        key = api_key or (os.environ.get(api_key_env) if api_key_env else None)
         if not key:
             raise RuntimeError(
-                f"环境变量 {api_key_env} 未设置，无法初始化 LLM provider")
+                f"provider 未配置密钥：api_key 为空且环境变量 "
+                f"{api_key_env or '(未指定)'} 未设置，无法初始化 LLM provider")
         self._client = AsyncOpenAI(base_url=base_url, api_key=key)
         self.model = model
         self._sem = asyncio.Semaphore(max_concurrency)
