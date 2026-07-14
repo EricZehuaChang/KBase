@@ -25,7 +25,8 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
 
     async def _run_query(kb_id: str, body: QueryBody, *,
                          history: list[dict] | None = None,
-                         on_complete=None, retrieval_query: str | None = None):
+                         on_complete=None, retrieval_query: str | None = None,
+                         request=None):
         """共享检索+生成编排：会话端点与旧的 /api/kb/{id}/query 端点复用同一份
         逻辑，保证事件序列（citations→token*→done）与拒答语义完全一致。
 
@@ -57,6 +58,18 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         usable = gen.usable_blocks(blocks)
         citations = gen.citations(usable)
 
+        # 运营看板（C）：拒答=检索无可用依据（usable 为空）。单独落
+        # query_refused 审计，让"用户问了什么我们答不上"成为可查的知识缺口
+        # 信号（无答案问题清单直接读这条）。检索/生成照常，审计只留痕。
+        if not usable and request is not None:
+            from kbase.audit import write_audit
+            actor = getattr(request.state, "actor", None)
+            client = request.client
+            write_audit(sf, actor=(actor["name"] if actor else "unknown"),
+                        action="query_refused", resource=f"kb_id={kb_id}",
+                        detail=body.question[:100],
+                        ip=(client.host if client else None))
+
         async def events():
             pieces: list[str] = []
             try:
@@ -78,7 +91,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
     @router.post("/kb/{kb_id}/query", dependencies=[deps.require_viewer])
     async def query(kb_id: str, body: QueryBody, request: Request):
         write_query_audit(sf, request, resource=f"kb_id={kb_id}", question=body.question)
-        return await _run_query(kb_id, body)
+        return await _run_query(kb_id, body, request=request)
 
     @router.post("/kb/{kb_id}/search", dependencies=[deps.require_viewer])
     async def search(kb_id: str, body: SearchBody):
@@ -173,4 +186,4 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
 
         return await _run_query(conv.kb_id, body, history=history,
                                retrieval_query=rewrite_res.query,
-                               on_complete=_persist)
+                               on_complete=_persist, request=request)
