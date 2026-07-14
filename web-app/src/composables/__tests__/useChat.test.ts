@@ -213,8 +213,10 @@ describe("useChat", () => {
     await sendPromise;
 
     const last = messages.value[messages.value.length - 1];
-    expect(last.content).toBe("前半");          // 已到内容保留
+    expect(last.content).toBe("前半");          // 已到内容保留，不拼接任何标记文本
     expect(last.content).not.toContain("⚠️");   // 用户主动取消：无错误警示
+    expect(last.stopped).toBe(true);            // 已停止标记：与"服务端中断"区分开
+    expect(last.interrupted).toBe(false);
     expect(last.streaming).toBe(false);
     expect(streaming.value).toBe(false);
   });

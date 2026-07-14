@@ -1,20 +1,25 @@
 <script setup lang="ts">
 // 【使用端】根组件（Vite 入口 index.html 挂载）。/login 走独立居中卡片页
-// （不带顶栏，逻辑与分端改造前的 App.vue 一致）；其余路由套一层极简顶栏——
-// logo、用户名+角色徽章+登出、以及仅 editor/admin 可见的"进入工作台"入口
-// （spec §4：viewer 只能用使用端）。F1 只搭这层壳，问答本身仍是现状
-// ChatView（未重构），会话侧栏/内联引用/快捷问题/停止生成等体验项留给 F2。
+// （不带顶栏，逻辑与分端改造前的 App.vue 一致）；其余路由套一层顶栏——
+// logo、KB/模型选择器、主题切换、用户名+角色徽章+登出，以及仅 editor/admin
+// 可见的"进入工作台"入口（spec §4：viewer 只能用使用端）。
 //
-// 关键耦合点：ChatView 内部用 Teleport to="#sidebar-slot" 把会话列表注入
-// 分端改造前 AppShell 提供的挂载点——这里必须保留同名挂载点（下面的
-// <aside id="sidebar-slot">），否则 Vue 找不到 Teleport 目标时只会静默
-// warning、不报错，会话侧栏会被悄悄丢弃而不易发现。F2 重构 ChatView 时会
-// 连带清理这层耦合，把会话状态收归 PortalShell 原生持有。
-import { ref } from "vue";
+// M5-1 F2：KB/模型选择器从 ChatHome（原 ChatView）搬到这里——两个原因：
+// ①这两个选择器语义上是"当前使用端会话的上下文"，理应跨页面（哪怕使用端
+// 目前只有问答一个页面）常驻在顶栏，而不是绑死在某个路由视图里；
+// ②F1 遗留的 #sidebar-slot Teleport 挂载点在这版一并移除——ChatHome 的
+// 会话侧栏已经改成原生子组件（见 ChatHome.vue/SessionSidebar.vue），不再
+// 需要跨组件树注入，PortalShell 不必再为它开一个挂载点。
+import { ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { LogOut } from "@lucide/vue";
+import { LogOut, Sun, Moon } from "@lucide/vue";
 import { getSession, logout, type Me } from "@/lib/api";
 import { roleLabel, roleBadgeClass, canManageContent } from "@/lib/auth-utils";
+import { theme, toggleTheme } from "@/lib/theme";
+import { kbs, kbId, providers, provider, ensureTopbarLoaded } from "./topbar-state";
+import {
+  Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { Toaster } from "@/components/ui/sonner";
 
 const route = useRoute();
@@ -23,10 +28,23 @@ const router = useRouter();
 const me = ref<Me | null>(null);
 // 路由守卫已确保能到达非 /login 路由时会话必然存在，这里复用同一份缓存
 // （getSession）读用户名/角色展示，不再单独发一次请求（与现状 AppShell 的
-// 既有取舍一致）。
-if (route.path !== "/login") {
+// 既有取舍一致）。KB/Provider 列表同理在这里一并触发加载（ensureTopbarLoaded
+// 内部幂等，见 topbar-state.ts），比在 ChatHome 里 onMounted 拉更符合"顶栏
+// 持有这份状态"的归属。
+//
+// 用 watch(route.path) 而不是组件顶层一次性 if：PortalShell 是整个使用端
+// bundle 唯一常驻的根组件——LoginView 登录成功后走 router.replace()（SPA
+// 内导航，不整页刷新，见 LoginView.vue），PortalShell 不会重新 mount，
+// 顶层的一次性判断只会在"应用刚启动、还停在 /login"那一刻求值一次，之后
+// route.path 变成 "/" 也不会重新触发——之前这里就是一次性 if，实测登录后
+// 顶栏 KB/模型选择器与用户名/角色徽章一直空着，得手动刷新页面才会出现。
+// watch 能在每次 route.path 变化时重新判断，immediate:true 顶上"应用启动
+// 时已经带着有效 Cookie 直接落地到 /"这种首次求值场景。
+watch(() => route.path, (path) => {
+  if (path === "/login") return;
   getSession().then((session) => { me.value = session; });
-}
+  void ensureTopbarLoaded();
+}, { immediate: true });
 
 async function handleLogout() {
   try {
@@ -49,8 +67,26 @@ function enterWorkbench() {
     v-else
     class="flex h-screen w-full flex-col overflow-hidden bg-[var(--bg)] text-[var(--text)]"
   >
-    <header class="flex h-14 shrink-0 items-center justify-between border-b border-[var(--border)] px-4">
-      <div class="text-lg font-semibold tracking-tight">KBase</div>
+    <header class="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-4">
+      <div class="flex items-center gap-4">
+        <div class="text-lg font-semibold tracking-tight">KBase</div>
+        <Select v-model="kbId">
+          <SelectTrigger class="w-44"><SelectValue placeholder="选择知识库" /></SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              <SelectItem v-for="kb in kbs" :key="kb.id" :value="kb.id">{{ kb.name }}</SelectItem>
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+        <Select v-model="provider">
+          <SelectTrigger class="w-44"><SelectValue placeholder="选择模型" /></SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              <SelectItem v-for="p in providers" :key="p" :value="p">{{ p }}</SelectItem>
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      </div>
       <div class="flex items-center gap-3">
         <button
           v-if="me && canManageContent(me.role)"
@@ -59,6 +95,14 @@ function enterWorkbench() {
           @click="enterWorkbench"
         >
           进入工作台
+        </button>
+        <button
+          type="button"
+          class="rounded-[var(--radius-ctl)] p-2 text-[var(--text-2)] transition-colors hover:bg-[var(--surface-2)]"
+          :title="theme === 'dark' ? '切换到浅色模式' : '切换到深色模式'"
+          @click="toggleTheme"
+        >
+          <component :is="theme === 'dark' ? Sun : Moon" class="size-4" />
         </button>
         <div v-if="me" class="flex items-center gap-2">
           <span class="text-sm text-[var(--text)]">{{ me.username }}</span>
@@ -77,16 +121,9 @@ function enterWorkbench() {
       </div>
     </header>
 
-    <div class="flex min-h-0 flex-1">
-      <!-- ChatView 会话侧栏的 Teleport 挂载点，见上方脚本注释 -->
-      <aside
-        id="sidebar-slot"
-        class="flex w-[208px] shrink-0 flex-col overflow-y-auto border-r border-[var(--border)] bg-[var(--surface)] px-2 py-2"
-      />
-      <main class="min-h-0 flex-1 overflow-y-auto">
-        <router-view />
-      </main>
-    </div>
+    <main class="min-h-0 flex-1 overflow-hidden">
+      <router-view />
+    </main>
   </div>
   <Toaster />
 </template>

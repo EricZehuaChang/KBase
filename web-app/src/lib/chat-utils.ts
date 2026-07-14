@@ -8,13 +8,40 @@ export type ChipSegment =
 
 const CHIP_RE = /\[(\d+)\]/g;
 
+// M5-1 F2：代码块/行内代码免疫区间——LLM 回答里偶尔会带示例代码（如
+// `arr[1]`），这类 [n] 不该被误判成引用角标。只做轻量启发式，不是完整
+// CommonMark 解析：围栏代码块（```...```，可跨行）与行内代码（`...`，
+// 规约不跨行）各自用正则整体圈出区间，角标扫描命中这些区间时当纯文本
+// 跳过。数字区间（如"[1-3]"）天然不受影响——CHIP_RE 本身只匹配纯数字，
+// 带连字符的内容匹配不上，不需要额外过滤。
+function protectedRanges(text: string): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  for (const m of text.matchAll(/```[\s\S]*?```/g)) {
+    ranges.push([m.index ?? 0, (m.index ?? 0) + m[0].length]);
+  }
+  // 行内代码复用同一个数组做"是否已被围栏代码块覆盖"的判断，避免同一个
+  // `[n]` 位置被重复统计——不影响正确性，只是省一次去重。
+  for (const m of text.matchAll(/`[^`\n]+`/g)) {
+    const start = m.index ?? 0;
+    if (!ranges.some(([s, e]) => start >= s && start < e)) {
+      ranges.push([start, start + m[0].length]);
+    }
+  }
+  return ranges;
+}
+
 /** 将助手回答中的 `[n]` 引用角标切分为文本/角标片段序列，供组件渲染为
- * 可点击的 accent 小圆片。纯函数：不做任何 DOM 操作，用于 vitest 直接断言。 */
+ * 可点击的 accent 小圆片。纯函数：不做任何 DOM 操作，用于 vitest 直接断言。
+ * 不做"角标编号是否存在对应引用"的越界校验——解析器不知道 citations 数组
+ * 内容，找不到对应引用是渲染层的事（按 index 查 citations，找不到时展示
+ * "引用不存在"兜底），职责分离，纯函数不依赖会话状态更方便单测。 */
 export function renderWithChips(text: string): ChipSegment[] {
   const segments: ChipSegment[] = [];
+  const guarded = protectedRanges(text);
   let lastIndex = 0;
   for (const match of text.matchAll(CHIP_RE)) {
     const start = match.index ?? 0;
+    if (guarded.some(([s, e]) => start >= s && start < e)) continue;
     if (start > lastIndex) {
       segments.push({ type: "text", text: text.slice(lastIndex, start) });
     }

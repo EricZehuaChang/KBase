@@ -16,6 +16,10 @@ export interface ChatMessage {
   content: string;
   citations: Citation[];
   interrupted: boolean;
+  // 用户主动点击"停止生成"（或切会话/离开页面）中止时置位——与 interrupted
+  // （服务端流意外掉线）是两种不同语义，UI 分别展示"已停止"/"回答中断，
+  // 请重试"。不拼进 content：避免污染复制文本与引用角标解析用到的正文。
+  stopped: boolean;
   streaming: boolean;
 }
 
@@ -40,6 +44,7 @@ function fromServerMessage(m: Message): ChatMessage {
     content: m.content,
     citations,
     interrupted: false,
+    stopped: false,
     streaming: false,
   };
 }
@@ -89,7 +94,7 @@ export function useChat(kbId: Ref<string | undefined>, provider: Ref<string | un
     aborter = ac;
     const userMsg: ChatMessage = {
       id: nextId(), role: "user", content: trimmed,
-      citations: [], interrupted: false, streaming: false,
+      citations: [], interrupted: false, stopped: false, streaming: false,
     };
     // 关键：助手消息必须先包成 reactive 代理再 push。直接 push 裸对象后继续
     // 通过 const 引用（裸对象）赋值会绕过 Vue 的 Proxy setter——依赖收集在
@@ -97,7 +102,7 @@ export function useChat(kbId: Ref<string | undefined>, provider: Ref<string | un
     // "思考中…"，流结束才整段弹出）。
     const assistantMsg = reactive<ChatMessage>({
       id: nextId(), role: "assistant", content: "",
-      citations: [], interrupted: false, streaming: true,
+      citations: [], interrupted: false, stopped: false, streaming: true,
     });
     messages.value.push(userMsg, assistantMsg);
 
@@ -133,26 +138,41 @@ export function useChat(kbId: Ref<string | undefined>, provider: Ref<string | un
         return;
       }
       const reader = res.body.getReader();
-      const gotDone = await parseSSE(reader, (event, data) => {
-        if (event === "citations") {
-          try {
-            assistantMsg.citations = JSON.parse(data) as Citation[];
-          } catch {
-            assistantMsg.citations = [];
+      try {
+        const gotDone = await parseSSE(reader, (event, data) => {
+          if (event === "citations") {
+            try {
+              assistantMsg.citations = JSON.parse(data) as Citation[];
+            } catch {
+              assistantMsg.citations = [];
+            }
+          } else if (event === "token") {
+            assistantMsg.content += data;
           }
-        } else if (event === "token") {
-          assistantMsg.content += data;
+        });
+        if (!gotDone) {
+          assistantMsg.interrupted = true;
+          assistantMsg.content += "\n\n⚠️ 回答中断，请重试";
         }
-      });
-      if (!gotDone) {
-        assistantMsg.interrupted = true;
-        assistantMsg.content += "\n\n⚠️ 回答中断，请重试";
+      } finally {
+        // 显式释放 reader 锁：abort 会让 reader.read() 以 AbortError 拒绝、
+        // parseSSE 的 for(;;) 循环提前抛出跳出——不主动 releaseLock 的话，
+        // 这个 reader 理论上会一直"锁着"这个 body 流（虽然 reader 对象很快
+        // 被 GC，显式释放更可控，避免连续快速点"停止生成"再发下一问时，
+        // 上一个未回收的 reader 干扰新请求的流读取）。正常收完 done 事件
+        // 时调用同样安全、幂等。
+        reader.releaseLock();
       }
     } catch (err) {
-      if (!isAbortError(err)) {
+      if (isAbortError(err)) {
+        // 用户点击"停止生成"，或切会话/离开页面触发 cancel()：保留已生成
+        // 的部分内容，打"已停止"标记（不是错误）。切会话场景下这条消息会
+        // 被 loadConversation/startNewConversation 整体丢弃，标记不会被
+        // 渲染，无副作用。
+        assistantMsg.stopped = true;
+      } else {
         assistantMsg.content = `⚠️ ${err instanceof Error ? err.message : String(err)}`;
       }
-      // AbortError = 用户主动切换/离开触发的取消：保留已到内容，静默收尾
     } finally {
       assistantMsg.streaming = false;
       // 仅当当前控制器仍是本次 send 的（未被 cancel/新 send 替换）才复位，
