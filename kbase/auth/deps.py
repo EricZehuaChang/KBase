@@ -52,7 +52,10 @@ def make_get_current_actor(sf, secret: str):
                 user = s.query(User).filter_by(username=username).first()
             if user is None or user.disabled:
                 raise _unauthorized()
-            actor = {"name": user.username, "role": user.role}
+            # user_id：M5-1 F2 会话归属过滤用（kbase/conversations.py）。Cookie
+            # 通道背后是真实 users 表行，有稳定 id，可以把新建的会话记到这个人
+            # 名下。
+            actor = {"name": user.username, "role": user.role, "user_id": user.id}
             request.state.actor = actor
             return actor
 
@@ -64,7 +67,11 @@ def make_get_current_actor(sf, secret: str):
                 row = s.query(ApiKey).filter_by(key_hash=key_hash).first()
             if row is None or row.revoked:
                 raise _unauthorized()
-            actor = {"name": row.name, "role": row.role}
+            # user_id 显式置 None（而不是漏掉这个 key）：API Key 是集成方/MCP
+            # 用的独立凭据，不代表某个具体登录用户，没有可归属的 user_id——
+            # 这类 actor 建的会话落 NULL，语义上等同"历史遗留/无归属"，
+            # 只有它自己和后续任何人都能在归属过滤下看到（见 _visible_filter）。
+            actor = {"name": row.name, "role": row.role, "user_id": None}
             request.state.actor = actor
             return actor
 
@@ -85,7 +92,11 @@ def make_synthetic_admin_actor_dependency():
     """
 
     def _set_synthetic_actor(request: Request) -> dict:
-        actor = {"name": ANONYMOUS_ACTOR_NAME, "role": "admin"}
+        # user_id=None：off 模式没有真实用户体系，会话归属过滤（见
+        # kbase/conversations.py）在这个模式下天然退化成"只看 NULL 归属的会话"
+        # ——因为所有会话都会用这同一个合成 actor 创建，全部落 NULL，过滤条件
+        # 因此对既有功能测试/单机免鉴权部署完全透明（大家看到的还是全部会话）。
+        actor = {"name": ANONYMOUS_ACTOR_NAME, "role": "admin", "user_id": None}
         request.state.actor = actor
         return actor
 

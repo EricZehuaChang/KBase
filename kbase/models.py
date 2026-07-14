@@ -50,6 +50,12 @@ class Conversation(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     kb_id: Mapped[str] = mapped_column(String(36), index=True)
     title: Mapped[str] = mapped_column(String(200), default="新会话")
+    # M5-1 F2：会话归属（鉴权改造前，会话是全局的，没有归属概念）。可空——
+    # ①历史遗留会话没有归属，迁移时不倒推补全（谁都不该被动认领别人的老会话）；
+    # ②API Key actor 发起的会话也存 NULL（API Key 不绑定具体用户，见
+    # auth/deps.py 的 actor["user_id"] 取值注释）。归属过滤逻辑见
+    # kbase/conversations.py 的 _visible_filter。
+    user_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

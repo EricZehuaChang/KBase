@@ -223,4 +223,6 @@ def test_synthetic_admin_actor_passes_admin_only_route_without_credentials():
     client = TestClient(_make_off_mode_app())
     r = client.get("/admin-only")     # 没带任何 Cookie/Bearer
     assert r.status_code == 200
-    assert r.json()["actor"] == {"name": ANONYMOUS_ACTOR_NAME, "role": "admin"}
+    # user_id=None：M5-1 F2 新增字段，off 模式没有真实用户体系（见
+    # auth/deps.py 合成 actor 的注释），会话归属过滤据此退化为只见 NULL 会话。
+    assert r.json()["actor"] == {"name": ANONYMOUS_ACTOR_NAME, "role": "admin", "user_id": None}

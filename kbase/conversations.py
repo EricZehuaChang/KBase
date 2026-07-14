@@ -4,15 +4,35 @@ import re
 import uuid
 from datetime import datetime
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 from kbase.models import Conversation, Message
 
 HISTORY_ROUNDS = 3
 
 
-def create_conversation(sf, kb_id: str) -> dict:
-    conv = Conversation(id=str(uuid.uuid4()), kb_id=kb_id)
+def _visible_filter(user_id: str | None):
+    """会话归属过滤条件：本人会话 OR 历史遗留会话（user_id IS NULL）。
+
+    取舍（M5-1 F2 的产品决策，记在这里而不是 API 层，因为所有归属相关的
+    查询——list/get/rename/delete——都要复用同一条规则，散在各处容易漏改
+    一处）：鉴权改造前的会话没有归属人，迁移时不倒推补全（没有可靠依据判断
+    "这条老会话该归谁"），而是把 NULL 会话对所有登录用户都放行可见——宽松
+    的历史数据兜底，代价是老会话谁都能看/删，但这批数据量小且是过渡态，
+    换来的是不用为老数据编造一个可能错误的归属人。
+    新会话一律带上创建者的 user_id，从这一刻起归属清晰。
+    admin 角色不享有特权：同样只能看到自己名下 + 历史遗留会话，不做"管理员
+    能看所有人会话"的例外——会话内容可能涉及提问者的敏感检索意图，默认给
+    隐私而不是给管理可见性（有审计日志兜底追溯，不需要靠"admin 能翻会话"
+    来补足运维能力）。
+    user_id=None（API Key actor 或 auth=off 的合成 actor）时，
+    `Conversation.user_id == None` 与 `.is_(None)` 等价，条件退化为只能看
+    NULL 归属的会话——不会意外看到某个具体登录用户的会话。"""
+    return or_(Conversation.user_id == user_id, Conversation.user_id.is_(None))
+
+
+def create_conversation(sf, kb_id: str, user_id: str | None = None) -> dict:
+    conv = Conversation(id=str(uuid.uuid4()), kb_id=kb_id, user_id=user_id)
     with sf() as s:
         s.add(conv)
         s.commit()
@@ -20,11 +40,12 @@ def create_conversation(sf, kb_id: str) -> dict:
 
 
 def list_conversations(sf, kb_id: str | None = None, *,
-                       limit: int = 30, offset: int = 0) -> dict:
-    """按 updated_at desc 分页；返回 {items, total}——total 为过滤后（按 kb_id）
-    的总数，供前端判断是否还有更多可加载。"""
+                       limit: int = 30, offset: int = 0,
+                       user_id: str | None = None) -> dict:
+    """按 updated_at desc 分页；返回 {items, total}——total 为过滤后（按 kb_id
+    与归属，见 _visible_filter）的总数，供前端判断是否还有更多可加载。"""
     with sf() as s:
-        q = s.query(Conversation)
+        q = s.query(Conversation).filter(_visible_filter(user_id))
         if kb_id:
             q = q.filter_by(kb_id=kb_id)
         total = q.count()
@@ -33,6 +54,46 @@ def list_conversations(sf, kb_id: str | None = None, *,
         items = [{"id": c.id, "kb_id": c.kb_id, "title": c.title,
                  "updated_at": c.updated_at.isoformat()} for c in rows]
         return {"items": items, "total": total}
+
+
+def get_conversation(sf, conv_id: str, user_id: str | None = None) -> Conversation | None:
+    """归属过滤下查找单个会话；不可见（不存在 或 存在但归属别人）统一返回
+    None——调用方（api/main.py）据此一律 404，不区分"真没有"与"有但不是你的"，
+    避免把别人会话的存在性泄漏给探测请求。"""
+    with sf() as s:
+        return (s.query(Conversation)
+                .filter(Conversation.id == conv_id, _visible_filter(user_id))
+                .first())
+
+
+def rename_conversation(sf, conv_id: str, title: str,
+                        user_id: str | None = None) -> dict | None:
+    with sf() as s:
+        conv = (s.query(Conversation)
+                .filter(Conversation.id == conv_id, _visible_filter(user_id))
+                .first())
+        if conv is None:
+            return None
+        conv.title = title
+        conv.updated_at = datetime.utcnow()
+        s.commit()
+        return {"id": conv.id, "kb_id": conv.kb_id, "title": conv.title}
+
+
+def delete_conversation(sf, conv_id: str, user_id: str | None = None) -> bool:
+    """删除会话及其消息（无 ORM 级联，手工两步删，与 api/main.py delete_kb
+    的既有级联删除手法一致）。归属过滤下找不到（不存在/不是你的）返回
+    False，调用方 404。"""
+    with sf() as s:
+        conv = (s.query(Conversation)
+                .filter(Conversation.id == conv_id, _visible_filter(user_id))
+                .first())
+        if conv is None:
+            return False
+        s.query(Message).filter_by(conv_id=conv_id).delete()
+        s.delete(conv)
+        s.commit()
+        return True
 
 
 def list_messages(sf, conv_id: str) -> list[dict]:
