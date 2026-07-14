@@ -7,9 +7,13 @@
 // M5-2：新增主流厂商预设下拉（添加模式，选中即预填 base_url/model/
 // api_key_env，均可再改）与 API Key 直配输入（密钥存服务端 DB，编辑时
 // 留空=不修改，勾选"清除"回退环境变量）。
+// 模型选择升级：填好 base_url+Key 后点"获取模型列表"（服务端代理拉
+// {base_url}/models 并缓存 7 天，过期由访问自动周更），model 输入框变成
+// datalist 下拉可选+仍可自由输入——同样适用于企业内部自有 OpenAI 兼容
+// 平台（自定义 base_url 即可）。
 import { computed, reactive, ref, watch } from "vue";
 import { toast } from "vue-sonner";
-import { CheckCircle2 } from "@lucide/vue";
+import { CheckCircle2, RefreshCw, Loader2 } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -18,7 +22,10 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { createProvider, updateProvider, type Provider } from "@/lib/api";
+import {
+  createProvider, listModelCatalogs, refreshModelCatalog, updateProvider,
+  type ModelCatalog, type Provider,
+} from "@/lib/api";
 import {
   buildProviderBody, PROVIDER_PRESETS, validateParamsJson,
 } from "@/lib/settings-utils";
@@ -43,6 +50,48 @@ const clearKey = ref(false);          // 编辑模式：显式清除直配密钥
 const paramsError = ref<string | null>(null);
 const saving = ref(false);
 
+// ---- 模型目录：base_url → 已缓存的模型清单 ----
+const catalogs = ref<Map<string, ModelCatalog>>(new Map());
+const fetchingModels = ref(false);
+const modelsError = ref<string | null>(null);
+
+const currentCatalog = computed(() =>
+  catalogs.value.get(form.base_url.trim().replace(/\/+$/, "")) ?? null);
+
+async function loadCatalogs() {
+  try {
+    const { catalogs: list } = await listModelCatalogs();
+    catalogs.value = new Map(list.map((c) => [c.base_url, c]));
+  } catch {
+    // 目录只是辅助，拉不到不阻塞表单（model 仍可手输）
+  }
+}
+
+async function fetchModels() {
+  const baseUrl = form.base_url.trim();
+  if (!baseUrl) {
+    modelsError.value = "请先填写 base_url";
+    return;
+  }
+  fetchingModels.value = true;
+  modelsError.value = null;
+  try {
+    // 编辑模式且没改 key：用已存 provider 的凭据；否则用表单里的 key/env
+    const body = (props.provider && !form.api_key.trim())
+      ? { provider_name: props.provider.name }
+      : { base_url: baseUrl, api_key: form.api_key.trim() || undefined,
+          api_key_env: form.api_key_env.trim() || undefined };
+    const catalog = await refreshModelCatalog(body);
+    catalogs.value.set(catalog.base_url, catalog);
+    catalogs.value = new Map(catalogs.value);   // 触发响应式更新
+    toast.success(`已获取 ${catalog.models.length} 个模型`);
+  } catch (err) {
+    modelsError.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    fetchingModels.value = false;
+  }
+}
+
 // 每次打开都按 provider 回填（编辑）或清空（添加），避免残留上次编辑内容。
 // api_key 输入框始终清空——原文不回显（后端也不返回原文），编辑时留空即不动。
 watch(() => props.open, (isOpen) => {
@@ -59,6 +108,8 @@ watch(() => props.open, (isOpen) => {
   presetKey.value = "";
   clearKey.value = false;
   paramsError.value = null;
+  modelsError.value = null;
+  loadCatalogs();     // 已缓存的各端点模型清单（GET 同时触发服务端周更）
 });
 
 // 选中预设即预填（自定义/未选不动表单）；name 建议用预设 key，仍可改
@@ -166,8 +217,32 @@ async function submit() {
           <Input v-model="form.api_key_env" placeholder="OPENAI_API_KEY" />
         </label>
         <label class="flex flex-col gap-1">
-          <span class="text-sm text-[var(--text-2)]">model</span>
-          <Input v-model="form.model" placeholder="gpt-4o-mini" />
+          <div class="flex items-center justify-between">
+            <span class="text-sm text-[var(--text-2)]">model</span>
+            <!-- 服务端代理拉 {base_url}/models（需先填 base_url 与密钥）；
+                 结果缓存 7 天，过期后台自动周更。企业自有 OpenAI 兼容平台
+                 同样适用——自定义 base_url 即可 -->
+            <Button
+              variant="ghost" size="sm" type="button"
+              :disabled="fetchingModels"
+              @click="fetchModels"
+            >
+              <Loader2 v-if="fetchingModels" class="size-3.5 animate-spin" />
+              <RefreshCw v-else class="size-3.5" />
+              获取模型列表
+            </Button>
+          </div>
+          <!-- datalist：有清单时下拉可选，同时永远支持自由输入（自定义模型名） -->
+          <Input v-model="form.model" list="provider-model-options" placeholder="点上方按钮获取列表，或直接输入模型名" />
+          <datalist id="provider-model-options">
+            <option v-for="m in currentCatalog?.models ?? []" :key="m" :value="m" />
+          </datalist>
+          <span v-if="modelsError" class="text-xs text-[var(--err)]">{{ modelsError }}</span>
+          <span v-else-if="currentCatalog" class="text-xs text-[var(--text-3)]">
+            {{ currentCatalog.models.length }} 个模型
+            · 更新于 {{ currentCatalog.fetched_at?.slice(0, 16).replace("T", " ") ?? "未知" }}
+            {{ currentCatalog.stale ? "（已过期，将自动刷新）" : "" }}
+          </span>
         </label>
         <label class="flex flex-col gap-1">
           <span class="text-sm text-[var(--text-2)]">max_concurrency</span>

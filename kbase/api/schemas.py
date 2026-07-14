@@ -94,6 +94,17 @@ class ActiveProviderBody(BaseModel):
     name: str
 
 
+class ModelRefreshBody(BaseModel):
+    """POST /api/settings/models/refresh：拉取某端点的模型清单。
+    凭据解析顺序：provider_name（用已存 provider 的 base_url+密钥）>
+    body 里的 api_key > api_key_env。表单"获取模型列表"场景走后两者
+    （provider 还没建，用户刚在表单里填了 key）。"""
+    base_url: str = ""
+    api_key: str | None = None
+    api_key_env: str = ""
+    provider_name: str | None = None
+
+
 class OutlineBody(BaseModel):
     kb_id: str
     topic: str
