@@ -32,6 +32,10 @@ retrieval:
 ocr:
   enabled: true
   backend: glm-ocr
+# F 满血 VLM 深度识别：实测本机在手模型中 gpt-5.4-mini 视觉直通
+# （glm-5.2/qwen3.7-max 文本端点不收图，需各家 VL 专门型号）
+vlm_parse:
+  provider: gpt-5.4-mini
 llm:
   active: qwen-plus
   providers:

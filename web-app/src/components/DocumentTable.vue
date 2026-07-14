@@ -7,7 +7,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
-import { RotateCw, Trash2, AlertCircle, Download, Blocks } from "@lucide/vue";
+import { RotateCw, Trash2, AlertCircle, Download, Blocks, ClipboardCheck } from "@lucide/vue";
 import { statusBadge, canRetryDoc } from "@/lib/kb-utils";
 import { docOriginalUrl, type DocumentItem } from "@/lib/api";
 
@@ -18,6 +18,7 @@ const emit = defineEmits<{
   retry: [doc: DocumentItem];
   delete: [doc: DocumentItem];
   chunks: [doc: DocumentItem];
+  review: [doc: DocumentItem];
 }>();
 </script>
 
@@ -62,6 +63,16 @@ const emit = defineEmits<{
                 <Download class="size-3.5" />
               </Button>
               <template v-if="canManage">
+                <!-- VLM 识别校验（F）：对照原图确认识别文本后才向量化入库 -->
+                <Button
+                  v-if="doc.status === 'pending_review'"
+                  variant="outline"
+                  size="sm"
+                  @click="emit('review', doc)"
+                >
+                  <ClipboardCheck class="size-3.5" />
+                  校验确认
+                </Button>
                 <!-- 分块管理（M6-1）：查看/启停/编辑本文档的分块 -->
                 <Button
                   v-if="doc.status === 'ready'"

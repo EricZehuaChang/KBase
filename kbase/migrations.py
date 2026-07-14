@@ -32,6 +32,8 @@ _COLUMN_MIGRATIONS = [
     ("chunks", "enabled", "BOOLEAN"),
     # M6-6 预埋：GLM-OCR 版式元数据（bbox/表格 JSON）。
     ("chunks", "layout", "TEXT"),
+    # F VLM 深度识别：文档解析模式（NULL=auto 既有管道）。
+    ("documents", "parse_mode", "TEXT"),
 ]
 
 _FTS_DDL = (

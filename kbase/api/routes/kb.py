@@ -10,12 +10,12 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from fastapi import BackgroundTasks, HTTPException, Query, UploadFile
+from fastapi import BackgroundTasks, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 
 from kbase import chunk_admin
 from kbase.api.routes import RouteDeps
-from kbase.api.schemas import ChunkUpdate, KBConfigBody, KBCreate
+from kbase.api.schemas import ChunkUpdate, DocumentReview, KBConfigBody, KBCreate
 from kbase.api.services import Services
 from kbase.models import Chunk, Conversation, Document, KnowledgeBase, Message
 
@@ -102,7 +102,8 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
             s.commit()
         return {"ok": True}
 
-    def _ingest_batch(kb_id: str, items: list[tuple[Path, str]]) -> None:
+    def _ingest_batch(kb_id: str, items: list[tuple[Path, str]],
+                      parse_mode: str = "auto") -> None:
         """单入口 bg task：ThreadPoolExecutor 并行摄取本批次所有文件（D5）。
         map 是惰性迭代器，必须消费完（list()）才会真正拉起所有任务并等待
         结果；executor 用 with 块在函数返回前 shutdown(wait=True)，保证
@@ -110,11 +111,18 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         摄取完毕（否则测试断言文档状态会在 executor 还没跑完时就检查）。"""
         with ThreadPoolExecutor(max_workers=cfg.ingest.workers) as executor:
             list(executor.map(
-                lambda item: pipeline.ingest_file(kb_id, item[0], item[1]),
+                lambda item: pipeline.ingest_file(kb_id, item[0], item[1],
+                                                  parse_mode=parse_mode),
                 items))
 
     @router.post("/kb/{kb_id}/documents", dependencies=[deps.require_editor, deps.audit_mutation])
-    def upload(kb_id: str, files: list[UploadFile], bg: BackgroundTasks):
+    def upload(kb_id: str, files: list[UploadFile], bg: BackgroundTasks,
+               parse_mode: str = Form("auto")):
+        """parse_mode（F）：auto=既有管道；vlm=满血视觉模型深度识别（仅图片
+        格式生效，识别后停 pending_review 等人工校验，非图片文件自动回落
+        auto 管道）。批量上传共用同一模式。"""
+        if parse_mode not in ("auto", "vlm"):
+            raise HTTPException(422, f"未知的 parse_mode: {parse_mode}")
         upload_dir = cfg.data_dir / "uploads"
         upload_dir.mkdir(parents=True, exist_ok=True)
         accepted = []
@@ -125,8 +133,23 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
             dest.write_bytes(f.file.read())
             items.append((dest, safe_name))
             accepted.append(safe_name)
-        bg.add_task(_ingest_batch, kb_id, items)
+        bg.add_task(_ingest_batch, kb_id, items, parse_mode)
         return {"accepted": accepted}
+
+    @router.put("/documents/{doc_id}/review",
+                dependencies=[deps.require_editor, deps.audit_mutation])
+    def review_document(doc_id: str, body: DocumentReview):
+        """F 校验确认：管理员核对（可编辑）VLM 识别文本后确认入库——此刻
+        才分块向量化。仅 pending_review 状态可执行（409 否则）。"""
+        try:
+            found = pipeline.approve_document(doc_id, markdown=body.markdown)
+        except ValueError as e:
+            raise HTTPException(409, str(e)) from e
+        if not found:
+            raise HTTPException(404, f"文档不存在: {doc_id}")
+        with sf() as s:
+            doc = s.get(Document, doc_id)
+            return {"id": doc.id, "status": doc.status, "error": doc.error}
 
     @router.get("/kb/{kb_id}/documents", dependencies=[deps.require_viewer])
     def list_docs(kb_id: str):

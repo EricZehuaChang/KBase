@@ -13,6 +13,8 @@ const STATUS_MAP: Record<string, StatusBadgeInfo> = {
   ready: { label: "就绪", class: "bg-[var(--ok-weak)] text-[var(--ok)]" },
   parsing: { label: "解析中", class: "bg-[var(--warn-weak)] text-[var(--warn)]" },
   pending_ocr: { label: "待OCR", class: "bg-[var(--warn-weak)] text-[var(--warn)]" },
+  // F VLM 深度识别：识别完成等人工校验确认（行内"校验确认"按钮入库）
+  pending_review: { label: "待确认", class: "bg-[var(--accent-weak)] text-[var(--accent-text)]" },
   pending: { label: "等待中", class: "bg-[var(--surface-2)] text-[var(--text-2)]" },
   failed: { label: "失败", class: "bg-[var(--err-weak)] text-[var(--err)]" },
 };

@@ -16,6 +16,7 @@ import UploadZone from "@/components/UploadZone.vue";
 import DocumentTable from "@/components/DocumentTable.vue";
 import KbConfigDialog from "@/components/KbConfigDialog.vue";
 import ChunkManagerDialog from "@/components/ChunkManagerDialog.vue";
+import ReviewDialog from "@/components/ReviewDialog.vue";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -132,6 +133,10 @@ async function confirmDeleteKb() {
 }
 
 // ---- 上传 ----
+// 解析模式（F）：auto=既有管道；vlm=满血视觉模型深度识别（仅图片格式生效，
+// 识别后停"待确认"等人工校验入库）。批量上传共用同一模式。
+const parseMode = ref<"auto" | "vlm">("auto");
+
 async function handleFilesSelected(files: File[]) {
   if (!kbId.value) return;
   // 乐观插入 parsing 行，立即可见；真实状态由下一次轮询/刷新覆盖
@@ -146,13 +151,23 @@ async function handleFilesSelected(files: File[]) {
   const form = new FormData();
   files.forEach((f) => form.append("files", f));
   try {
-    await uploadDocs(kbId.value, form);
-    toast.success(`已提交 ${files.length} 个文件`);
+    await uploadDocs(kbId.value, form, parseMode.value);
+    toast.success(`已提交 ${files.length} 个文件`
+      + (parseMode.value === "vlm" ? "（深度识别，完成后需校验确认）" : ""));
   } catch (err) {
     toast.error(err instanceof Error ? err.message : String(err));
   } finally {
     await loadDocs();
   }
+}
+
+// ---- VLM 识别校验（F）----
+const reviewDoc = ref<DocumentItem | null>(null);
+const reviewOpen = ref(false);
+
+function openReview(doc: DocumentItem) {
+  reviewDoc.value = doc;
+  reviewOpen.value = true;
 }
 
 // ---- 行操作 ----
@@ -277,6 +292,17 @@ onMounted(loadKbs);
         </div>
       </div>
 
+      <!-- 解析模式（F）：复杂图（概念图/时序图/PPT截图）选深度识别 -->
+      <div v-if="canManage" class="mb-2 flex items-center gap-2">
+        <span class="text-sm text-[var(--text-2)]">解析方式</span>
+        <Select v-model="parseMode">
+          <SelectTrigger class="w-64"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="auto">自动（文档/扫描件通用管道）</SelectItem>
+            <SelectItem value="vlm">满血模型深度识别（复杂图，需人工校验）</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
       <UploadZone v-if="canManage" class="mb-4" @files-selected="handleFilesSelected" />
 
       <DocumentTable
@@ -286,6 +312,7 @@ onMounted(loadKbs);
         @retry="handleRetry"
         @delete="(doc) => (deleteTarget = doc)"
         @chunks="openChunks"
+        @review="openReview"
       />
     </template>
   </div>
@@ -341,6 +368,7 @@ onMounted(loadKbs);
 
   <KbConfigDialog v-model:open="configOpen" :kb="currentKb" @saved="loadKbs" />
   <ChunkManagerDialog v-model:open="chunkOpen" :doc="chunkDoc" />
+  <ReviewDialog v-model:open="reviewOpen" :doc="reviewDoc" @approved="loadDocs" />
 
   <!-- 删除知识库确认 Dialog -->
   <Dialog :open="!!kbDeleteTarget" @update:open="(v) => { if (!v) kbDeleteTarget = null; }">

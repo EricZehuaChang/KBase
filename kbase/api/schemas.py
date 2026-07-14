@@ -111,6 +111,12 @@ class ActiveProviderBody(BaseModel):
     name: str
 
 
+class DocumentReview(BaseModel):
+    """PUT /api/documents/{id}/review（F）：markdown=None 按落盘的识别结果
+    原样入库；给了则以编辑稿为准（先写回 content.md 再入库）。"""
+    markdown: str | None = None
+
+
 class ChunkUpdate(BaseModel):
     """PUT /api/chunks/{id}：enabled 启停与 text 编辑，至少给一项。
     叶子块编辑触发重嵌入+重索引；父块编辑仅落库（见 kbase/chunk_admin.py）。"""

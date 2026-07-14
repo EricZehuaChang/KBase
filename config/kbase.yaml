@@ -101,6 +101,12 @@ llm:
 #   endpoint 留空默认 http://localhost:7861。
 # enabled=false 或服务不可达时，扫描件摄取会优雅降级为 pending_ocr（不阻塞其余文档），
 # 不会导致摄取流程报错；密钥未配置同样降级为 pending_ocr，配好后批量重试即可。
+# F 满血 VLM 深度识别（上传时可选的解析模式）：复杂图（概念图/时序图/
+# 架构图/PPT 截图）交给强力视觉模型理解性转写，识别结果需在管理端人工
+# 校验确认后才向量化。provider 必须是**支持图片输入**的模型（实测
+# gpt-5.4-mini 直通；智谱/通义需其 VL 专门型号，文本旗舰不收图）。
+vlm_parse:
+  provider: gpt-5.4-mini
 ocr:
   enabled: true
   backend: glm-ocr

@@ -62,7 +62,8 @@ def locate_chunk_pages(page_texts: list[str], leaves, prefix_chars: int = 30) ->
 class IngestPipeline:
     def __init__(self, session_factory, chunker: Chunker, embedder: Embedder,
                  store: VectorStore, files_dir: Path, keyword_index=None,
-                 enricher=None, ocr_backend=None, embedder_resolver=None):
+                 enricher=None, ocr_backend=None, embedder_resolver=None,
+                 vlm_provider_resolver=None):
         self._sf = session_factory
         self._chunker = chunker
         self._embedder = embedder
@@ -74,8 +75,13 @@ class IngestPipeline:
         # M5-2 KB 级向量模型：resolver(kb_id) 返回该库绑定的 embedder；
         # 未提供（直接构造 pipeline 的测试/脚本）时退回构造参数里的单一 embedder。
         self._embedder_resolver = embedder_resolver
+        # F VLM 深度识别：() -> provider dict（含密钥），services 按
+        # cfg.vlm_parse.provider（缺省=当前活跃 provider）从 DB 解析。
+        # 未提供时选择 vlm 模式的上传会判 failed 并附可读原因。
+        self._vlm_provider_resolver = vlm_provider_resolver
 
-    def ingest_file(self, kb_id: str, path: Path, original_name: str) -> str:
+    def ingest_file(self, kb_id: str, path: Path, original_name: str,
+                    parse_mode: str = "auto") -> str:
         content_hash = hashlib.sha256(Path(path).read_bytes()).hexdigest()
         with self._sf() as s:
             dup = s.query(Document).filter_by(
@@ -84,7 +90,8 @@ class IngestPipeline:
                 return dup.id
             doc = Document(id=str(uuid.uuid4()), kb_id=kb_id,
                            filename=original_name, content_hash=content_hash,
-                           status="parsing", source_path=str(path))
+                           status="parsing", source_path=str(path),
+                           parse_mode=parse_mode)
             s.add(doc)
             try:
                 s.commit()
@@ -102,35 +109,56 @@ class IngestPipeline:
                         return existing.id
                 raise
             doc_id = doc.id
-        self._run(kb_id, doc_id, path, original_name)
+        self._run(kb_id, doc_id, path, original_name, parse_mode)
         return doc_id
 
     def retry_document(self, doc_id: str) -> None:
-        """对既有文档（通常 pending_ocr/failed）重跑解析。用 Document.source_path
-        找回原始文件，不依赖上传目录反查（上传文件名含 uuid 前缀无法直接推导）。"""
+        """对既有文档（通常 pending_ocr/failed）重跑解析，按文档落库的
+        parse_mode 重走同一条路径。用 Document.source_path 找回原始文件，
+        不依赖上传目录反查（上传文件名含 uuid 前缀无法直接推导）。"""
         with self._sf() as s:
             doc = s.get(Document, doc_id)
             if doc is None:
                 return
             kb_id, path, name = doc.kb_id, doc.source_path, doc.filename
+            parse_mode = doc.parse_mode or "auto"
         if not path or not Path(path).exists():
             self._set_status(doc_id, "failed", error="原始文件已丢失，无法重试")
             return
         self._set_status(doc_id, "parsing")
-        self._run(kb_id, doc_id, Path(path), name)
+        self._run(kb_id, doc_id, Path(path), name, parse_mode)
 
-    def _run(self, kb_id: str, doc_id: str, path: Path, name: str) -> None:
+    def _run(self, kb_id: str, doc_id: str, path: Path, name: str,
+             parse_mode: str = "auto") -> None:
         try:
-            ocr_confidence = self._process(kb_id, doc_id, path, name)
-            self._set_status(doc_id, "ready", ocr_confidence=ocr_confidence)
+            status, ocr_confidence = self._process(kb_id, doc_id, path, name,
+                                                   parse_mode)
+            if status == "pending_review":
+                # F：VLM 识别完成但未向量化——等人工校验确认（approve_document）
+                self._set_status(doc_id, "pending_review")
+            else:
+                self._set_status(doc_id, "ready", ocr_confidence=ocr_confidence)
         except OCRUnavailable:
             # OCR 服务暂时不可达/超时：可重试，不是文档本身的问题
             self._set_status(doc_id, "pending_ocr")
         except Exception as e:  # noqa: BLE001 —— 批次隔离，失败落库
             self._set_status(doc_id, "failed", error=f"{type(e).__name__}: {e}")
 
-    def _process(self, kb_id: str, doc_id: str, path: Path, name: str):
+    def _process(self, kb_id: str, doc_id: str, path: Path, name: str,
+                 parse_mode: str = "auto"):
         suffix = Path(path).suffix.lower()
+
+        # F VLM 深度识别：仅图片格式走此分支（PPT/PDF 等继续既有管道——
+        # 逐页转图依赖重型组件，v1 不做，文档如实注明）。识别产物只落盘，
+        # **不分块不向量化**，状态停 pending_review 等人工校验（防幻觉入库）。
+        if parse_mode == "vlm" and suffix in _IMAGE_EXTS:
+            markdown = self._vlm_markdown(path).replace("\x0c", "\n")
+            if not markdown.strip():
+                raise ValueError("VLM 识别结果为空")
+            out_dir = self._files_dir / doc_id
+            out_dir.mkdir(parents=True, exist_ok=True)
+            (out_dir / "content.md").write_text(markdown, encoding="utf-8")
+            return ("pending_review", None)
         needs_ocr = suffix in _IMAGE_EXTS or (
             suffix == ".pdf" and not pdf_has_text_layer(path))
         ocr_confidence = None
@@ -170,6 +198,16 @@ class IngestPipeline:
             (out_dir / "layout.json").write_text(
                 json.dumps(ocr_layout, ensure_ascii=False), encoding="utf-8")
 
+        self._index_markdown(
+            kb_id, doc_id, markdown, name,
+            pdf_locate_path=(path if (suffix == ".pdf" and not needs_ocr) else None))
+        return ("ready", ocr_confidence)
+
+    def _index_markdown(self, kb_id: str, doc_id: str, markdown: str, name: str,
+                        pdf_locate_path=None) -> None:
+        """Markdown → 分块 → [页码定位] → [enrich] → 向量化 → chunk 行 →
+        关键词索引。既有摄取与 F 的确认入库（approve_document）共用这一段，
+        保证两条路径的索引语义完全一致。"""
         kb_config = self._load_kb_config(kb_id)
         chunker = self._chunker_for(kb_config)
         chunks = chunker.chunk(markdown, doc_name=name)
@@ -177,9 +215,9 @@ class IngestPipeline:
 
         # 引用定位（M5-2）：文本层 PDF 逐页匹配叶子块页码。任何失败只损失
         # 定位能力，不阻塞摄取（页码是增强元数据，不是硬依赖）。
-        if suffix == ".pdf" and not needs_ocr and leaves:
+        if pdf_locate_path is not None and leaves:
             try:
-                locate_chunk_pages(_pdf_page_texts(path), leaves)
+                locate_chunk_pages(_pdf_page_texts(pdf_locate_path), leaves)
             except Exception:  # noqa: BLE001
                 pass
 
@@ -223,7 +261,49 @@ class IngestPipeline:
                          keyword_input(c.heading_path, c.text, c.meta.get("layout")))
                         for c in leaves])
 
-        return ocr_confidence
+    def _vlm_markdown(self, path) -> str:
+        """调满血视觉模型识别图片。provider 解析失败给可读错误（文档判
+        failed 时用户能看懂该去配什么）。"""
+        if self._vlm_provider_resolver is None:
+            raise ValueError("VLM 深度识别未配置（缺 provider 解析器）")
+        provider = self._vlm_provider_resolver()
+        if provider is None:
+            raise ValueError("VLM 深度识别的 provider 不存在，请在设置页配置视觉模型")
+        from kbase import vlm_parse
+        return vlm_parse.parse_image(path, provider)
+
+    def _clear_doc_index(self, kb_id: str, doc_id: str) -> None:
+        """清空该文档的全部索引痕迹（向量/关键词/chunk 行），供确认入库前
+        幂等清场——重复确认/重新识别不会残留旧块。"""
+        self._store.delete(kb_id, doc_id)
+        if self._keyword_index is not None:
+            self._keyword_index.delete_doc(doc_id)
+        with self._sf() as s:
+            s.query(Chunk).filter_by(doc_id=doc_id).delete()
+            s.commit()
+
+    def approve_document(self, doc_id: str, markdown: str | None = None) -> bool:
+        """F 校验确认入库：管理员核对（可编辑）VLM 识别文本后调用——写回
+        content.md → 清旧索引 → 分块向量化 → ready。返回 False=文档不存在；
+        状态不是 pending_review 时抛 ValueError（路由转 409）。"""
+        with self._sf() as s:
+            doc = s.get(Document, doc_id)
+            if doc is None:
+                return False
+            if doc.status != "pending_review":
+                raise ValueError(f"仅待确认状态可执行入库，当前: {doc.status}")
+            kb_id, name = doc.kb_id, doc.filename
+        content_path = self._files_dir / doc_id / "content.md"
+        if markdown is not None:
+            content_path.parent.mkdir(parents=True, exist_ok=True)
+            content_path.write_text(markdown, encoding="utf-8")
+        if not content_path.exists():
+            raise ValueError("识别结果文件缺失，请重试识别")
+        text = content_path.read_text(encoding="utf-8")
+        self._clear_doc_index(kb_id, doc_id)
+        self._index_markdown(kb_id, doc_id, text, name)
+        self._set_status(doc_id, "ready")
+        return True
 
     def _load_kb_config(self, kb_id: str) -> dict:
         with self._sf() as s:

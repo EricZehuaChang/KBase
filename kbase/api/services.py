@@ -165,12 +165,19 @@ def build_services(config_path, *, embedder=None, store=None,
             import kbase.plugins.ocr.monkey_http  # noqa: F401
             ocr_backend = registry.create("ocr", cfg.ocr.backend, **ocr_kwargs)
 
+    def _vlm_provider():
+        """F VLM 深度识别的 provider（含密钥）：cfg.vlm_parse.provider 指定，
+        缺省=当前活跃 provider（需自行确保是视觉模型）。"""
+        name = cfg.vlm_parse.provider or providers_store.get_active(sf)
+        return providers_store.get_provider_dict(sf, name) if name else None
+
     pipeline = IngestPipeline(sf, chunker, embedder, store,
                               files_dir=cfg.data_dir / "files",
                               keyword_index=keyword_index,
                               enricher=enricher,
                               ocr_backend=ocr_backend,
-                              embedder_resolver=embedder_for_kb)
+                              embedder_resolver=embedder_for_kb,
+                              vlm_provider_resolver=_vlm_provider)
 
     rerank_degraded = False
     if reranker is False:
