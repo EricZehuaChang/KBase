@@ -7,6 +7,14 @@ export interface EnrichConfig {
   enabled: boolean;
 }
 
+// M6-1.5 KB 级检索策略：各键缺省/null=跟随全局默认（"通用方式"）
+export interface KbRetrievalConfig {
+  hybrid?: boolean | null;      // 多路召回（关键词路）
+  rerank?: boolean | null;
+  rewrite?: "off" | "conditional" | "always" | null;
+  candidates?: number | null;
+}
+
 export interface KbConfig {
   chunk_size?: number;
   chunk_overlap?: number;
@@ -14,6 +22,7 @@ export interface KbConfig {
   // M5-2：建库时绑定的向量模型 id（GET /api/embedders 清单）；缺省=默认模型。
   // 只读展示——建库后不可改（换模型=全库向量作废，需重建）。
   embedder?: string;
+  retrieval?: KbRetrievalConfig;
 }
 
 export interface Kb {
@@ -349,10 +358,16 @@ export function docOriginalUrl(
 export function search(
   kbId: string,
   query: string,
-  opts?: { topK?: number; debug?: boolean },
+  opts?: {
+    topK?: number; debug?: boolean;
+    // M6-1.5 请求级策略试跑覆盖（不落库）：undefined/null=按 KB 策略
+    useKeyword?: boolean | null; useRerank?: boolean | null;
+  },
 ): Promise<SearchResult> {
   return req(`/api/kb/${kbId}/search`, jsonInit({
     query, top_k: opts?.topK ?? 5, debug: opts?.debug ?? false,
+    use_keyword: opts?.useKeyword ?? undefined,
+    use_rerank: opts?.useRerank ?? undefined,
   }));
 }
 

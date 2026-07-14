@@ -21,6 +21,15 @@ const kbs = ref<Kb[]>([]);
 const kbId = ref<string | undefined>(undefined);
 const query = ref("");
 
+// M6-1.5 策略试跑覆盖（不落库）："default"=按该库策略/全局默认，
+// "on"/"off"=本次查询强制。用于对比"多路召回/重排开与关"的召回差异。
+const keywordOverride = ref("default");
+const rerankOverride = ref("default");
+
+function overrideValue(v: string): boolean | undefined {
+  return v === "default" ? undefined : v === "on";
+}
+
 const loading = ref(false);
 const error = ref<string | null>(null);
 const result = ref<SearchResult | null>(null);
@@ -53,7 +62,11 @@ async function runSearch() {
     const docs = await listDocs(kbId.value);
     kbHasDocs.value = docs.length > 0;
     if (kbHasDocs.value) {
-      result.value = await search(kbId.value, query.value.trim(), { debug: true, topK: 5 });
+      result.value = await search(kbId.value, query.value.trim(), {
+        debug: true, topK: 5,
+        useKeyword: overrideValue(keywordOverride.value),
+        useRerank: overrideValue(rerankOverride.value),
+      });
     }
   } catch (err) {
     // 消息非空由 api.ts req() 统一保证（空响应体时兜底状态码文案）
@@ -113,6 +126,24 @@ watch(() => route.query.q, async (q) => {
         aria-label="查询输入框"
         @keydown.enter="runSearch"
       />
+
+      <!-- 策略试跑覆盖（M6-1.5）：仅影响本次查询，不改库配置 -->
+      <Select v-model="keywordOverride">
+        <SelectTrigger class="w-40" aria-label="多路召回覆盖"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="default">召回·按库策略</SelectItem>
+          <SelectItem value="on">召回·强制多路</SelectItem>
+          <SelectItem value="off">召回·仅向量</SelectItem>
+        </SelectContent>
+      </Select>
+      <Select v-model="rerankOverride">
+        <SelectTrigger class="w-40" aria-label="重排覆盖"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="default">重排·按库策略</SelectItem>
+          <SelectItem value="on">重排·强制开</SelectItem>
+          <SelectItem value="off">重排·强制关</SelectItem>
+        </SelectContent>
+      </Select>
 
       <Button :disabled="loading || !kbId || !query.trim()" @click="runSearch">
         <Search class="size-3.5" />

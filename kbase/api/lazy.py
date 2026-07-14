@@ -54,7 +54,8 @@ class LazyRewriter:
         self._resolved = None
         self._resolve_failed = False
 
-    async def rewrite(self, question: str, history: list[dict]):
+    async def rewrite(self, question: str, history: list[dict],
+                      mode: str | None = None):
         from kbase.rag.rewriter import RewriteResult
         if self._resolve_failed:
             return RewriteResult(query=question, triggered=False, rewritten=False)
@@ -65,4 +66,4 @@ class LazyRewriter:
                 self._resolve_failed = True
                 logger.warning("QueryRewriter 初始化失败，本次查询跳过改写: %s", e)
                 return RewriteResult(query=question, triggered=False, rewritten=False)
-        return await self._resolved.rewrite(question, history)
+        return await self._resolved.rewrite(question, history, mode=mode)

@@ -11,6 +11,7 @@ from fastapi.concurrency import run_in_threadpool
 from sse_starlette.sse import EventSourceResponse
 
 from kbase import conversations as conv_store
+from kbase import retrieval_strategy as rs
 from kbase.api.routes import RouteDeps
 from kbase.api.schemas import (ConversationCreate, ConversationRename,
                                QueryBody, SearchBody)
@@ -41,11 +42,15 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
             raise HTTPException(404, str(e)) from e
         except RuntimeError as e:      # 环境变量未设置等初始化失败：给前端可读信息
             raise HTTPException(503, str(e)) from e
+        # KB 级检索策略（M6-1.5）：缺省=全局默认；拒答阈值量纲跟着"本次是否
+        # 重排"走（per-call），不再用启动期静态值。
+        strategy = rs.resolve_strategy(cfg, rs.kb_retrieval_config(sf, kb_id))
+        min_score = rs.pick_min_score(cfg, strategy, retriever.rerank_active)
         query_text = retrieval_query if retrieval_query is not None else body.question
         # 检索（含向量化）是同步 CPU/IO 混合操作，进线程池避免阻塞事件循环
         blocks = await run_in_threadpool(
-            retriever.retrieve, kb_id, query_text, body.top_k)
-        gen = Generator(llm, min_score=svc.gen_min_score,
+            retriever.retrieve, kb_id, query_text, body.top_k, False, strategy)
+        gen = Generator(llm, min_score=min_score,
                         min_include_score=cfg.retrieval.min_include_score)
         # 关键契约：usable_blocks 只算一次，citations 与 answer_stream 用同一份列表，
         # 保证引用编号与答案中的 [n] 标记对齐（拒答时 citations 为空列表）
@@ -79,9 +84,16 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
     async def search(kb_id: str, body: SearchBody):
         """检索调试端点：debug=False 只返回 blocks（不含 trace key，向后兼容展示用途）；
         debug=True 额外返回各阶段 trace（dense/keyword/fused[/reranked]），用于排查召回质量。
-        检索是同步 CPU/IO 混合操作，进线程池避免阻塞事件循环。"""
+        body 的 use_keyword/use_rerank/candidates 为请求级策略覆盖（试跑对比用，
+        不落库；缺省=KB 策略/全局默认）。检索进线程池避免阻塞事件循环。"""
+        strategy = rs.resolve_strategy(
+            cfg, rs.kb_retrieval_config(sf, kb_id),
+            overrides={"use_keyword": body.use_keyword,
+                       "use_rerank": body.use_rerank,
+                       "candidates": body.candidates})
         result = await run_in_threadpool(
-            retriever.retrieve, kb_id, body.query, body.top_k, body.debug)
+            retriever.retrieve, kb_id, body.query, body.top_k, body.debug,
+            strategy)
         if body.debug:
             return {"blocks": [asdict(b) for b in result.blocks],
                     "trace": result.trace}
@@ -144,7 +156,16 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         history = conv_store.build_history(sf, conv_id)
         # 改写只影响检索输入；生成与落库仍固定使用 body.question（原文），
         # 见 _run_query 的 retrieval_query 参数文档。
-        rewrite_res = await svc.rewriter.rewrite(body.question, history)
+        # M6-1.5：改写模式按 KB 策略覆盖——off 时连 LLM 都不碰（省一次调用），
+        # 其余模式传给 rewriter 做 should_rewrite 判定。
+        strategy = rs.resolve_strategy(cfg, rs.kb_retrieval_config(sf, conv.kb_id))
+        if strategy.rewrite_mode == "off":
+            from kbase.rag.rewriter import RewriteResult
+            rewrite_res = RewriteResult(query=body.question, triggered=False,
+                                        rewritten=False)
+        else:
+            rewrite_res = await svc.rewriter.rewrite(body.question, history,
+                                                     mode=strategy.rewrite_mode)
 
         def _persist(answer: str, citations: list[dict], provider: str):
             conv_store.append_round(sf, conv_id, body.question, answer,

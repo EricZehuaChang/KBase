@@ -29,6 +29,21 @@ class SearchBody(BaseModel):
     query: str
     top_k: int = 5
     debug: bool = False
+    # M6-1.5 请求级策略覆盖（检索分析页试跑用，不落库）：None=按 KB 策略/
+    # 全局默认。只能关闭已安装能力，开不出部署里没有的路（retriever 门控）。
+    use_keyword: bool | None = None
+    use_rerank: bool | None = None
+    candidates: StrictInt | None = Field(default=None, ge=1, le=100)
+
+
+class KBRetrievalBody(BaseModel):
+    """KB 级检索策略（M6-1.5）：各键缺省=跟随全局默认（"通用方式"）。"""
+    model_config = {"extra": "forbid"}
+
+    hybrid: StrictBool | None = None      # 多路召回（关键词路）用不用
+    rerank: StrictBool | None = None      # 重排用不用
+    rewrite: Literal["off", "conditional", "always"] | None = None
+    candidates: StrictInt | None = Field(default=None, ge=1, le=100)
 
 
 class ConversationCreate(BaseModel):
@@ -51,6 +66,8 @@ class KBConfigBody(BaseModel):
     chunk_size: StrictInt | None = Field(default=None, ge=64, le=4096)
     chunk_overlap: StrictInt | None = Field(default=None, ge=0, le=512)
     enrich: EnrichConfigBody | None = None
+    # M6-1.5 KB 级检索策略段（缺省=全局默认）
+    retrieval: KBRetrievalBody | None = None
 
     @model_validator(mode="after")
     def _check_overlap_lt_size(self):
