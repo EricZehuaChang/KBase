@@ -36,6 +36,12 @@ class ChromaStore:
     def delete(self, collection, doc_id):
         self._coll(collection).delete(where={"doc_id": doc_id})
 
+    def delete_ids(self, collection, ids):
+        """按 chunk id 精确删除（M6-1 chunk 启停：停用=摘出索引成员）。"""
+        if not ids:
+            return
+        self._coll(collection).delete(ids=ids)
+
     def delete_collection(self, collection):
         """删除整个集合（知识库级联删除用）。集合不存在时容错，不抛异常——
         知识库从未摄取过任何文档时不会创建集合，此时删除应是 no-op。"""

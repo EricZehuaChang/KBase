@@ -7,14 +7,18 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
-import { RotateCw, Trash2, AlertCircle, Download } from "@lucide/vue";
+import { RotateCw, Trash2, AlertCircle, Download, Blocks } from "@lucide/vue";
 import { statusBadge, canRetryDoc } from "@/lib/kb-utils";
 import { docOriginalUrl, type DocumentItem } from "@/lib/api";
 
 withDefaults(defineProps<{ docs: DocumentItem[]; loading: boolean; canManage?: boolean }>(), {
   canManage: true,
 });
-const emit = defineEmits<{ retry: [doc: DocumentItem]; delete: [doc: DocumentItem] }>();
+const emit = defineEmits<{
+  retry: [doc: DocumentItem];
+  delete: [doc: DocumentItem];
+  chunks: [doc: DocumentItem];
+}>();
 </script>
 
 <template>
@@ -58,6 +62,16 @@ const emit = defineEmits<{ retry: [doc: DocumentItem]; delete: [doc: DocumentIte
                 <Download class="size-3.5" />
               </Button>
               <template v-if="canManage">
+                <!-- 分块管理（M6-1）：查看/启停/编辑本文档的分块 -->
+                <Button
+                  v-if="doc.status === 'ready'"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="分块管理"
+                  @click="emit('chunks', doc)"
+                >
+                  <Blocks class="size-3.5" />
+                </Button>
                 <Button
                   v-if="canRetryDoc(doc.status)"
                   variant="ghost"

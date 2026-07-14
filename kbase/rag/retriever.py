@@ -277,6 +277,10 @@ class Retriever:
                 leaf = s.get(Chunk, chunk_id)
                 if leaf is None:
                     continue
+                # M6-1 停用块防御兜底：停用=索引成员摘除（chunk_admin），正常
+                # 情况下走不到这里；索引清理万一失手也不把停用块漏给生成层。
+                if leaf.enabled is False:
+                    continue
                 parent = s.get(Chunk, leaf.parent_id) if leaf.parent_id else leaf
                 if parent.id in seen_parents:
                     continue

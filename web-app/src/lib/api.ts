@@ -295,6 +295,44 @@ export function getDocContent(docId: string): Promise<DocumentContent> {
   return req(`/api/documents/${docId}/content`);
 }
 
+// ---- Chunk 运营管理（M6-1）----
+
+export interface ChunkItem {
+  id: string;
+  doc_id: string;
+  heading_path: string;
+  text: string;
+  is_leaf: boolean;
+  page: number | null;
+  enabled: boolean;
+  chars: number;
+}
+
+export interface ChunkPage {
+  items: ChunkItem[];
+  total: number;
+}
+
+export function listDocChunks(
+  docId: string,
+  opts?: { offset?: number; limit?: number; q?: string },
+): Promise<ChunkPage> {
+  const params = new URLSearchParams();
+  if (opts?.offset) params.set("offset", String(opts.offset));
+  if (opts?.limit) params.set("limit", String(opts.limit));
+  if (opts?.q) params.set("q", opts.q);
+  const qs = params.toString();
+  return req(`/api/documents/${docId}/chunks${qs ? `?${qs}` : ""}`);
+}
+
+// 停用=从检索索引摘除（可恢复）；叶子编辑=重嵌入+重索引；父块编辑仅落库
+export function updateChunk(
+  chunkId: string,
+  body: { enabled?: boolean; text?: string },
+): Promise<ChunkItem> {
+  return req(`/api/chunks/${chunkId}`, jsonInit(body, "PUT"));
+}
+
 // 原始文件直链（识别前的 .docx/.pdf/扫描图原件，Content-Disposition 恢复
 // 上传原名）：用于 <a href> / iframe 浏览器原生处理，不经 fetch+blob。
 // inline=true 时服务端对白名单类型（pdf/图片/纯文本）改回 inline 内联渲染，

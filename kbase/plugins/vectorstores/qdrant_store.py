@@ -95,6 +95,13 @@ class QdrantStore:
             models.FieldCondition(key="doc_id", match=models.MatchValue(value=doc_id))])
         self._client.delete(collection, points_selector=models.FilterSelector(filter=flt))
 
+    def delete_ids(self, collection, ids):
+        """按 chunk id 精确删除（M6-1 chunk 启停）。原始 id 需映射为 point id。"""
+        if not ids or not self._client.collection_exists(collection):
+            return
+        self._client.delete(collection, points_selector=models.PointIdsList(
+            points=[_to_point_id(cid) for cid in ids]))
+
     def delete_collection(self, collection):
         """删除整个集合（知识库级联删除用）。集合不存在时容错，不抛异常——
         knowledge base 从未摄取过任何文档时不会创建集合，此时删除应是

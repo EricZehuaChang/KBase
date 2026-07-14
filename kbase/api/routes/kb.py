@@ -10,11 +10,12 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from fastapi import BackgroundTasks, HTTPException, UploadFile
+from fastapi import BackgroundTasks, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 
+from kbase import chunk_admin
 from kbase.api.routes import RouteDeps
-from kbase.api.schemas import KBConfigBody, KBCreate
+from kbase.api.schemas import ChunkUpdate, KBConfigBody, KBCreate
 from kbase.api.services import Services
 from kbase.models import Chunk, Conversation, Document, KnowledgeBase, Message
 
@@ -212,6 +213,31 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         with sf() as s:
             doc = s.get(Document, doc_id)
             return {"id": doc.id, "status": doc.status, "error": doc.error}
+
+    # ---- Chunk 运营管理（M6-1）----
+
+    @router.get("/documents/{doc_id}/chunks", dependencies=[deps.require_viewer])
+    def list_document_chunks(doc_id: str, offset: int = Query(default=0, ge=0),
+                             limit: int = Query(default=50, ge=1, le=200),
+                             q: str | None = None):
+        """分页列出文档的分块（叶子在前）；q 为文本包含过滤（定位坏块用）。"""
+        result = chunk_admin.list_chunks(sf, doc_id, offset=offset,
+                                         limit=limit, q=q)
+        if result is None:
+            raise HTTPException(404, f"文档不存在: {doc_id}")
+        return result
+
+    @router.put("/chunks/{chunk_id}",
+                dependencies=[deps.require_editor, deps.audit_mutation])
+    def update_chunk(chunk_id: str, body: ChunkUpdate):
+        """启停/编辑一个块。停用=摘出向量与关键词索引（可恢复）；叶子编辑
+        =按该库绑定的向量模型重嵌入+重索引；父块编辑仅落库。"""
+        result = chunk_admin.update_chunk(
+            sf, store, keyword_index, svc.embedder_for_kb, chunk_id,
+            enabled=body.enabled, text=body.text)
+        if result is None:
+            raise HTTPException(404, f"分块不存在: {chunk_id}")
+        return result
 
     def _retry_ocr_batch(doc_ids: list[str]) -> None:
         """单入口顺序处理：一个 bg task 内部依次重跑，而不是每个文档各挂一个

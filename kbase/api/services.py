@@ -55,9 +55,11 @@ class Services:
     invalidate_llm_cache: Callable   # (name: str) -> None
     test_llm: object | None          # 测试注入的 active llm（无注入时 None）
     # KB 级向量模型（M5-2）：embedder_catalog 给 GET /api/embedders 用；
-    # embedder_ids 给建库校验用；embedder 字段本身仍是"默认 embedder"实例。
+    # embedder_ids 给建库校验用；embedder 字段本身仍是"默认 embedder"实例；
+    # embedder_for_kb(kb_id) 按库绑定解析实例（chunk 编辑重嵌入等场景用）。
     embedder_catalog: dict = None
     embedder_ids: set = None
+    embedder_for_kb: Callable = None
 
 
 def build_services(config_path, *, embedder=None, store=None,
@@ -225,4 +227,5 @@ def build_services(config_path, *, embedder=None, store=None,
         test_llm=(llms or {}).get(cfg.llm.active),
         embedder_catalog=pool.catalog(),
         embedder_ids=pool.known_ids(),
+        embedder_for_kb=embedder_for_kb,
     )
