@@ -118,10 +118,11 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
     @router.post("/kb/{kb_id}/documents", dependencies=[deps.require_editor, deps.audit_mutation])
     def upload(kb_id: str, files: list[UploadFile], bg: BackgroundTasks,
                parse_mode: str = Form("auto")):
-        """parse_mode（F）：auto=既有管道；vlm=满血视觉模型深度识别（仅图片
-        格式生效，识别后停 pending_review 等人工校验，非图片文件自动回落
-        auto 管道）。批量上传共用同一模式。"""
-        if parse_mode not in ("auto", "vlm"):
+        """parse_mode（F）：auto=既有管道；ocr=表格增强（文本层 PDF 也强制
+        GLM-OCR 结构化解析，跨页断表可合并，代价是丢页码定位）；vlm=满血
+        视觉模型深度识别（仅图片格式生效，识别后停 pending_review 等人工
+        校验）。非适用文件类型自动回落 auto 管道。批量上传共用同一模式。"""
+        if parse_mode not in ("auto", "ocr", "vlm"):
             raise HTTPException(422, f"未知的 parse_mode: {parse_mode}")
         upload_dir = cfg.data_dir / "uploads"
         upload_dir.mkdir(parents=True, exist_ok=True)

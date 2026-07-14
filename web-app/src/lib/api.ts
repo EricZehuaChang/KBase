@@ -284,10 +284,11 @@ export function listDocs(kbId: string): Promise<DocumentItem[]> {
   return req(`/api/kb/${kbId}/documents`);
 }
 
-// parseMode（F）："auto"=既有管道；"vlm"=满血视觉模型深度识别（仅图片格式
-// 生效，识别后停 pending_review 等人工校验确认才向量化）。
+// parseMode（F）："auto"=既有管道；"ocr"=表格增强（文本层 PDF 也强制
+// GLM-OCR 结构化解析，跨页断表可合并）；"vlm"=满血视觉模型深度识别
+// （仅图片格式生效，识别后停 pending_review 等人工校验确认才向量化）。
 export function uploadDocs(
-  kbId: string, files: FormData, parseMode: "auto" | "vlm" = "auto",
+  kbId: string, files: FormData, parseMode: "auto" | "ocr" | "vlm" = "auto",
 ): Promise<{ accepted: string[] }> {
   if (parseMode !== "auto") files.set("parse_mode", parseMode);
   return req(`/api/kb/${kbId}/documents`, { method: "POST", body: files });

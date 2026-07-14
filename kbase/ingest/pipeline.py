@@ -159,7 +159,14 @@ class IngestPipeline:
             out_dir.mkdir(parents=True, exist_ok=True)
             (out_dir / "content.md").write_text(markdown, encoding="utf-8")
             return ("pending_review", None)
-        needs_ocr = suffix in _IMAGE_EXTS or (
+        # 表格增强模式（parse_mode="ocr"）：文本层 PDF 也强制走 GLM-OCR——
+        # pdfminer 不产表格结构（PDF 表格提出来是松散文本行），而 GLM-OCR
+        # 输出 HTML <table>，能吃到表格原子分块+行线性化+跨页断表合并全套
+        # 待遇。代价是丢失文本层页码定位（OCR 路径无逐页匹配），含表格的
+        # PDF 值得这个交换。非 PDF/图片文件该模式等同 auto。
+        force_ocr = parse_mode == "ocr" and (suffix == ".pdf"
+                                             or suffix in _IMAGE_EXTS)
+        needs_ocr = force_ocr or suffix in _IMAGE_EXTS or (
             suffix == ".pdf" and not pdf_has_text_layer(path))
         ocr_confidence = None
         ocr_layout = None

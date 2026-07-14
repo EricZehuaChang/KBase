@@ -135,7 +135,7 @@ async function confirmDeleteKb() {
 // ---- 上传 ----
 // 解析模式（F）：auto=既有管道；vlm=满血视觉模型深度识别（仅图片格式生效，
 // 识别后停"待确认"等人工校验入库）。批量上传共用同一模式。
-const parseMode = ref<"auto" | "vlm">("auto");
+const parseMode = ref<"auto" | "ocr" | "vlm">("auto");
 
 async function handleFilesSelected(files: File[]) {
   if (!kbId.value) return;
@@ -299,6 +299,7 @@ onMounted(loadKbs);
           <SelectTrigger class="w-64"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="auto">自动（文档/扫描件通用管道）</SelectItem>
+            <SelectItem value="ocr">表格增强（PDF 强制结构化解析，断表合并）</SelectItem>
             <SelectItem value="vlm">满血模型深度识别（复杂图，需人工校验）</SelectItem>
           </SelectContent>
         </Select>
