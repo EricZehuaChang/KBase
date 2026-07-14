@@ -389,6 +389,30 @@ export function testProvider(name: string): Promise<ProviderTestResult> {
   return req(`/api/settings/providers/${name}/test`, { method: "POST" });
 }
 
+// ---- 模型目录（M5-2 Provider UI：下拉选型号）----
+
+export interface ModelCatalog {
+  base_url: string;
+  models: string[];
+  fetched_at: string | null;
+  stale: boolean;            // 超过 7 天：服务端会在 GET 时自动后台刷新
+}
+
+export interface ModelRefreshBody {
+  base_url?: string;
+  api_key?: string;
+  api_key_env?: string;
+  provider_name?: string;    // 已存 provider：用它存的凭据拉取
+}
+
+export function listModelCatalogs(): Promise<{ catalogs: ModelCatalog[] }> {
+  return req("/api/settings/models");
+}
+
+export function refreshModelCatalog(body: ModelRefreshBody): Promise<ModelCatalog> {
+  return req("/api/settings/models/refresh", jsonInit(body));
+}
+
 export function healthz(): Promise<HealthzResponse> {
   return req("/healthz");
 }
