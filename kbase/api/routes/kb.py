@@ -146,13 +146,26 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         return {"doc_id": doc.id, "filename": doc.filename,
                 "markdown": content_path.read_text(encoding="utf-8")}
 
+    # 允许内联预览（浏览器窗口内直接渲染）的 MIME 白名单：PDF 走浏览器自带
+    # 查看器（支持 #page= 跳页），图片/纯文本直显。刻意排除 text/html——
+    # 上传的 HTML 若被内联渲染，其中脚本会在本站源下执行（存储型 XSS）。
+    _INLINE_MEDIA_TYPES = {"application/pdf", "text/plain", "text/markdown"}
+
+    def _inline_allowed(media_type: str) -> bool:
+        return (media_type in _INLINE_MEDIA_TYPES
+                or media_type.startswith("image/"))
+
     @router.get("/documents/{doc_id}/original", dependencies=[deps.require_viewer])
-    def document_original(doc_id: str):
-        """下载识别前的原始上传文件（如 .docx/.pdf/扫描图），文件名恢复为
+    def document_original(doc_id: str, disposition: str = "attachment"):
+        """获取识别前的原始上传文件（如 .docx/.pdf/扫描图），文件名恢复为
         用户上传时的原名。数据来源是 Document.source_path——上传时落在
         data_dir/uploads/ 的原件（摄取后不删除，重试 OCR 也依赖它）。
         source_path 为空（极老数据）或文件已被清理时如实 404，
-        前端据此隐藏/提示，而不是回退到 Markdown 冒充原文。"""
+        前端据此隐藏/提示，而不是回退到 Markdown 冒充原文。
+
+        disposition=attachment（默认）：浏览器下载，文件名为上传原名；
+        disposition=inline：浏览器内联渲染（M5-2 引用定位预览用，PDF 可配合
+        URL fragment #page=N 跳页）——仅白名单类型生效，其余强制 attachment。"""
         with sf() as s:
             doc = s.get(Document, doc_id)
         if doc is None:
@@ -161,8 +174,10 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
             raise HTTPException(404, "原始文件已不存在（历史数据未保留原件或已被清理）")
         media_type = (mimetypes.guess_type(doc.filename)[0]
                       or "application/octet-stream")
-        # filename=原始文件名 → Content-Disposition attachment，浏览器按
-        # 用户当初上传的名字（含 .docx 等扩展名）下载，本地可直接用 Word 打开。
+        if disposition == "inline" and _inline_allowed(media_type):
+            return FileResponse(doc.source_path, media_type=media_type,
+                                content_disposition_type="inline",
+                                filename=doc.filename)
         return FileResponse(doc.source_path, media_type=media_type,
                             filename=doc.filename)
 

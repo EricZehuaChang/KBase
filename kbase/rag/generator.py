@@ -45,7 +45,10 @@ class Generator:
         """
         return [{"index": i + 1, "doc_id": b.doc_id, "doc_name": b.doc_name,
                  "heading_path": b.heading_path, "snippet": b.snippet,
-                 "score": round(b.score, 3)}
+                 "score": round(b.score, 3),
+                 # M5-2 引用定位：源文件页码（文本层 PDF 才有，其余 None）。
+                 # 前端据此在原文件预览里 #page= 跳页。
+                 "page": b.page}
                 for i, b in enumerate(blocks)]
 
     def _build_messages(self, question: str, blocks: list[ContextBlock],

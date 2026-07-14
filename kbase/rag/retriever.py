@@ -71,6 +71,9 @@ class ContextBlock:
     text: str          # 父块全文（small-to-big 的"big"）
     snippet: str       # 命中的叶子块原文（引用展示用）
     score: float
+    # M5-2 引用定位：命中叶子块在源文件中的页码（文本层 PDF 摄取时回填，
+    # 其他格式/老数据为 None）。取叶子而非父块的页——引用要跳去的是命中处。
+    page: int | None = None
 
 
 @dataclass
@@ -287,5 +290,6 @@ class Retriever:
                     text=text,
                     snippet=leaf.text,
                     score=score,
+                    page=leaf.page,
                 ))
         return blocks

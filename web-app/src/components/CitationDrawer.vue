@@ -4,13 +4,13 @@
 // 逐段渲染——不经 v-html）与相关度分数。"查看文档全文"打开 Dialog 展示
 // getDocContent 全文，并在 heading_path 首次出现处高亮定位。
 import { computed, ref, watch } from "vue";
-import { X, FileText, Download } from "@lucide/vue";
+import { X, FileText, Download, Eye } from "@lucide/vue";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { docOriginalUrl, getDocContent, type Citation, type DocumentContent } from "@/lib/api";
-import { highlightSegments } from "@/lib/chat-utils";
+import { highlightSegments, originalPreviewKind } from "@/lib/chat-utils";
 
 const props = defineProps<{
   citation: Citation | null;
@@ -64,9 +64,22 @@ async function openFullText() {
   }
 }
 
-// 切换引用时全文预览状态归零，避免残留上一篇文档内容。
+// ---- 原始文件预览（M5-2 引用定位）----
+// pdf → iframe 内联浏览器查看器，带 #page=N 直接跳到引用所在页附近；
+// 图片 → <img> 直显。docx/xlsx 等浏览器渲染不了，不出现此按钮（回退
+// "查看文档全文"的 Markdown 定位 + 下载原件）。
+const previewOpen = ref(false);
+const previewKind = computed(() => originalPreviewKind(props.citation?.doc_name));
+const previewUrl = computed(() => {
+  const docId = props.citation?.doc_id;
+  if (!docId) return "";
+  return docOriginalUrl(docId, { inline: true, page: props.citation?.page ?? undefined });
+});
+
+// 切换引用时全文/原件预览状态归零，避免残留上一篇文档内容。
 watch(() => props.citation, () => {
   fullTextOpen.value = false;
+  previewOpen.value = false;
   docContent.value = null;
   fullTextError.value = null;
 });
@@ -105,15 +118,28 @@ watch(() => props.citation, () => {
         <span class="rounded-full bg-[var(--surface-2)] px-2 py-0.5 font-medium text-[var(--text-2)]">
           {{ citation.score.toFixed(3) }}
         </span>
+        <!-- 源文件页码（文本层 PDF 才有）：预览按钮会直接跳到这一页 -->
+        <span
+          v-if="citation.page"
+          class="rounded-full bg-[var(--surface-2)] px-2 py-0.5 font-medium text-[var(--text-2)]"
+        >
+          第 {{ citation.page }} 页
+        </span>
       </div>
 
-      <div v-if="citation.doc_id" class="mt-4 flex items-center gap-2">
+      <div v-if="citation.doc_id" class="mt-4 flex flex-wrap items-center gap-2">
+        <!-- 原始文件预览（M5-2）：pdf/图片浏览器可原生渲染时才出现；
+             pdf 带 #page= 定位到引用所在页附近 -->
+        <Button v-if="previewKind" variant="outline" size="sm" @click="previewOpen = true">
+          <Eye class="size-3.5" />
+          预览原文件{{ citation.page ? `（第${citation.page}页）` : "" }}
+        </Button>
         <Button variant="outline" size="sm" @click="openFullText">
           <FileText class="size-3.5" />
           查看文档全文
         </Button>
-        <!-- 原始文件下载（M5-2）：识别前的 .docx/.pdf/扫描图原件，浏览器
-             原生下载（同源带 Cookie），文件名恢复上传原名 -->
+        <!-- 原始文件下载：识别前的 .docx/.pdf/扫描图原件，浏览器原生下载
+             （同源带 Cookie），文件名恢复上传原名 -->
         <Button variant="outline" size="sm" as="a" :href="docOriginalUrl(citation.doc_id)">
           <Download class="size-3.5" />
           下载原文件
@@ -121,6 +147,28 @@ watch(() => props.citation, () => {
       </div>
     </div>
   </aside>
+
+  <!-- 原始文件预览 Dialog（M5-2 引用定位） -->
+  <Dialog v-model:open="previewOpen">
+    <DialogContent class="max-h-[90vh] max-w-4xl overflow-hidden">
+      <DialogHeader>
+        <DialogTitle>{{ citation?.doc_name }}</DialogTitle>
+        <DialogDescription>
+          {{ citation?.page ? `已定位到第 ${citation.page} 页附近` : "原始文件预览" }}
+        </DialogDescription>
+      </DialogHeader>
+      <!-- pdf：浏览器自带查看器（#page=N 跳页）；image：原图直显 -->
+      <iframe
+        v-if="previewOpen && previewKind === 'pdf'"
+        :src="previewUrl"
+        class="h-[72vh] w-full rounded-[var(--radius-ctl)] border border-[var(--border)]"
+        title="原始文件预览"
+      />
+      <div v-else-if="previewOpen && previewKind === 'image'" class="max-h-[72vh] overflow-auto">
+        <img :src="previewUrl" :alt="citation?.doc_name" class="max-w-full" />
+      </div>
+    </DialogContent>
+  </Dialog>
 
   <Dialog v-model:open="fullTextOpen">
     <DialogContent class="max-h-[80vh] max-w-2xl overflow-hidden">

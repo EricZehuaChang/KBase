@@ -43,6 +43,10 @@ class Chunk(Base):
     text: Mapped[str] = mapped_column(Text)
     is_leaf: Mapped[bool] = mapped_column(Boolean, default=True)
     enrich_context: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # M5-2 引用溯源定位：该块在源文件中的页码（1 起）。仅文本层 PDF 摄取时
+    # 回填（pdfminer 逐页文本前缀匹配，见 ingest/pipeline.py）；其他格式或
+    # 匹配失败为 NULL——引用定位是尽力而为的增强，不是硬保证。
+    page: Mapped[int | None] = mapped_column(nullable=True)
 
 
 class Conversation(Base):

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { renderWithChips, groupByTime, appendConversationPage } from "../chat-utils";
+import { renderWithChips, groupByTime, appendConversationPage, originalPreviewKind } from "../chat-utils";
 
 describe("renderWithChips", () => {
   it("将 [n] 角标切分为 chip 片段，其余为文本片段，文本内容完整不丢字符", () => {
@@ -106,5 +106,24 @@ describe("appendConversationPage", () => {
   it("hasMore 精确反映 items.length < total", () => {
     const result = appendConversationPage([{ id: "a" }], { items: [{ id: "b" }], total: 3 });
     expect(result.hasMore).toBe(true);          // 已有 2/3，还差 1
+  });
+});
+
+describe("originalPreviewKind（M5-2 原始文件预览类型判定）", () => {
+  it("pdf → 浏览器查看器内联预览", () => {
+    expect(originalPreviewKind("政策文件.pdf")).toBe("pdf");
+    expect(originalPreviewKind("UPPER.PDF")).toBe("pdf");
+  });
+  it("图片 → img 直显", () => {
+    expect(originalPreviewKind("扫描件.png")).toBe("image");
+    expect(originalPreviewKind("票据.JPG")).toBe("image");
+    expect(originalPreviewKind("x.webp")).toBe("image");
+  });
+  it("office/未知/空 → null（回退 Markdown 定位+下载）", () => {
+    expect(originalPreviewKind("报告.docx")).toBe(null);
+    expect(originalPreviewKind("表.xlsx")).toBe(null);
+    expect(originalPreviewKind("no-ext")).toBe(null);
+    expect(originalPreviewKind(null)).toBe(null);
+    expect(originalPreviewKind(undefined)).toBe(null);
   });
 });
