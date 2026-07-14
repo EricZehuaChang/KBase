@@ -117,6 +117,42 @@ def test_healthz_and_spa_reachable_without_auth(tmp_path, fake_embedder):
     assert "text/html" in r.headers["content-type"]
 
 
+# ---- M5-1 F1：双 SPA 回退（SPAStaticFiles，/admin 前缀回退到管理端 bundle）
+# 三个测试用 web/index.html 与 web/admin.html 各自的 <title> 作为 marker
+# 区分命中了哪个产物（两份 HTML 的 <title> 分别是 "KBase" 与
+# "KBase 管理端"，见 web-app/index.html、web-app/admin.html 的注释）——这些
+# 断言依赖仓库里已提交的构建产物 web/（house rule：构建产物入库），与既有
+# test_spa_deep_link_serves_index / test_healthz_and_spa_reachable_without_auth
+# 的做法一致。
+
+def test_admin_route_serves_admin_html_marker(tmp_path, fake_embedder):
+    app, c = _client_on(tmp_path, fake_embedder)
+    r = c.get("/admin")
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+    assert "KBase 管理端" in r.text
+
+
+def test_root_route_serves_index_html_marker(tmp_path, fake_embedder):
+    """GET / 应回退使用端 index.html，不能被 /admin 分流逻辑误伤——两份产物
+    的 marker 互斥断言，防止"两个都回退成同一份"这种更隐蔽的坏法。"""
+    app, c = _client_on(tmp_path, fake_embedder)
+    r = c.get("/")
+    assert r.status_code == 200
+    assert "<title>KBase</title>" in r.text
+    assert "KBase 管理端" not in r.text
+
+
+def test_admin_deep_link_falls_back_to_admin_html(tmp_path, fake_embedder):
+    """管理端前端路由深链接（如 /admin/kb 刷新页面）未命中真实文件时应回退
+    admin.html 而不是 index.html——否则深链接刷新会加载错误的 bundle，
+    管理端路由（vue-router base="/admin"）拿到的却是使用端的 JS。"""
+    app, c = _client_on(tmp_path, fake_embedder)
+    r = c.get("/admin/users-page-route")
+    assert r.status_code == 200
+    assert "KBase 管理端" in r.text
+
+
 def test_api_docs_disabled_when_auth_on_enabled_when_off(tmp_path, fake_embedder):
     """生产（auth="on"）关闭 /docs /redoc /openapi.json——它们默认不鉴权，
     会把完整路由与模型 schema 暴露给未认证访问者；dev/test（auth="off"）保留。"""

@@ -1,28 +1,25 @@
+// 【使用端】路由表（Vite 入口 index.html，base "/"）。只有两个路由——问答
+// 首页与登录页；KbView/AnalysisView/GenerateView/SettingsView 完全不在这里
+// 出现，这正是"使用端 bundle 不含管理端代码"的路由侧前提（配合
+// web-app/scripts/check-bundle-isolation.mjs 的构建产物校验，见 spec §3.3）。
 import { createRouter, createWebHistory } from "vue-router";
 import ChatView from "@/views/ChatView.vue";
-import KbView from "@/views/KbView.vue";
-import AnalysisView from "@/views/AnalysisView.vue";
-import GenerateView from "@/views/GenerateView.vue";
-import SettingsView from "@/views/SettingsView.vue";
 import LoginView from "@/views/LoginView.vue";
 import { getSession, setUnauthorizedHandler } from "@/lib/api";
 import { loginRedirectQuery } from "@/lib/auth-utils";
 
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory("/"),
   routes: [
-    { path: "/login", name: "login", component: LoginView },
-    { path: "/", name: "chat", component: ChatView },
-    { path: "/kb", name: "kb", component: KbView },
-    { path: "/analysis", name: "analysis", component: AnalysisView },
-    { path: "/generate", name: "generate", component: GenerateView },
-    { path: "/settings", name: "settings", component: SettingsView },
+    { path: "/login", name: "portal-login", component: LoginView },
+    { path: "/", name: "portal-chat", component: ChatView },
   ],
 });
 
-// 全局会话守卫：/login 本身开放，其余路由都探测会话（getSession 内部缓存，
-// 不会每次导航都打请求）。无会话则跳 /login 并带上原目标路径，登录后
-// LoginView 用 redirectTarget 读回来跳回去。
+// 会话守卫：逻辑与分端改造前一致（未登录跳 /login 并带 redirect）。使用端
+// 不做角色校验——viewer/editor/admin 登录后都落地问答页，角色只影响顶栏
+// "进入工作台"入口是否可见（PortalShell.vue），不影响这两个路由本身能否
+// 进入。角色相关的强制拦截只存在于管理端（src/admin/guard.ts）。
 router.beforeEach(async (to) => {
   if (to.path === "/login") return true;
   const session = await getSession();
