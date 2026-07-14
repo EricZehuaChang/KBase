@@ -179,25 +179,34 @@ class Retriever:
             elif status == "error":
                 self._rerank_error_total += 1
 
-    def retrieve(self, kb_id: str, query: str, top_k: int = 5, debug: bool = False):
+    def retrieve(self, kb_id: str, query: str, top_k: int = 5, debug: bool = False,
+                 strategy=None):
         """debug=False 返回 list[ContextBlock]（向后兼容）；
-        debug=True 返回 RetrievalResult(blocks, trace)。"""
+        debug=True 返回 RetrievalResult(blocks, trace)。
+
+        strategy（M6-1.5，RetrievalStrategy|None）：KB 级/请求级检索策略。
+        None=沿用构造参数（既有行为字节级不变）。策略只能**关闭**已安装的
+        能力（keyword_index/reranker 实例仍是最终门），开不出部署里没有的路。"""
         trace: dict = {}
+        use_keyword = strategy.use_keyword if strategy is not None else True
+        use_rerank = strategy.use_rerank if strategy is not None else True
+        candidates = (strategy.candidates if strategy is not None
+                      else self._candidates)
         embedder = (self._embedder_resolver(kb_id)
                     if self._embedder_resolver else self._embedder)
         vec = embedder.embed([query])[0]
-        dense_hits = self._store.search(kb_id, vec, top_k=self._candidates)
+        dense_hits = self._store.search(kb_id, vec, top_k=candidates)
         dense = [(h.chunk_id, h.score) for h in dense_hits]
         cosine = {h.chunk_id: h.score for h in dense_hits}
         trace["dense"] = dense
 
-        if self._kw is not None:
-            kw_hits = self._kw.search(kb_id, query, top_k=self._candidates)
+        if self._kw is not None and use_keyword:
+            kw_hits = self._kw.search(kb_id, query, top_k=candidates)
             keyword = [(h.chunk_id, h.score) for h in kw_hits]
             trace["keyword"] = keyword
-            fused = rrf_fuse([dense, keyword], k=self._rrf_k)[: self._candidates]
+            fused = rrf_fuse([dense, keyword], k=self._rrf_k)[: candidates]
         else:
-            fused = dense[: self._candidates]
+            fused = dense[: candidates]
         trace["fused"] = fused
 
         candidate_ids = [cid for cid, _ in fused]
@@ -207,7 +216,7 @@ class Retriever:
             cosine.update(self._cosine_from_store(kb_id, missing, vec))
 
         ordered = None
-        if self._reranker is None:
+        if self._reranker is None or not use_rerank:
             rerank_status = "off"
         else:
             acquired = self._rerank_sem.acquire(blocking=False)

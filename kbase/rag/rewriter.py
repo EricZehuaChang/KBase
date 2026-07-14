@@ -49,8 +49,12 @@ class QueryRewriter:
         self._max_wait = max_wait_s
         self._pronouns = pronouns
 
-    async def rewrite(self, question: str, history: list[dict]) -> RewriteResult:
-        if not should_rewrite(question, history, self._mode, self._pronouns):
+    async def rewrite(self, question: str, history: list[dict],
+                      mode: str | None = None) -> RewriteResult:
+        """mode（M6-1.5）：KB 级策略覆盖（off/conditional/always）；
+        None=用构造时的全局模式（既有行为不变）。"""
+        effective = mode if mode is not None else self._mode
+        if not should_rewrite(question, history, effective, self._pronouns):
             return RewriteResult(query=question, triggered=False, rewritten=False)
         try:
             hist = "\n".join(f"{m['role']}: {m['content']}" for m in history)
