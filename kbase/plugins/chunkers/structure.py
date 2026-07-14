@@ -115,6 +115,65 @@ def split_table(md_table: str, chunk_size: int) -> list[tuple[str, str]]:
     return out
 
 
+# 跨页断表合并时允许"跨越"的装饰性短文本段：纯页码/分隔符（如"— 3 —"、
+# "第 4 页 共 12 页"）。真实文字段（哪怕很短的说明句）会阻断合并——宁可
+# 不合并也不能把两张真正独立的表错拼成一张。
+_PAGE_NOISE_RE = re.compile(r"^[\s\-—–_·.。,，、/\\|()（）\d页第共之]*$")
+
+
+def merge_split_tables(segments: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """跨页断表合并（GLM-OCR 多页 PDF 的头号问题）：分页会把一张表切成
+    两个相邻 <table>，第二段通常**没有表头**——不合并的话第二段首行数据会
+    被误当表头，线性化键值全部错位。
+
+    合并条件（保守，防误拼独立表）：相邻表格段（中间无内容或只有页码类
+    装饰行）且**列数相同**。第二段首行与第一段表头相同 → 视为续页重复
+    表头，去重；不同 → 视为延续数据行，全部并入。合并产物统一重建为
+    Markdown 管道表格。三页以上连续断表按同规则链式合并。"""
+    out: list[tuple[str, str]] = []
+    i = 0
+    while i < len(segments):
+        kind, content = segments[i]
+        if kind != "table":
+            out.append(segments[i])
+            i += 1
+            continue
+        parsed = parse_table(content)
+        if parsed is None:
+            out.append(segments[i])
+            i += 1
+            continue
+        header, rows = parsed
+        merged = False
+        j = i + 1
+        while j < len(segments):
+            nkind, ncontent = segments[j]
+            if nkind == "text":
+                t = ncontent.strip()
+                # 页码噪声可跨越（合并成功时随之丢弃——它本就不该进知识块）
+                if len(t) <= 12 and _PAGE_NOISE_RE.match(t):
+                    j += 1
+                    continue
+                break
+            nparsed = parse_table(ncontent)
+            if nparsed is None or len(nparsed[0]) != len(header):
+                break
+            nheader, nrows = nparsed
+            if nheader == header:
+                rows = rows + nrows              # 续页重复表头：去重合并
+            else:
+                rows = rows + [nheader] + nrows  # 续页无表头：首行也是数据
+            merged = True
+            j += 1
+        if merged:
+            out.append(("table", _table_markdown(header, rows)))
+            i = j
+        else:
+            out.append(segments[i])
+            i += 1
+    return out
+
+
 def split_segments(text: str) -> list[tuple[str, str]]:
     """把章节文本切成 [(kind, content)]，kind ∈ {"text", "table"}。
     表格边界由 Markdown/HTML 两种表格正则共同确定（合并、按位置排序），
@@ -172,7 +231,8 @@ class StructureChunker:
             # 短于 chunk_size 的章节会产生文本相同的父块+单叶子块，属预期设计
             # （叶子用于向量检索，父块用于上下文组装），勿"优化"合并。
             leaves: list[ChunkData] = []
-            for kind, content in split_segments(section.page_content):
+            for kind, content in merge_split_tables(
+                    split_segments(section.page_content)):
                 if kind == "table":
                     pieces = split_table(content, self.chunk_size)
                     if pieces:

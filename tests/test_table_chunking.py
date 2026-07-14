@@ -59,6 +59,107 @@ def test_parse_html_table_from_ocr():
     assert "城市级别=二线城市；住宿上限=每晚350元。" in linearize_table(header, rows)
 
 
+# ---------------- 跨页断表合并 ----------------
+
+
+def _html_tbl(rows: list[list[str]]) -> str:
+    trs = "".join("<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>"
+                  for r in rows)
+    return f"<table>{trs}</table>"
+
+
+def test_merge_split_tables_continuation_without_header():
+    """跨页断表（GLM-OCR 典型输出）：第二段无表头——不合并的话首行数据会被
+    误当表头、线性化键值错位。合并后统一用第一段表头。"""
+    from kbase.plugins.chunkers.structure import merge_split_tables
+    seg = [
+        ("table", _html_tbl([["城市", "上限"], ["一线", "500元"]])),
+        ("text", "\n— 3 —\n"),                       # 页码噪声可跨越
+        ("table", _html_tbl([["二线", "350元"], ["三线", "250元"]])),
+    ]
+    merged = merge_split_tables(seg)
+    assert len(merged) == 1 and merged[0][0] == "table"
+    header, rows = parse_table(merged[0][1])
+    assert header == ["城市", "上限"]
+    assert ["二线", "350元"] in rows and ["三线", "250元"] in rows
+    assert "上限=350元" in linearize_table(header, rows)   # 键值不再错位
+
+
+def test_merge_split_tables_repeated_header_dedup():
+    """续页重复表头（Word 打印样式常见）：重复行去掉，不当数据。"""
+    from kbase.plugins.chunkers.structure import merge_split_tables
+    seg = [
+        ("table", _html_tbl([["城市", "上限"], ["一线", "500元"]])),
+        ("table", _html_tbl([["城市", "上限"], ["二线", "350元"]])),
+    ]
+    merged = merge_split_tables(seg)
+    header, rows = parse_table(merged[0][1])
+    assert rows == [["一线", "500元"], ["二线", "350元"]]
+
+
+def test_merge_split_tables_guards():
+    """不该合并的场景：列数不同的相邻表、中间隔真实文字段的两张表。"""
+    from kbase.plugins.chunkers.structure import merge_split_tables
+    diff_cols = [
+        ("table", _html_tbl([["a", "b"], ["1", "2"]])),
+        ("table", _html_tbl([["x", "y", "z"], ["1", "2", "3"]])),
+    ]
+    assert len(merge_split_tables(diff_cols)) == 2
+    real_text_between = [
+        ("table", _html_tbl([["a", "b"], ["1", "2"]])),
+        ("text", "下表为另一项统计口径的数据说明。"),
+        ("table", _html_tbl([["a", "b"], ["3", "4"]])),
+    ]
+    assert len(merge_split_tables(real_text_between)) == 3
+
+
+def test_parse_mode_ocr_forces_glm_on_text_pdf(tmp_path, fake_embedder):
+    """表格增强模式：文本层 PDF 强制走 OCR 后端（拿结构化表格），
+    而 auto 模式同一文件走 pdfminer。"""
+    import sys
+    sys.path.insert(0, str(tmp_path.parents[0]))
+    from tests.test_citation_page import _text_pdf
+    from kbase.api.main import create_app
+    from fastapi.testclient import TestClient
+    from kbase.plugins.base import OCRResult
+
+    class SpyOCR:
+        calls = 0
+
+        def to_markdown(self, path):
+            SpyOCR.calls += 1
+            return OCRResult(markdown="## 表\n" + _html_tbl(
+                [["项目", "数值"], ["合格率", "99%"]]))
+
+    cfg = tmp_path / "kbase.yaml"
+    cfg.write_text(CFG.format(data_dir=str(tmp_path / "data").replace("\\", "/")),
+                   encoding="utf-8")
+    app = create_app(config_path=cfg, embedder=fake_embedder,
+                     llms={"fake": FakeLLM()}, reranker=False,
+                     ocr_backend=SpyOCR(), auth="off")
+    c = TestClient(app)
+    kb_id = c.post("/api/kb", json={"name": "库"}).json()["id"]
+    pdf = tmp_path / "policy.pdf"
+    # 每页 >50 字符：pdf_has_text_layer 的文本层判定阈值（低于它会被当扫描件）
+    long_line = "Plain text page content here with enough characters to pass the text layer check."
+    _text_pdf(pdf, [long_line])
+    # auto：文本层 PDF 不走 OCR
+    c.post(f"/api/kb/{kb_id}/documents",
+           files=[("files", ("a.pdf", pdf.read_bytes(), "application/pdf"))])
+    assert SpyOCR.calls == 0
+    # ocr：强制走 OCR，产物是 HTML 表格 → 表格块+线性化生效
+    _text_pdf(pdf, [long_line + " Different content to avoid dedup."])
+    c.post(f"/api/kb/{kb_id}/documents", data={"parse_mode": "ocr"},
+           files=[("files", ("b.pdf", pdf.read_bytes(), "application/pdf"))])
+    assert SpyOCR.calls == 1
+    doc = next(d for d in c.get(f"/api/kb/{kb_id}/documents").json()
+               if d["filename"] == "b.pdf")
+    assert doc["status"] == "ready"
+    tbl = [i for i in c.get(f"/api/documents/{doc['id']}/chunks").json()["items"]
+           if (i.get("layout") or {}).get("kind") == "table"]
+    assert tbl and "项目=合格率；数值=99%" in tbl[0]["layout"]["linearized"]
+
+
 def test_html_table_segmented_and_chunked():
     """GLM-OCR 输出的 HTML 表格同样走表格感知分块（正文归一为 Markdown）。"""
     doc = f"## 差旅住宿标准表\n\n{HTML_TABLE}\n"
