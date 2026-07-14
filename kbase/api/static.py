@@ -29,7 +29,7 @@ class SPAStaticFiles(StaticFiles):
         # 用 PurePosixPath 统一成 "/" 再判断前缀，避免平台差异漏判。
         normalized = path.replace("\\", "/")
         if (normalized == "api" or normalized.startswith("api/")
-                or normalized == "healthz"
+                or normalized in ("healthz", "metrics")
                 or normalized in ("openapi.json", "docs", "redoc")):
             return await super().get_response(path, scope)
         try:

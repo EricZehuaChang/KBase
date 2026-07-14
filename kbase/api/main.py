@@ -7,7 +7,7 @@ uvicorn 工厂路径保持不变：`uvicorn --factory kbase.api.main:create_app`
 from pathlib import Path
 
 import anyio
-from fastapi import APIRouter, Depends, FastAPI
+from fastapi import APIRouter, Depends, FastAPI, Response
 
 from kbase.api.routes import RouteDeps
 from kbase.api.routes import (admin as admin_routes, auth as auth_routes,
@@ -115,18 +115,27 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
         audit_mutation=Depends(make_mutation_audit_dependency(svc.sf)),
     )
 
+    def _reranker_status() -> str:
+        if svc.rerank_degraded:
+            return "degraded"
+        return "on" if svc.retriever.rerank_active else "off"
+
     @app.get("/healthz")
     def healthz():
-        if svc.rerank_degraded:
-            reranker_status = "degraded"
-        elif svc.retriever.rerank_active:
-            reranker_status = "on"
-        else:
-            reranker_status = "off"
         return {"status": "ok", "embedder": type(svc.embedder).__name__,
                 "vectorstore": type(svc.store).__name__,
-                "reranker": reranker_status,
+                "reranker": _reranker_status(),
                 "rerank_stats": svc.retriever.rerank_stats}
+
+    # /metrics（D 运维）：Prometheus 文本出口，与 /healthz 同为 app 级、无鉴权
+    # ——生产靠网络隔离而非 token 保护抓取端点，客户 Prometheus 可直接 scrape。
+    @app.get("/metrics")
+    def metrics() -> Response:
+        from kbase import metrics as metrics_mod
+        from kbase.qa_stats import lifetime_counters
+        body = metrics_mod.render(lifetime_counters(svc.sf),
+                                  svc.retriever.rerank_stats, _reranker_status())
+        return Response(content=body, media_type="text/plain; version=0.0.4")
 
     # 各领域路由注册：auth（登录/登出/身份）、admin（用户/API Key/审计/许可证）、
     # settings（Provider 管理）、kb（知识库与文档）、query（问答/检索/会话）、

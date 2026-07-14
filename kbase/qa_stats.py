@@ -43,6 +43,21 @@ def qa_overview(sf, days: int = 7) -> dict:
     }
 
 
+def lifetime_counters(sf) -> dict:
+    """全时段累计计数（Prometheus counter 语义：单调递增总量）。
+    /metrics 用——Prometheus 侧自己算速率，不该给它带时间窗的值。"""
+    with sf() as s:
+        query_total = (s.query(func.count(AuditLog.id))
+                       .filter(AuditLog.action == "query").scalar()) or 0
+        refused_total = (s.query(func.count(AuditLog.id))
+                         .filter(AuditLog.action == "query_refused").scalar()) or 0
+        login_failed = (s.query(func.count(AuditLog.id))
+                        .filter(AuditLog.action == "login_failed").scalar()) or 0
+    return {"query_total": int(query_total),
+            "refused_total": int(refused_total),
+            "login_failed_total": int(login_failed)}
+
+
 def unanswered_questions(sf, limit: int = 50) -> list[dict]:
     """最近的无答案（拒答）问题清单——知识缺口的直接信号，运营据此补文档。"""
     with sf() as s:
