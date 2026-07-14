@@ -2,8 +2,10 @@
 // 首页与登录页；KbView/AnalysisView/GenerateView/SettingsView 完全不在这里
 // 出现，这正是"使用端 bundle 不含管理端代码"的路由侧前提（配合
 // web-app/scripts/check-bundle-isolation.mjs 的构建产物校验，见 spec §3.3）。
+// ChatHome（M5-1 F2 从 src/views/ChatView.vue 移入并重构）现在物理上就在
+// src/portal/ 目录下，不再是"共享视图"——它只属于使用端。
 import { createRouter, createWebHistory } from "vue-router";
-import ChatView from "@/views/ChatView.vue";
+import ChatHome from "./ChatHome.vue";
 import LoginView from "@/views/LoginView.vue";
 import { getSession, setUnauthorizedHandler } from "@/lib/api";
 import { loginRedirectQuery } from "@/lib/auth-utils";
@@ -12,7 +14,7 @@ const router = createRouter({
   history: createWebHistory("/"),
   routes: [
     { path: "/login", name: "portal-login", component: LoginView },
-    { path: "/", name: "portal-chat", component: ChatView },
+    { path: "/", name: "portal-chat", component: ChatHome },
   ],
 });
 

@@ -1,0 +1,32 @@
+// 使用端顶栏选择器（KB/模型下拉）共享状态（M5-1 F2）。
+//
+// 背景：F1 时这两个下拉长在 ChatView 自己的 <header> 里；F2 把它们搬进
+// PortalShell 的顶栏——顶栏跨路由常驻（不随问答页切换/卸载），而实际消费
+// 选中值发起会话/问答请求的是 ChatHome（PortalShell 的 router-view 子级）。
+// 两者不在同一条 props 传递链路上（PortalShell 用 <router-view> 渲染
+// ChatHome，不是直接的父子模板嵌套），所以用模块级单例 ref 共享——与
+// src/lib/api.ts 的 currentRole、src/lib/theme.ts 的 theme 是同一手法，
+// 生命周期就是"当前登录会话"，没必要为这两个值引入 Pinia。
+import { ref } from "vue";
+import { listKbs, listProviders, type Kb } from "@/lib/api";
+
+export const kbs = ref<Kb[]>([]);
+export const kbId = ref<string | undefined>(undefined);
+export const providers = ref<string[]>([]);
+export const provider = ref<string | undefined>(undefined);
+
+let loaded = false;
+
+/** 幂等加载：PortalShell 挂载时调用。kbs/providers 在一次登录会话内基本
+ * 不变，不需要每次路由切换/组件重挂载都重新拉取——用模块级标志位而不是
+ * 组件内 onMounted 判空，避免"用户在两次挂载之间手动删了所有 KB"这类
+ * 极端场景下的重复请求成本（这个成本本来就小，标志位只是不做无谓请求）。 */
+export async function ensureTopbarLoaded(): Promise<void> {
+  if (loaded) return;
+  loaded = true;
+  kbs.value = await listKbs();
+  if (kbs.value.length && !kbId.value) kbId.value = kbs.value[0].id;
+  const providersResp = await listProviders();
+  providers.value = providersResp.providers;
+  if (!provider.value) provider.value = providersResp.active ?? undefined;
+}

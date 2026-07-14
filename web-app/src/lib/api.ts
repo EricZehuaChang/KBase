@@ -296,6 +296,16 @@ export function listMessages(convId: string): Promise<Message[]> {
   return req(`/api/conversations/${convId}/messages`);
 }
 
+// 会话重命名/删除（M5-1 F2 使用端会话侧栏）：后端按归属过滤，非本人会话
+// 统一 404（不区分"不存在"与"不是你的"，见 kbase/conversations.py 注释）。
+export function renameConv(convId: string, title: string): Promise<Conversation> {
+  return req(`/api/conversations/${convId}`, jsonInit({ title }, "PUT"));
+}
+
+export function deleteConv(convId: string): Promise<{ ok: boolean }> {
+  return req(`/api/conversations/${convId}`, { method: "DELETE" });
+}
+
 // SSE 端点：返回原始 Response，调用方自己取 reader 喂给 parseSSE。
 // signal 用于中途取消（切换会话/知识库或离开页面时 abort，避免旧流继续写入）。
 // credentials: "include" 让会话 Cookie 随请求发出——鉴权开启后这两个端点

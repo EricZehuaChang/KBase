@@ -24,6 +24,45 @@ describe("renderWithChips", () => {
   it("空字符串返回空数组", () => {
     expect(renderWithChips("")).toEqual([]);
   });
+
+  it("连续相邻角标（紧邻场景）正确切分，不丢字符也不合并", () => {
+    const text = "多个来源[1][2][3]共同支持这一结论。";
+    const segments = renderWithChips(text);
+    expect(segments.filter((s) => s.type === "chip").map((s) => (s as { index: number }).index))
+      .toEqual([1, 2, 3]);
+    const rebuilt = segments
+      .map((s) => (s.type === "text" ? s.text : `[${(s as { index: number }).index}]`))
+      .join("");
+    expect(rebuilt).toBe(text);
+  });
+
+  it("围栏代码块内的 [n] 不转 chip，原样保留为文本（免误伤伪代码 arr[1]）", () => {
+    const text = "示例：\n```\narr[1] = 2\n```\n结论见[1]。";
+    const segments = renderWithChips(text);
+    expect(segments.filter((s) => s.type === "chip"))
+      .toEqual([{ type: "chip", index: 1 }]);   // 只有代码块外的 [1] 被识别
+    const rebuilt = segments
+      .map((s) => (s.type === "text" ? s.text : `[${(s as { index: number }).index}]`))
+      .join("");
+    expect(rebuilt).toBe(text);                 // 代码块内容原样保留，不丢字符
+  });
+
+  it("行内代码 `arr[0]` 内的 [n] 不转 chip", () => {
+    const text = "使用 `arr[0]` 取第一个元素，参见[2]。";
+    const segments = renderWithChips(text);
+    expect(segments.filter((s) => s.type === "chip")).toEqual([{ type: "chip", index: 2 }]);
+  });
+
+  it("数字区间写法 [1-3] 本就不匹配纯数字角标正则，不受影响", () => {
+    const segments = renderWithChips("适用范围为第[1-3]条。");
+    expect(segments.filter((s) => s.type === "chip")).toEqual([]);
+  });
+
+  it("越界引用编号（citations 数组中不存在的 n）仍解析出 chip——是否存在对应" +
+     "引用是渲染层按 citations 查找后的事，解析器本身不做越界校验", () => {
+    const segments = renderWithChips("参考文献[99]未提供。");
+    expect(segments).toContainEqual({ type: "chip", index: 99 });
+  });
 });
 
 describe("groupByTime", () => {

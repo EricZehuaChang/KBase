@@ -1,22 +1,35 @@
 <script setup lang="ts">
 // 消息流：用户消息右对齐浅底圆角块；助手消息为流动排版（无气泡），
-// 流式中显示"思考中…"占位直到首个字符到达；引用角标 [n] 渲染为可点击
-// accent 小圆片（renderWithChips 纯函数切分，逐段渲染，不经 v-html）。
-import { computed } from "vue";
-import { useRouter } from "vue-router";
+// 流式中显示"思考中…"占位直到首个字符到达；引用角标 [n] 渲染为 <sup> 包裹
+// 的可点击 chip（renderWithChips 纯函数切分，代码块/行内代码免疫见
+// chat-utils.ts），点击先弹小 popover（文档名+片段），popover 里"查看原文"
+// 再打开 CitationDrawer 抽屉看全文——两级展开，popover 快速预览，抽屉给
+// 需要细看的人。悬浮操作条：复制、重新提问（把这条回答对应的提问回填进
+// 输入框，交给父组件决定是否清空重发）。
 import { toast } from "vue-sonner";
-import { Copy, ScanSearch } from "@lucide/vue";
+import { Copy, RotateCcw } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { renderWithChips } from "@/lib/chat-utils";
 import type { ChatMessage } from "@/composables/useChat";
+import type { Citation } from "@/lib/api";
 
 const props = defineProps<{ messages: ChatMessage[] }>();
-const emit = defineEmits<{ openCitation: [index: number, messageId: string] }>();
-
-const router = useRouter();
+const emit = defineEmits<{
+  openCitation: [index: number, messageId: string];
+  reask: [question: string];
+}>();
 
 function segmentsOf(content: string) {
   return renderWithChips(content);
+}
+
+/** 按角标编号在这条消息自己的 citations 里查找——渲染层的越界兜底：
+ * renderWithChips 纯函数不知道 citations 数组内容，找不到时（模型编号超出
+ * 实际引用数、或历史消息 citations 载荷缺失）返回 undefined，popover 据此
+ * 展示"引用不存在"而不是渲染一堆 undefined 字段。 */
+function citationFor(message: ChatMessage, index: number): Citation | undefined {
+  return message.citations.find((c) => c.index === index);
 }
 
 function lastQuestionFor(index: number): string {
@@ -28,27 +41,33 @@ function lastQuestionFor(index: number): string {
 
 async function copyMessage(content: string) {
   try {
-    await navigator.clipboard.writeText(content);
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(content);
+    } else {
+      // 回退路径：非安全上下文（如局域网 http 部署）拿不到 navigator.clipboard，
+      // execCommand 虽已废弃但兼容性仍覆盖这类场景，作为兜底而不是唯一实现。
+      const ta = document.createElement("textarea");
+      ta.value = content;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    }
     toast.success("已复制到剪贴板");
   } catch {
     toast.error("复制失败，请手动选择文本");
   }
 }
 
-function openRetrievalTrace(index: number) {
-  const question = lastQuestionFor(index);
-  router.push({ path: "/analysis", query: question ? { q: question } : {} });
+function reask(index: number) {
+  emit("reask", lastQuestionFor(index));
 }
-
-const isEmpty = computed(() => props.messages.length === 0);
 </script>
 
 <template>
   <ol class="flex flex-col gap-6" aria-label="对话消息列表">
-    <li v-if="isEmpty" class="py-12 text-center text-[var(--text-3)]">
-      提出一个问题，开始新的对话
-    </li>
-
     <li
       v-for="(message, index) in messages"
       :key="message.id"
@@ -62,22 +81,47 @@ const isEmpty = computed(() => props.messages.length === 0);
         {{ message.content }}
       </div>
 
-      <div v-else class="w-full max-w-[80ch]">
+      <div v-else class="group/msg w-full max-w-[80ch]">
         <div v-if="message.streaming && !message.content" class="text-[var(--text-3)]">
           思考中…
         </div>
         <div v-else class="whitespace-pre-wrap text-[var(--text)]">
           <template v-for="(seg, si) in segmentsOf(message.content)" :key="si">
             <span v-if="seg.type === 'text'">{{ seg.text }}</span>
-            <button
-              v-else
-              type="button"
-              class="mx-0.5 inline-flex size-5 items-center justify-center rounded-full bg-[var(--accent-weak)] text-xs font-medium text-[var(--accent-text)] align-middle hover:bg-[var(--accent)] hover:text-[var(--surface)]"
-              :aria-label="`查看引用 ${seg.index}`"
-              @click="emit('openCitation', seg.index, message.id)"
-            >
-              {{ seg.index }}
-            </button>
+            <sup v-else class="mx-0.5 align-middle">
+              <Popover>
+                <PopoverTrigger as-child>
+                  <button
+                    type="button"
+                    class="inline-flex size-4 items-center justify-center rounded-full bg-[var(--accent-weak)] text-[10px] font-medium text-[var(--accent-text)] hover:bg-[var(--accent)] hover:text-[var(--surface)]"
+                    :aria-label="`查看引用 ${seg.index}`"
+                  >
+                    {{ seg.index }}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent class="w-80 text-sm" side="top">
+                  <template v-if="citationFor(message, seg.index)">
+                    <div class="font-medium text-[var(--text)]">
+                      {{ citationFor(message, seg.index)!.doc_name }}
+                    </div>
+                    <p class="mt-1 line-clamp-3 text-xs leading-relaxed text-[var(--text-2)]">
+                      {{ citationFor(message, seg.index)!.snippet }}
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      class="mt-2"
+                      @click="emit('openCitation', seg.index, message.id)"
+                    >
+                      查看原文
+                    </Button>
+                  </template>
+                  <p v-else class="text-xs text-[var(--text-3)]">
+                    引用 [{{ seg.index }}] 不存在（可能是历史消息或模型编号有误）
+                  </p>
+                </PopoverContent>
+              </Popover>
+            </sup>
           </template>
         </div>
 
@@ -88,14 +132,21 @@ const isEmpty = computed(() => props.messages.length === 0);
           <span v-if="message.citations.length" class="rounded-full bg-[var(--surface-2)] px-2 py-0.5">
             {{ message.citations.length }} 条引用
           </span>
-          <Button variant="ghost" size="sm" @click="copyMessage(message.content)">
-            <Copy class="size-3.5" />
-            复制
-          </Button>
-          <Button variant="ghost" size="sm" @click="openRetrievalTrace(index)">
-            <ScanSearch class="size-3.5" />
-            检索过程
-          </Button>
+          <span v-if="message.stopped" class="text-[var(--warn)]">已停止</span>
+          <!-- hover 才"看见"的操作条：常驻会让消息区显得拥挤，且这两个动作都
+          不是高频操作。用 opacity 而不是 hidden/flex（display 切换）保留布局
+          与可达性——键盘 Tab 聚焦到按钮、触屏点击、自动化测试的坐标点击都
+          不依赖真的把鼠标悬停在这条消息上，见 SessionSidebar.vue 同款注释。 -->
+          <span class="flex items-center gap-3 opacity-0 focus-within:opacity-100 group-hover/msg:opacity-100">
+            <Button variant="ghost" size="sm" @click="copyMessage(message.content)">
+              <Copy class="size-3.5" />
+              复制
+            </Button>
+            <Button variant="ghost" size="sm" @click="reask(index)">
+              <RotateCcw class="size-3.5" />
+              重新提问
+            </Button>
+          </span>
         </div>
       </div>
     </li>
