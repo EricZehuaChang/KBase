@@ -292,6 +292,12 @@ export function getDocContent(docId: string): Promise<DocumentContent> {
   return req(`/api/documents/${docId}/content`);
 }
 
+// 原始文件直链（识别前的 .docx/.pdf/扫描图原件，Content-Disposition 恢复
+// 上传原名）：用于 <a href> / window.open 浏览器原生下载，不经 fetch+blob。
+export function docOriginalUrl(docId: string): string {
+  return `/api/documents/${docId}/original`;
+}
+
 export function search(
   kbId: string,
   query: string,

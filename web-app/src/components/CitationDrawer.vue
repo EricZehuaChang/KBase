@@ -4,12 +4,12 @@
 // 逐段渲染——不经 v-html）与相关度分数。"查看文档全文"打开 Dialog 展示
 // getDocContent 全文，并在 heading_path 首次出现处高亮定位。
 import { computed, ref, watch } from "vue";
-import { X, FileText } from "@lucide/vue";
+import { X, FileText, Download } from "@lucide/vue";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { getDocContent, type Citation, type DocumentContent } from "@/lib/api";
+import { docOriginalUrl, getDocContent, type Citation, type DocumentContent } from "@/lib/api";
 import { highlightSegments } from "@/lib/chat-utils";
 
 const props = defineProps<{
@@ -107,16 +107,18 @@ watch(() => props.citation, () => {
         </span>
       </div>
 
-      <Button
-        v-if="citation.doc_id"
-        variant="outline"
-        size="sm"
-        class="mt-4"
-        @click="openFullText"
-      >
-        <FileText class="size-3.5" />
-        查看文档全文
-      </Button>
+      <div v-if="citation.doc_id" class="mt-4 flex items-center gap-2">
+        <Button variant="outline" size="sm" @click="openFullText">
+          <FileText class="size-3.5" />
+          查看文档全文
+        </Button>
+        <!-- 原始文件下载（M5-2）：识别前的 .docx/.pdf/扫描图原件，浏览器
+             原生下载（同源带 Cookie），文件名恢复上传原名 -->
+        <Button variant="outline" size="sm" as="a" :href="docOriginalUrl(citation.doc_id)">
+          <Download class="size-3.5" />
+          下载原文件
+        </Button>
+      </div>
     </div>
   </aside>
 

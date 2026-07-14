@@ -4,12 +4,14 @@
 注释随各端点保留；摄取一律走后台任务（BackgroundTasks），批次内并行度由
 cfg.ingest.workers 控制。"""
 import json
+import mimetypes
 import shutil
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from fastapi import BackgroundTasks, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 
 from kbase.api.routes import RouteDeps
 from kbase.api.schemas import KBConfigBody, KBCreate
@@ -143,6 +145,26 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
             raise HTTPException(404, f"文档全文不存在: {doc_id}")
         return {"doc_id": doc.id, "filename": doc.filename,
                 "markdown": content_path.read_text(encoding="utf-8")}
+
+    @router.get("/documents/{doc_id}/original", dependencies=[deps.require_viewer])
+    def document_original(doc_id: str):
+        """下载识别前的原始上传文件（如 .docx/.pdf/扫描图），文件名恢复为
+        用户上传时的原名。数据来源是 Document.source_path——上传时落在
+        data_dir/uploads/ 的原件（摄取后不删除，重试 OCR 也依赖它）。
+        source_path 为空（极老数据）或文件已被清理时如实 404，
+        前端据此隐藏/提示，而不是回退到 Markdown 冒充原文。"""
+        with sf() as s:
+            doc = s.get(Document, doc_id)
+        if doc is None:
+            raise HTTPException(404, f"文档不存在: {doc_id}")
+        if not doc.source_path or not Path(doc.source_path).exists():
+            raise HTTPException(404, "原始文件已不存在（历史数据未保留原件或已被清理）")
+        media_type = (mimetypes.guess_type(doc.filename)[0]
+                      or "application/octet-stream")
+        # filename=原始文件名 → Content-Disposition attachment，浏览器按
+        # 用户当初上传的名字（含 .docx 等扩展名）下载，本地可直接用 Word 打开。
+        return FileResponse(doc.source_path, media_type=media_type,
+                            filename=doc.filename)
 
     @router.delete("/kb/{kb_id}/documents/{doc_id}",
                    dependencies=[deps.require_editor, deps.audit_mutation])

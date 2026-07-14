@@ -7,9 +7,9 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
-import { RotateCw, Trash2, AlertCircle } from "@lucide/vue";
+import { RotateCw, Trash2, AlertCircle, Download } from "@lucide/vue";
 import { statusBadge, canRetryDoc } from "@/lib/kb-utils";
-import type { DocumentItem } from "@/lib/api";
+import { docOriginalUrl, type DocumentItem } from "@/lib/api";
 
 withDefaults(defineProps<{ docs: DocumentItem[]; loading: boolean; canManage?: boolean }>(), {
   canManage: true,
@@ -45,24 +45,37 @@ const emit = defineEmits<{ retry: [doc: DocumentItem]; delete: [doc: DocumentIte
             </div>
           </TableCell>
           <TableCell>
-            <div v-if="canManage" class="flex items-center gap-1">
-              <Button
-                v-if="canRetryDoc(doc.status)"
-                variant="ghost"
-                size="icon-sm"
-                aria-label="重试"
-                @click="emit('retry', doc)"
-              >
-                <RotateCw class="size-3.5" />
-              </Button>
+            <div class="flex items-center gap-1">
+              <!-- 下载原始文件：viewer 也可用（后端 require_viewer），
+                   浏览器原生下载，文件名恢复上传原名（M5-2） -->
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label="删除"
-                @click="emit('delete', doc)"
+                aria-label="下载原文件"
+                as="a"
+                :href="docOriginalUrl(doc.id)"
               >
-                <Trash2 class="size-3.5" />
+                <Download class="size-3.5" />
               </Button>
+              <template v-if="canManage">
+                <Button
+                  v-if="canRetryDoc(doc.status)"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="重试"
+                  @click="emit('retry', doc)"
+                >
+                  <RotateCw class="size-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="删除"
+                  @click="emit('delete', doc)"
+                >
+                  <Trash2 class="size-3.5" />
+                </Button>
+              </template>
             </div>
           </TableCell>
         </TableRow>
