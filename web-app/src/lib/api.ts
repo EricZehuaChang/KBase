@@ -284,8 +284,21 @@ export function listDocs(kbId: string): Promise<DocumentItem[]> {
   return req(`/api/kb/${kbId}/documents`);
 }
 
-export function uploadDocs(kbId: string, files: FormData): Promise<{ accepted: string[] }> {
+// parseMode（F）："auto"=既有管道；"vlm"=满血视觉模型深度识别（仅图片格式
+// 生效，识别后停 pending_review 等人工校验确认才向量化）。
+export function uploadDocs(
+  kbId: string, files: FormData, parseMode: "auto" | "vlm" = "auto",
+): Promise<{ accepted: string[] }> {
+  if (parseMode !== "auto") files.set("parse_mode", parseMode);
   return req(`/api/kb/${kbId}/documents`, { method: "POST", body: files });
+}
+
+// F 校验确认入库：markdown 缺省=按识别结果原样；给了=以编辑稿为准
+export function reviewDocument(
+  docId: string, markdown?: string,
+): Promise<{ id: string; status: string; error: string | null }> {
+  return req(`/api/documents/${docId}/review`,
+             jsonInit({ markdown: markdown ?? null }, "PUT"));
 }
 
 export function deleteDoc(kbId: string, docId: string): Promise<{ ok: boolean }> {

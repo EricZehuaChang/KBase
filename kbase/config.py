@@ -115,6 +115,13 @@ class IngestConfig(BaseModel):
     workers: int = 2
 
 
+class VLMParseConfig(BaseModel):
+    # F 满血 VLM 深度识别（上传时用户显式选择的模式）：
+    # provider=None 表示用当前活跃 provider（应配成视觉模型才有效）；
+    # 建议单独配一个视觉模型 provider 名（如 glm-5.2 视觉版/qwen3.7-max）。
+    provider: str | None = None
+
+
 class OCRConfig(BaseModel):
     # enabled=False（默认）：不创建 OCR 后端，扫描件/图片直接判 failed（M1 行为）。
     # backend 两种实现：
@@ -157,6 +164,7 @@ class AppConfig(BaseModel):
     enrich: EnrichConfig = Field(default_factory=EnrichConfig)
     ocr: OCRConfig = Field(default_factory=OCRConfig)
     ingest: IngestConfig = Field(default_factory=IngestConfig)
+    vlm_parse: VLMParseConfig = Field(default_factory=VLMParseConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
     llm: LLMConfig
 

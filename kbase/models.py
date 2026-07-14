@@ -29,6 +29,10 @@ class Document(Base):
     # MonkeyOCR 无置信度信号，固定 1.0=未知；后续做质量门控时勿当作高置信
     ocr_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     source_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # F VLM 深度识别：解析模式（NULL/"auto"=既有管道；"vlm"=满血视觉模型
+    # 理解性转写，识别后停 pending_review 等人工校验确认才向量化）。
+    # 重试按此模式重走，故必须落库。
+    parse_mode: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
 
 class Chunk(Base):
