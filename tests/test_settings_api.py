@@ -106,6 +106,30 @@ def test_provider_create_requires_some_key_source(tmp_path, fake_embedder):
     assert r.status_code == 422
 
 
+def test_document_original_download(tmp_path, fake_embedder):
+    """M5-2：下载识别前的原始文件——字节与上传一致，文件名恢复原名；
+    source_path 失效时如实 404。"""
+    c = _client(tmp_path, fake_embedder)
+    kb_id = c.post("/api/kb", json={"name": "库"}).json()["id"]
+    raw = MD.encode("utf-8")
+    c.post(f"/api/kb/{kb_id}/documents",
+           files=[("files", ("补贴办法.md", raw, "text/markdown"))])
+    doc = c.get(f"/api/kb/{kb_id}/documents").json()[0]
+
+    r = c.get(f"/api/documents/{doc['id']}/original")
+    assert r.status_code == 200
+    assert r.content == raw                              # 原件字节一致
+    # Content-Disposition 恢复用户上传时的原名（RFC 5987 filename* 编码中文）
+    assert "attachment" in r.headers["content-disposition"]
+    from urllib.parse import quote
+    assert quote("补贴办法.md") in r.headers["content-disposition"]
+
+    # 原件被清理后如实 404（不能拿 Markdown 冒充原文）
+    import shutil
+    shutil.rmtree(tmp_path / "data" / "uploads", ignore_errors=True)
+    assert c.get(f"/api/documents/{doc['id']}/original").status_code == 404
+
+
 def test_document_fulltext_and_delete(tmp_path, fake_embedder):
     c = _client(tmp_path, fake_embedder)
     kb_id = c.post("/api/kb", json={"name": "库"}).json()["id"]
