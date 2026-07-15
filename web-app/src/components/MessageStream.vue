@@ -8,8 +8,9 @@
 // 输入框，交给父组件决定是否清空重发）。
 import { ref } from "vue";
 import { toast } from "vue-sonner";
-import { Copy, RotateCcw, ThumbsDown, ThumbsUp } from "@lucide/vue";
+import { Copy, ExternalLink, Image as ImageIcon, RotateCcw, ThumbsDown, ThumbsUp } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { renderWithChips } from "@/lib/chat-utils";
 import type { ChatMessage } from "@/composables/useChat";
@@ -37,20 +38,28 @@ function segmentsOf(content: string) {
 }
 
 /** 多模态回答（图片一期）：收集这条消息全部引用附带的插图，按 url 去重
- * （多条引用命中同一页时图片只展示一次）。空数组=不渲染图片区。 */
-function imagesOf(message: ChatMessage): { url: string; name: string }[] {
+ * （多条引用命中同一页时图片只展示一次），并带上来源文档名/页码给
+ * 灯箱标题用。空数组=不渲染图片区。 */
+interface AnswerImage { url: string; name: string; docName: string; page: number | null }
+
+function imagesOf(message: ChatMessage): AnswerImage[] {
   const seen = new Set<string>();
-  const out: { url: string; name: string }[] = [];
+  const out: AnswerImage[] = [];
   for (const c of message.citations) {
     for (const img of c.images ?? []) {
       if (!seen.has(img.url)) {
         seen.add(img.url);
-        out.push(img);
+        out.push({ url: img.url, name: img.name,
+                   docName: c.doc_name, page: c.page ?? null });
       }
     }
   }
   return out;
 }
+
+// 灯箱：点缩略图站内放大看（比裸开新标签页体验好），保留"新标签页打开
+// 原图"出口给需要另存/缩放的用户。
+const lightbox = ref<AnswerImage | null>(null);
 
 /** 按角标编号在这条消息自己的 citations 里查找——渲染层的越界兜底：
  * renderWithChips 纯函数不知道 citations 数组内容，找不到时（模型编号超出
@@ -153,28 +162,35 @@ function reask(index: number) {
           </template>
         </div>
 
-        <!-- 多模态回答：引用命中页的文档插图缩略图（点击原图新开标签页）。
+        <!-- 多模态回答：引用命中页的文档插图区（标签行+卡片缩略图+灯箱）。
         懒加载防长会话一次性拉几十张图；最大高度限制防大图撑爆气泡。 -->
-        <div
-          v-if="!message.streaming && imagesOf(message).length"
-          class="mt-3 flex flex-wrap gap-2"
-        >
-          <a
-            v-for="img in imagesOf(message)"
-            :key="img.url"
-            :href="img.url"
-            target="_blank"
-            rel="noopener"
-            class="block overflow-hidden rounded-[var(--radius-ctl)] border border-[var(--border)] transition-transform hover:scale-[1.02]"
-            :title="`查看原图 ${img.name}`"
-          >
-            <img
-              :src="img.url"
-              :alt="img.name"
-              loading="lazy"
-              class="max-h-40 w-auto max-w-60 object-contain"
-            />
-          </a>
+        <div v-if="!message.streaming && imagesOf(message).length" class="mt-3">
+          <div class="mb-1.5 flex items-center gap-1.5 text-xs text-[var(--text-3)]">
+            <ImageIcon class="size-3.5" />
+            引用插图 · {{ imagesOf(message).length }} 张（点击放大）
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="img in imagesOf(message)"
+              :key="img.url"
+              type="button"
+              class="group/img relative block overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-md"
+              :aria-label="`放大查看 ${img.docName} 第${img.page}页插图`"
+              @click="lightbox = img"
+            >
+              <img
+                :src="img.url"
+                :alt="img.name"
+                loading="lazy"
+                class="max-h-40 w-auto max-w-60 object-contain"
+              />
+              <span
+                class="absolute inset-x-0 bottom-0 truncate bg-black/55 px-2 py-1 text-left text-[11px] text-white opacity-0 transition-opacity group-hover/img:opacity-100"
+              >
+                {{ img.docName }}{{ img.page ? ` · 第${img.page}页` : "" }}
+              </span>
+            </button>
+          </div>
         </div>
 
         <div
@@ -228,4 +244,31 @@ function reask(index: number) {
       </div>
     </li>
   </ol>
+
+  <!-- 插图灯箱：站内放大查看，标题带来源文档/页码，保留新标签页原图出口 -->
+  <Dialog :open="!!lightbox" @update:open="(v) => { if (!v) lightbox = null; }">
+    <DialogContent class="max-w-3xl">
+      <div class="flex items-center justify-between gap-3 pr-6 text-sm">
+        <span class="truncate font-medium">
+          {{ lightbox?.docName }}{{ lightbox?.page ? ` · 第${lightbox.page}页插图` : "" }}
+        </span>
+        <a
+          v-if="lightbox"
+          :href="lightbox.url"
+          target="_blank"
+          rel="noopener"
+          class="flex shrink-0 items-center gap-1 text-xs text-[var(--accent-text)] hover:underline"
+        >
+          <ExternalLink class="size-3.5" />
+          新标签页打开原图
+        </a>
+      </div>
+      <img
+        v-if="lightbox"
+        :src="lightbox.url"
+        :alt="lightbox.name"
+        class="max-h-[70vh] w-full rounded-[var(--radius-ctl)] object-contain"
+      />
+    </DialogContent>
+  </Dialog>
 </template>
