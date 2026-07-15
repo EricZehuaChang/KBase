@@ -8,13 +8,18 @@ from kbase.models import Chunk
 def reindex_kb(session_factory, keyword_index, embedder, store, kb_id: str) -> int:
     with session_factory() as s:
         leaves = s.query(Chunk).filter_by(kb_id=kb_id, is_leaf=True).all()
+    # M6-1 停用块（enabled=False）不得随重建复活——停用语义=从索引摘除但
+    # 行保留，重建只回填启用中的叶子。
+    from kbase.chunk_admin import is_enabled
+    leaves = [c for c in leaves if is_enabled(c)]
     if not leaves:
         return 0
     from kbase.embed_text import embed_input, keyword_input
-    keyword_index.delete_kb(kb_id)
-    keyword_index.index(kb_id, [(c.id, c.doc_id,
-                                 keyword_input(c.heading_path, c.text, c.layout))
-                                for c in leaves])
+    if keyword_index is not None:      # hybrid 关闭的部署没有关键词索引
+        keyword_index.delete_kb(kb_id)
+        keyword_index.index(kb_id, [(c.id, c.doc_id,
+                                     keyword_input(c.heading_path, c.text, c.layout))
+                                    for c in leaves])
     # 嵌入/关键词文本组成统一走 kbase/embed_text.py（与摄取管道同源）
     texts = [embed_input(c.enrich_context, c.heading_path, c.text, c.layout)
              for c in leaves]
