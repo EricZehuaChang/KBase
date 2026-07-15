@@ -15,7 +15,7 @@ import MessageStream from "@/components/MessageStream.vue";
 import CitationDrawer from "@/components/CitationDrawer.vue";
 import SessionSidebar from "./SessionSidebar.vue";
 import EmptyState from "./EmptyState.vue";
-import { kbId, provider } from "./topbar-state";
+import { kbId, provider, extraKbIds } from "./topbar-state";
 import { useSessions } from "./useSessions";
 import { type Conversation, type Citation } from "@/lib/api";
 import { groupByTime } from "@/lib/chat-utils";
@@ -33,7 +33,7 @@ const activeConvId = ref<string | null>(null);
 const inputText = ref("");
 
 const { messages, streaming, send, cancel, loadConversation, startNewConversation, convId } =
-  useChat(kbId, provider);
+  useChat(kbId, provider, extraKbIds);
 
 // 切换会话/知识库的取消由 loadConversation/startNewConversation 内部处理；
 // 这里兜住离开问答页的场景，避免后台流继续消耗连接。
