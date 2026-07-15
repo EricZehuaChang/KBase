@@ -60,6 +60,8 @@ class Services:
     embedder_catalog: dict = None
     embedder_ids: set = None
     embedder_for_kb: Callable = None
+    # 向量模型密钥页面配置：settings 路由改/清密钥后调 invalidate 丢缓存实例
+    embedder_pool: object = None
 
 
 def build_services(config_path, *, embedder=None, store=None,
@@ -75,7 +77,10 @@ def build_services(config_path, *, embedder=None, store=None,
     # default 预置进池；未注入时池按 cfg.embedder 构建默认实例（启动即建，
     # 与改造前时序一致——生产 bge-m3 的加载耗时仍发生在启动阶段而不是首查询）。
     # cfg.embedders 清单里的可选模型全部惰性构建（首个使用它的 KB 摄取/查询时）。
-    pool = EmbedderPool(cfg, default_embedder=embedder)
+    # 密钥解析：页面配置的 DB 覆盖 > 选项的 api_key_env（与 Provider 同规矩）
+    from kbase import embedder_keys
+    pool = EmbedderPool(cfg, default_embedder=embedder,
+                        key_resolver=lambda oid: embedder_keys.get_key(sf, oid))
     embedder = pool.get(None)
 
     def embedder_for_kb(kb_id: str):
@@ -235,4 +240,5 @@ def build_services(config_path, *, embedder=None, store=None,
         embedder_catalog=pool.catalog(),
         embedder_ids=pool.known_ids(),
         embedder_for_kb=embedder_for_kb,
+        embedder_pool=pool,
     )

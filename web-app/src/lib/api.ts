@@ -310,6 +310,28 @@ export function uploadDocs(
   return req(`/api/kb/${kbId}/documents`, { method: "POST", body: files });
 }
 
+// 向量模型密钥页面配置：DB 覆盖 > api_key_env（与 Provider 同规矩）
+export interface EmbedderKeyItem {
+  id: string;
+  plugin: string;
+  model: string;
+  api_key_env: string;
+  has_db_key: boolean;
+  key_hint: string | null;
+}
+
+export function listEmbedderKeys(): Promise<{ items: EmbedderKeyItem[] }> {
+  return req("/api/settings/embedder-keys");
+}
+
+export function putEmbedderKey(id: string, apiKey: string): Promise<{ ok: boolean }> {
+  return req(`/api/settings/embedder-keys/${id}`, jsonInit({ api_key: apiKey }, "PUT"));
+}
+
+export function deleteEmbedderKey(id: string): Promise<{ ok: boolean }> {
+  return req(`/api/settings/embedder-keys/${id}`, { method: "DELETE" });
+}
+
 // M6-8 企业 SSO：登录页据此显示"企业账号登录"入口
 export function getSsoStatus(): Promise<{ enabled: boolean }> {
   return req("/api/auth/sso/status");

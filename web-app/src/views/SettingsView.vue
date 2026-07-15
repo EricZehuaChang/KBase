@@ -14,6 +14,7 @@ import ProviderCard from "@/components/ProviderCard.vue";
 import ProviderFormDialog from "@/components/ProviderFormDialog.vue";
 import UserManagementCard from "@/components/UserManagementCard.vue";
 import ApiKeyCard from "@/components/ApiKeyCard.vue";
+import EmbedderKeysCard from "@/components/EmbedderKeysCard.vue";
 import LicenseCard from "@/components/LicenseCard.vue";
 import OpsDashboardCard from "@/components/OpsDashboardCard.vue";
 import {
@@ -180,6 +181,7 @@ onMounted(async () => {
           <OpsDashboardCard />
           <UserManagementCard />
           <ApiKeyCard />
+          <EmbedderKeysCard />
           <LicenseCard />
         </div>
       </section>
