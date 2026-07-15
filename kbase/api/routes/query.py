@@ -15,7 +15,7 @@ from kbase import kb_acl
 from kbase import retrieval_strategy as rs
 from kbase.api.routes import RouteDeps
 from kbase.api.schemas import (ConversationCreate, ConversationRename,
-                               QueryBody, SearchBody)
+                               FeedbackBody, QueryBody, SearchBody)
 from kbase.api.services import Services
 from kbase.audit import write_query_audit
 from kbase.rag.generator import Generator
@@ -179,6 +179,23 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         if not ok:
             raise HTTPException(404, f"会话不存在: {conv_id}")
         return {"ok": True}
+
+    @router.post("/messages/{message_id}/feedback",
+                 dependencies=[deps.require_viewer, deps.audit_mutation])
+    def submit_feedback(message_id: str, body: FeedbackBody, request: Request):
+        """M6-4 反馈闭环：对助手消息点赞/点踩（重复提交覆盖）。归属校验：
+        只能评自己可见会话里的助手消息，不可见统一 404 不泄漏存在性。"""
+        from kbase import feedback
+        from kbase.models import Message
+        with sf() as s:
+            msg = s.get(Message, message_id)
+            if msg is None or msg.role != "assistant":
+                raise HTTPException(404, f"消息不存在: {message_id}")
+            conv_id = msg.conv_id
+        actor = request.state.actor
+        if conv_store.get_conversation(sf, conv_id, user_id=actor.get("user_id")) is None:
+            raise HTTPException(404, f"消息不存在: {message_id}")
+        return feedback.upsert_feedback(sf, message_id, body.rating, body.note)
 
     @router.post("/conversations/{conv_id}/query", dependencies=[deps.require_viewer])
     async def query_conversation(conv_id: str, body: QueryBody, request: Request):

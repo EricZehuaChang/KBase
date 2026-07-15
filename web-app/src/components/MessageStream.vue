@@ -6,8 +6,9 @@
 // 再打开 CitationDrawer 抽屉看全文——两级展开，popover 快速预览，抽屉给
 // 需要细看的人。悬浮操作条：复制、重新提问（把这条回答对应的提问回填进
 // 输入框，交给父组件决定是否清空重发）。
+import { ref } from "vue";
 import { toast } from "vue-sonner";
-import { Copy, RotateCcw } from "@lucide/vue";
+import { Copy, RotateCcw, ThumbsDown, ThumbsUp } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { renderWithChips } from "@/lib/chat-utils";
@@ -18,7 +19,18 @@ const props = defineProps<{ messages: ChatMessage[] }>();
 const emit = defineEmits<{
   openCitation: [index: number, messageId: string];
   reask: [question: string];
+  // M6-4 反馈：父组件负责把 local id 解析成服务端消息 id 后提交
+  feedback: [messageId: string, rating: 1 | -1];
 }>();
+
+// 本地已选反馈态（messageId → rating）：即时高亮，不等服务端回包；
+// 会话切换时组件随消息列表重建，无需持久化。
+const localFeedback = ref<Record<string, 1 | -1>>({});
+
+function sendFeedback(messageId: string, rating: 1 | -1) {
+  localFeedback.value = { ...localFeedback.value, [messageId]: rating };
+  emit("feedback", messageId, rating);
+}
 
 function segmentsOf(content: string) {
   return renderWithChips(content);
@@ -146,6 +158,31 @@ function reask(index: number) {
               <RotateCcw class="size-3.5" />
               重新提问
             </Button>
+          </span>
+          <!-- M6-4 反馈：与 hover 操作条分离——未选时随 hover 出现，
+          已选的一侧常亮（用户要能看到自己评过什么） -->
+          <span
+            class="flex items-center gap-1 focus-within:opacity-100 group-hover/msg:opacity-100"
+            :class="localFeedback[message.id] ? 'opacity-100' : 'opacity-0'"
+          >
+            <button
+              type="button"
+              class="rounded p-1 hover:text-[var(--ok)]"
+              :class="localFeedback[message.id] === 1 ? 'text-[var(--ok)]' : ''"
+              aria-label="点赞该回答"
+              @click="sendFeedback(message.id, 1)"
+            >
+              <ThumbsUp class="size-3.5" />
+            </button>
+            <button
+              type="button"
+              class="rounded p-1 hover:text-[var(--err)]"
+              :class="localFeedback[message.id] === -1 ? 'text-[var(--err)]' : ''"
+              aria-label="点踩该回答"
+              @click="sendFeedback(message.id, -1)"
+            >
+              <ThumbsDown class="size-3.5" />
+            </button>
           </span>
         </div>
       </div>

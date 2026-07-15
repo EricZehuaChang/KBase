@@ -25,6 +25,12 @@ class QueryBody(BaseModel):
     top_k: int = 5
 
 
+class FeedbackBody(BaseModel):
+    """问答反馈（M6-4）：rating 只收 1（赞）/-1（踩），note 可选补充说明。"""
+    rating: Literal[1, -1]
+    note: str | None = None
+
+
 class EvalCaseIn(BaseModel):
     """评测用例（B）：question 必填，expect_doc（命中文档名）与 expect_text
     （命中块含此子串）至少给一个——两个都没有的用例永远判不中，直接拒收。"""
