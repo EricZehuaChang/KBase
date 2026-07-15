@@ -7,13 +7,19 @@
 // ChatHome，不是直接的父子模板嵌套），所以用模块级单例 ref 共享——与
 // src/lib/api.ts 的 currentRole、src/lib/theme.ts 的 theme 是同一手法，
 // 生命周期就是"当前登录会话"，没必要为这两个值引入 Pinia。
-import { ref } from "vue";
+import { ref, watch } from "vue";
 import { listKbs, listProviders, type Kb } from "@/lib/api";
 
 export const kbs = ref<Kb[]>([]);
 export const kbId = ref<string | undefined>(undefined);
 export const providers = ref<string[]>([]);
 export const provider = ref<string | undefined>(undefined);
+
+// M6-2 多库联合问答：主库（kbId）之外额外联查的库。只影响"新建会话"——
+// 会话建立后 kb_ids 固定在服务端，中途改选不影响已开会话。主库切换时清空：
+// 联查组合是围绕主库挑的，换了主库原组合大概率失义，静默保留容易误导。
+export const extraKbIds = ref<string[]>([]);
+watch(kbId, () => { extraKbIds.value = []; });
 
 let loaded = false;
 

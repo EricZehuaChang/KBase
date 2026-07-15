@@ -16,10 +16,11 @@ import { LogOut, Sun, Moon } from "@lucide/vue";
 import { getSession, logout, type Me } from "@/lib/api";
 import { roleLabel, roleBadgeClass, canManageContent } from "@/lib/auth-utils";
 import { theme, toggleTheme } from "@/lib/theme";
-import { kbs, kbId, providers, provider, ensureTopbarLoaded } from "./topbar-state";
+import { kbs, kbId, providers, provider, extraKbIds, ensureTopbarLoaded } from "./topbar-state";
 import {
   Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Toaster } from "@/components/ui/sonner";
 
 const route = useRoute();
@@ -54,6 +55,14 @@ async function handleLogout() {
   }
 }
 
+// M6-2：主库之外可联查的候选库（排除主库自身）；勾/取消维护 extraKbIds。
+function toggleExtraKb(id: string) {
+  const next = new Set(extraKbIds.value);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  extraKbIds.value = [...next];
+}
+
 function enterWorkbench() {
   // 整页跳转（不是 router.push）：管理端是另一个 Vite 入口的独立 bundle，
   // 没有共享的 router 实例可以导航过去。
@@ -78,6 +87,38 @@ function enterWorkbench() {
             </SelectGroup>
           </SelectContent>
         </Select>
+        <!-- M6-2 多库联合问答：勾选主库之外要一起检索的库，只作用于新会话 -->
+        <Popover v-if="kbs.length > 1">
+          <PopoverTrigger as-child>
+            <button
+              type="button"
+              class="rounded-[var(--radius-ctl)] border px-2.5 py-1.5 text-sm transition-colors"
+              :class="extraKbIds.length
+                ? 'border-[var(--accent)] text-[var(--accent-text)]'
+                : 'border-[var(--border)] text-[var(--text-2)] hover:bg-[var(--surface-2)]'"
+            >
+              {{ extraKbIds.length ? `联合 ${extraKbIds.length + 1} 库` : "+ 联查" }}
+            </button>
+          </PopoverTrigger>
+          <PopoverContent class="w-56 p-2">
+            <p class="px-1 pb-2 text-xs text-[var(--text-3)]">
+              新会话将同时检索勾选的库（跨库联合问答）
+            </p>
+            <label
+              v-for="kb in kbs.filter((k) => k.id !== kbId)"
+              :key="kb.id"
+              class="flex cursor-pointer items-center gap-2 rounded-[var(--radius-ctl)] px-1 py-1.5 text-sm hover:bg-[var(--surface-2)]"
+            >
+              <input
+                type="checkbox"
+                class="accent-[var(--accent)]"
+                :checked="extraKbIds.includes(kb.id)"
+                @change="toggleExtraKb(kb.id)"
+              />
+              <span class="truncate">{{ kb.name }}</span>
+            </label>
+          </PopoverContent>
+        </Popover>
         <Select v-model="provider">
           <SelectTrigger class="w-44"><SelectValue placeholder="选择模型" /></SelectTrigger>
           <SelectContent>

@@ -54,7 +54,8 @@ function isAbortError(err: unknown): boolean {
     && (err as { name?: string }).name === "AbortError";
 }
 
-export function useChat(kbId: Ref<string | undefined>, provider: Ref<string | undefined>) {
+export function useChat(kbId: Ref<string | undefined>, provider: Ref<string | undefined>,
+                        extraKbIds?: Ref<string[]>) {
   const convId = ref<string | null>(null);
   const messages = ref<ChatMessage[]>([]);
   const streaming = ref(false);
@@ -108,7 +109,12 @@ export function useChat(kbId: Ref<string | undefined>, provider: Ref<string | un
 
     try {
       if (!convId.value) {
-        const conv = await createConv(kbId.value);
+        // M6-2 多库联合问答：有额外联查库时把主库+联查库一起绑进新会话
+        //（服务端逐库做 ACL 校验）；无联查=单库老行为。
+        const extra = extraKbIds?.value ?? [];
+        const conv = await createConv(
+          kbId.value,
+          extra.length ? [kbId.value, ...extra] : undefined);
         convId.value = conv.id;
       }
       if (ac.signal.aborted) return;   // createConv 期间被取消：直接收尾
