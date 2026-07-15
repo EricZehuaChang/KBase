@@ -25,6 +25,11 @@ class QueryBody(BaseModel):
     top_k: int = 5
 
 
+class UrlImportBody(BaseModel):
+    """URL 连接器（M6-7）：从网页地址导入内容。"""
+    url: str
+
+
 class FeedbackBody(BaseModel):
     """问答反馈（M6-4）：rating 只收 1（赞）/-1（踩），note 可选补充说明。"""
     rating: Literal[1, -1]

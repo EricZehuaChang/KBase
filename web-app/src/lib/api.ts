@@ -310,6 +310,11 @@ export function uploadDocs(
   return req(`/api/kb/${kbId}/documents`, { method: "POST", body: files });
 }
 
+// M6-7 URL 连接器：拉取网页导入知识库（内网 wiki/门户为主用途）
+export function importUrl(kbId: string, url: string): Promise<{ accepted: string[] }> {
+  return req(`/api/kb/${kbId}/import-url`, jsonInit({ url }));
+}
+
 // M6-4 反馈看板：赞/踩总量 + 差评清单（带问题原文与备注）
 export interface FeedbackStats {
   up: number;

@@ -17,9 +17,40 @@ from fastapi.responses import FileResponse
 from kbase import chunk_admin, kb_acl
 from kbase.api.routes import RouteDeps
 from kbase.api.schemas import (ChunkUpdate, DocumentReview, KBConfigBody,
-                               KBCreate, KbGrantsBody)
+                               KBCreate, KbGrantsBody, UrlImportBody)
 from kbase.api.services import Services
 from kbase.models import Chunk, Conversation, Document, KnowledgeBase, Message
+
+
+_URL_MAX_BYTES = 10 * 1024 * 1024   # URL 导入响应体上限（M6-7）
+_URL_TEXT_TYPES = ("text/html", "text/plain", "text/markdown",
+                   "application/xhtml+xml")
+
+
+def _fetch_url(url: str) -> tuple[bytes, str]:
+    """拉取网页正文（M6-7）。模块级函数便于测试打桩。
+    返回 (内容字节, 建议文件名)；不合规输入抛 HTTPException。"""
+    import httpx
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise HTTPException(422, f"仅支持 http/https 地址: {url}")
+    try:
+        resp = httpx.get(url, timeout=20.0, follow_redirects=True)
+        resp.raise_for_status()
+    except httpx.HTTPError as e:
+        raise HTTPException(502, f"URL 拉取失败: {e}") from e
+    ctype = resp.headers.get("content-type", "").split(";")[0].strip().lower()
+    if ctype and not any(ctype.startswith(t) for t in _URL_TEXT_TYPES):
+        raise HTTPException(422, f"不支持的内容类型 {ctype}（只收网页/文本）")
+    content = resp.content[:_URL_MAX_BYTES]
+    # 文件名：host + path 末段做 slug，落 .html/.md 后缀给 markitdown 认
+    tail = Path(parsed.path).name or "index"
+    suffix = ".md" if ctype in ("text/plain", "text/markdown") else ".html"
+    if not tail.endswith((".html", ".htm", ".md", ".txt")):
+        tail = f"{tail}{suffix}"
+    return content, f"{parsed.netloc.replace(':', '_')}-{tail}"
 
 
 def register(router, svc: Services, deps: RouteDeps) -> None:
@@ -165,6 +196,24 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
             accepted.append(safe_name)
         bg.add_task(_ingest_batch, kb_id, items, parse_mode)
         return {"accepted": accepted}
+
+    @router.post("/kb/{kb_id}/import-url",
+                 dependencies=[deps.require_editor, deps.audit_mutation])
+    def import_url(kb_id: str, body: UrlImportBody, bg: BackgroundTasks):
+        """URL 连接器（M6-7）：拉取网页 → 存 .html → 走既有摄取管道
+        （markitdown 的 HTML 转换器提正文）。私有化部署内网 wiki/门户是
+        主用途，故不封内网地址；但 scheme 只收 http/https（file:// 等直接
+        422），响应限 text 类且截 10MB（防误配到大文件下载链接炸内存）。"""
+        with sf() as s:
+            if s.get(KnowledgeBase, kb_id) is None:
+                raise HTTPException(404, f"知识库不存在: {kb_id}")
+        content, filename = _fetch_url(body.url)
+        upload_dir = cfg.data_dir / "uploads"
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        dest = upload_dir / f"{uuid.uuid4()}-{filename}"
+        dest.write_bytes(content)
+        bg.add_task(_ingest_batch, kb_id, [(dest, filename)], "auto")
+        return {"accepted": [filename], "url": body.url}
 
     @router.post("/demo-data", dependencies=[deps.require_editor, deps.audit_mutation])
     def load_demo_data(request: Request, bg: BackgroundTasks):
