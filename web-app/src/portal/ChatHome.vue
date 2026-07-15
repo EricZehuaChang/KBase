@@ -8,7 +8,7 @@
 // 下拉状态。
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute } from "vue-router";
-import { Square } from "@lucide/vue";
+import { SendHorizontal, Square } from "@lucide/vue";
 import { toast } from "vue-sonner";
 import { Button } from "@/components/ui/button";
 import MessageStream from "@/components/MessageStream.vue";
@@ -168,29 +168,55 @@ if (typeof route.query.q === "string" && route.query.q) {
     />
 
     <div class="flex min-h-0 flex-1 flex-col">
+      <!-- 会话内容列居中限宽：满屏宽的长行阅读体验差，~48rem 是可读行宽 -->
       <div class="flex-1 overflow-y-auto px-6 py-6">
-        <EmptyState v-if="messages.length === 0" @pick="handleSend" />
-        <MessageStream v-else :messages="messages" @open-citation="handleOpenCitation" @reask="handleReask" @feedback="handleFeedback" />
+        <div class="mx-auto w-full max-w-3xl">
+          <EmptyState v-if="messages.length === 0" @pick="handleSend" />
+          <MessageStream v-else :messages="messages" @open-citation="handleOpenCitation" @reask="handleReask" @feedback="handleFeedback" />
+        </div>
       </div>
 
-      <footer class="shrink-0 border-t border-[var(--border)] p-4">
-        <div class="flex items-end gap-2">
-          <textarea
-            v-model="inputText"
-            rows="1"
-            :disabled="!kbId"
-            placeholder="输入问题，Enter 发送，Shift+Enter 换行"
-            class="max-h-40 flex-1 resize-none rounded-[var(--radius-ctl)] border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[15px] leading-[1.7] text-[var(--text)] outline-none focus:border-[var(--accent)] disabled:opacity-60"
-            aria-label="问题输入框"
-            @keydown="handleKeydown"
-          />
-          <!-- 流式中把"发送"换成"停止生成"，而不是禁用发送按钮——停止是这个
-          状态下唯一有意义的操作，藏起来只留禁用态反而让用户找不到怎么打断。 -->
-          <Button v-if="streaming" variant="outline" @click="cancel">
-            <Square class="size-3.5" />
-            停止生成
-          </Button>
-          <Button v-else :disabled="!inputText.trim() || !kbId" @click="handleSend()">发送</Button>
+      <footer class="shrink-0 px-6 pb-4 pt-2">
+        <!-- 卡片式输入区（对标现代 AI 对话产品）：容器聚焦高亮，发送圆钮
+        内嵌右下。流式中换"停止生成"而不是禁用发送——停止是该状态下唯一
+        有意义的操作，藏起来只留禁用态反而让用户找不到怎么打断。 -->
+        <div class="mx-auto w-full max-w-3xl">
+          <div
+            class="flex items-end gap-2 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-2 shadow-sm transition-colors focus-within:border-[var(--accent)]"
+          >
+            <textarea
+              v-model="inputText"
+              rows="1"
+              :disabled="!kbId"
+              placeholder="输入问题，向知识库提问…"
+              class="max-h-40 flex-1 resize-none bg-transparent px-2 py-1.5 text-[15px] leading-[1.7] text-[var(--text)] outline-none disabled:opacity-60"
+              aria-label="问题输入框"
+              @keydown="handleKeydown"
+            />
+            <Button
+              v-if="streaming"
+              variant="outline"
+              size="sm"
+              class="shrink-0 rounded-xl"
+              @click="cancel"
+            >
+              <Square class="size-3.5" />
+              停止
+            </Button>
+            <Button
+              v-else
+              size="sm"
+              class="shrink-0 rounded-xl"
+              :disabled="!inputText.trim() || !kbId"
+              aria-label="发送"
+              @click="handleSend()"
+            >
+              <SendHorizontal class="size-4" />
+            </Button>
+          </div>
+          <p class="mt-1.5 text-center text-xs text-[var(--text-3)]">
+            Enter 发送 · Shift+Enter 换行 · 回答依据知识库资料并附引用，请以原文为准
+          </p>
         </div>
       </footer>
     </div>
