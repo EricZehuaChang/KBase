@@ -12,10 +12,14 @@ import {
   Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import RetrievalTrace from "@/components/RetrievalTrace.vue";
+import EvalPanel from "@/components/EvalPanel.vue";
 import { listKbs, listDocs, search, type Kb, type SearchResult } from "@/lib/api";
 import { shouldRerunForQuery } from "@/lib/trace-utils";
 
 const route = useRoute();
+
+// 页签：检索试跑（原有）| 评测回归（B）。共用顶部的 KB 选择。
+const tab = ref<"search" | "eval">("search");
 
 const kbs = ref<Kb[]>([]);
 const kbId = ref<string | undefined>(undefined);
@@ -119,39 +123,64 @@ watch(() => route.query.q, async (q) => {
         </SelectContent>
       </Select>
 
-      <Input
-        v-model="query"
-        placeholder="输入查询语句"
-        class="max-w-md flex-1"
-        aria-label="查询输入框"
-        @keydown.enter="runSearch"
-      />
+      <!-- 页签切换：检索试跑 | 评测回归（共用左侧 KB 选择） -->
+      <div class="flex rounded-[var(--radius-ctl)] border border-[var(--border)] p-0.5">
+        <button
+          type="button"
+          class="rounded-[calc(var(--radius-ctl)-2px)] px-3 py-1 text-sm"
+          :class="tab === 'search' ? 'bg-[var(--accent-weak)] text-[var(--accent-text)]' : 'text-[var(--text-2)]'"
+          @click="tab = 'search'"
+        >
+          检索试跑
+        </button>
+        <button
+          type="button"
+          class="rounded-[calc(var(--radius-ctl)-2px)] px-3 py-1 text-sm"
+          :class="tab === 'eval' ? 'bg-[var(--accent-weak)] text-[var(--accent-text)]' : 'text-[var(--text-2)]'"
+          @click="tab = 'eval'"
+        >
+          评测回归
+        </button>
+      </div>
 
-      <!-- 策略试跑覆盖（M6-1.5）：仅影响本次查询，不改库配置 -->
-      <Select v-model="keywordOverride">
-        <SelectTrigger class="w-40" aria-label="多路召回覆盖"><SelectValue /></SelectTrigger>
-        <SelectContent>
-          <SelectItem value="default">召回·按库策略</SelectItem>
-          <SelectItem value="on">召回·强制多路</SelectItem>
-          <SelectItem value="off">召回·仅向量</SelectItem>
-        </SelectContent>
-      </Select>
-      <Select v-model="rerankOverride">
-        <SelectTrigger class="w-40" aria-label="重排覆盖"><SelectValue /></SelectTrigger>
-        <SelectContent>
-          <SelectItem value="default">重排·按库策略</SelectItem>
-          <SelectItem value="on">重排·强制开</SelectItem>
-          <SelectItem value="off">重排·强制关</SelectItem>
-        </SelectContent>
-      </Select>
+      <template v-if="tab === 'search'">
+        <Input
+          v-model="query"
+          placeholder="输入查询语句"
+          class="max-w-md flex-1"
+          aria-label="查询输入框"
+          @keydown.enter="runSearch"
+        />
 
-      <Button :disabled="loading || !kbId || !query.trim()" @click="runSearch">
-        <Search class="size-3.5" />
-        执行
-      </Button>
+        <!-- 策略试跑覆盖（M6-1.5）：仅影响本次查询，不改库配置 -->
+        <Select v-model="keywordOverride">
+          <SelectTrigger class="w-40" aria-label="多路召回覆盖"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="default">召回·按库策略</SelectItem>
+            <SelectItem value="on">召回·强制多路</SelectItem>
+            <SelectItem value="off">召回·仅向量</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select v-model="rerankOverride">
+          <SelectTrigger class="w-40" aria-label="重排覆盖"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="default">重排·按库策略</SelectItem>
+            <SelectItem value="on">重排·强制开</SelectItem>
+            <SelectItem value="off">重排·强制关</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Button :disabled="loading || !kbId || !query.trim()" @click="runSearch">
+          <Search class="size-3.5" />
+          执行
+        </Button>
+      </template>
     </header>
 
-    <div class="flex-1 overflow-y-auto p-6">
+    <div v-if="tab === 'eval'" class="flex-1 overflow-y-auto p-6">
+      <EvalPanel :kb-id="kbId" />
+    </div>
+    <div v-else class="flex-1 overflow-y-auto p-6">
       <p v-if="loading" class="text-[var(--text-3)]">检索中…</p>
 
       <div v-else-if="error" class="rounded-[var(--radius-card)] bg-[var(--err-weak)] p-4 text-[var(--err)]">

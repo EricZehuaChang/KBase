@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -156,6 +156,32 @@ class AuditLog(Base):
     resource: Mapped[str | None] = mapped_column(String(500), nullable=True)
     detail: Mapped[str | None] = mapped_column(Text, nullable=True)   # JSON，截断
     ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class EvalSet(Base):
+    """检索评测集（B 评测回归）：一组"问题+期望命中"用例，绑定单库。
+    cases 存 JSON 数组 [{question, expect_doc?, expect_text?}, ...]——
+    用例量级是几十到几百条，整包读写，不值得拆行表。"""
+    __tablename__ = "eval_sets"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    kb_id: Mapped[str] = mapped_column(String(36), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    cases: Mapped[str] = mapped_column(Text)                  # JSON
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class EvalRun(Base):
+    """一次评测回归的结果快照：整体指标 + 逐用例明细（JSON），
+    历史对比就是按 created_at 排的多行 run。"""
+    __tablename__ = "eval_runs"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    set_id: Mapped[str] = mapped_column(String(36), index=True)
+    top_k: Mapped[int] = mapped_column(Integer, default=5)
+    hit_rate: Mapped[float] = mapped_column(Float)            # hit@k
+    mrr: Mapped[float] = mapped_column(Float)
+    total: Mapped[int] = mapped_column(Integer)
+    detail: Mapped[str] = mapped_column(Text)                 # JSON 逐用例
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class Job(Base):

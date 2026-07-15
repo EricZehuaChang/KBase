@@ -11,7 +11,8 @@ from fastapi import APIRouter, Depends, FastAPI, Response
 
 from kbase.api.routes import RouteDeps
 from kbase.api.routes import (admin as admin_routes, auth as auth_routes,
-                              jobs as jobs_routes, kb as kb_routes,
+                              evals as evals_routes, jobs as jobs_routes,
+                              kb as kb_routes,
                               openai_compat as openai_routes,
                               query as query_routes,
                               settings as settings_routes)
@@ -147,6 +148,7 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
     kb_routes.register(router, svc, deps)
     query_routes.register(router, svc, deps)
     jobs_routes.register(router, svc, deps)
+    evals_routes.register(router, svc, deps)
 
     app.include_router(router)
 
