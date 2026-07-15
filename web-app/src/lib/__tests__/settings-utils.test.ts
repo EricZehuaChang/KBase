@@ -134,6 +134,24 @@ describe("licenseBannerInfo", () => {
     expect(licenseBannerInfo({ status: "valid" })).toBeNull();
   });
 
+  it("valid 但距到期超过 30 天不提醒", () => {
+    expect(licenseBannerInfo(
+      { status: "valid", expires: "2026-12-31" }, new Date("2026-07-15"))).toBeNull();
+  });
+
+  it("valid 且 30 天内到期展示续期警示（E）", () => {
+    const info = licenseBannerInfo(
+      { status: "valid", expires: "2026-08-01" }, new Date("2026-07-15"));
+    expect(info?.tone).toBe("warn");
+    expect(info?.message).toContain("2026-08-01");
+    expect(info?.message).toContain("剩余 17 天");
+  });
+
+  it("valid 但 expires 非法不提醒（过期由后端 expired 态兜底）", () => {
+    expect(licenseBannerInfo(
+      { status: "valid", expires: "not-a-date" }, new Date("2026-07-15"))).toBeNull();
+  });
+
   it("trial 状态展示提示色横幅", () => {
     const info = licenseBannerInfo({ status: "trial" });
     expect(info).not.toBeNull();

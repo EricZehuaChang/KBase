@@ -310,6 +310,50 @@ export function uploadDocs(
   return req(`/api/kb/${kbId}/documents`, { method: "POST", body: files });
 }
 
+// E POC 演示数据一键装载：幂等——演示库已存在时 created=false 直接返回其 id
+export function loadDemoData(): Promise<{ id: string; name: string; created: boolean }> {
+  return req("/api/demo-data", { method: "POST" });
+}
+
+// E 上传进度：fetch 不暴露上传进度事件，改用 XHR 的 upload.onprogress。
+// onProgress 收 0-100 整数百分比（仅指字节送达服务器的进度；后续解析/
+// 向量化是异步 job，由文档状态轮询展示）。错误语义与 req() 对齐：401 触发
+// 全局登出跳转，其余取 detail 文案。
+export function uploadDocsWithProgress(
+  kbId: string, files: FormData, parseMode: "auto" | "ocr" | "vlm" = "auto",
+  onProgress?: (percent: number) => void,
+): Promise<{ accepted: string[] }> {
+  if (parseMode !== "auto") files.set("parse_mode", parseMode);
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `/api/kb/${kbId}/documents`);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(JSON.parse(xhr.responseText) as { accepted: string[] });
+        return;
+      }
+      if (xhr.status === 401 && handleUnauthorized()) {
+        reject(new Error("登录已失效"));
+        return;
+      }
+      let detail: string | undefined;
+      try {
+        detail = (JSON.parse(xhr.responseText) as { detail?: string }).detail;
+      } catch {
+        // 非 JSON 响应体，用状态码兜底
+      }
+      reject(new Error(detail ?? `上传失败（HTTP ${xhr.status}）`));
+    };
+    xhr.onerror = () => reject(new Error("网络错误，上传失败"));
+    xhr.send(files);
+  });
+}
+
 // F 校验确认入库：markdown 缺省=按识别结果原样；给了=以编辑稿为准
 export function reviewDocument(
   docId: string, markdown?: string,

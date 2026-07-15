@@ -166,6 +166,35 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         bg.add_task(_ingest_batch, kb_id, items, parse_mode)
         return {"accepted": accepted}
 
+    @router.post("/demo-data", dependencies=[deps.require_editor, deps.audit_mutation])
+    def load_demo_data(request: Request, bg: BackgroundTasks):
+        """POC 演示数据一键装载（E）：建"演示知识库"并摄取三篇内置样例
+        （制度/表格/FAQ，覆盖招牌能力）。幂等：同名库已存在直接返回其 id，
+        不重复灌数——演示环境反复点不会攒出一堆重复库。"""
+        from kbase.demo_data import DEMO_DOCS, DEMO_KB_NAME
+        with sf() as s:
+            existing = (s.query(KnowledgeBase)
+                        .filter(KnowledgeBase.name == DEMO_KB_NAME).first())
+            if existing is not None:
+                return {"id": existing.id, "name": DEMO_KB_NAME,
+                        "created": False, "accepted": []}
+            actor = getattr(request.state, "actor", None)
+            kb = KnowledgeBase(id=str(uuid.uuid4()), name=DEMO_KB_NAME,
+                               owner_id=(actor.get("user_id") if actor else None))
+            s.add(kb)
+            s.commit()
+            kb_id = kb.id
+        upload_dir = cfg.data_dir / "uploads"
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        items: list[tuple[Path, str]] = []
+        for filename, content in DEMO_DOCS:
+            dest = upload_dir / f"{uuid.uuid4()}-{filename}"
+            dest.write_text(content, encoding="utf-8")
+            items.append((dest, filename))
+        bg.add_task(_ingest_batch, kb_id, items, "auto")
+        return {"id": kb_id, "name": DEMO_KB_NAME, "created": True,
+                "accepted": [f for f, _ in DEMO_DOCS]}
+
     @router.put("/documents/{doc_id}/review",
                 dependencies=[deps.require_editor, deps.audit_mutation])
     def review_document(doc_id: str, body: DocumentReview):
