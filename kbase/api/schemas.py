@@ -25,6 +25,11 @@ class QueryBody(BaseModel):
     top_k: int = 5
 
 
+class RebindEmbedderBody(BaseModel):
+    """换绑向量模型（重操作：全库向量作废，按新模型重嵌入重建）。"""
+    embedder: str
+
+
 class EmbedderKeyBody(BaseModel):
     """向量模型选项的页面密钥（DB 覆盖 > api_key_env）。"""
     api_key: str = Field(min_length=1)

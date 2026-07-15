@@ -18,10 +18,56 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { putKbConfig, type Kb, type KbRetrievalConfig } from "@/lib/api";
+import {
+  putKbConfig, listEmbedders, rebindEmbedder, currentRole,
+  type Kb, type KbRetrievalConfig, type EmbeddersCatalog,
+} from "@/lib/api";
+import { canAdminister } from "@/lib/auth-utils";
+import { computed } from "vue";
 
 const props = defineProps<{ open: boolean; kb: Kb | null }>();
 const emit = defineEmits<{ "update:open": [value: boolean]; saved: [] }>();
+
+// ---- 换绑向量模型（admin，重操作走确认区） ----
+const isAdmin = computed(() => canAdminister(currentRole.value ?? ""));
+const rebindOpen = ref(false);
+const rebindTarget = ref("");
+const rebinding = ref(false);
+const catalog = ref<EmbeddersCatalog | null>(null);
+
+const rebindOptions = computed(() => {
+  if (!catalog.value) return [];
+  const current = props.kb?.config?.embedder ?? "default";
+  return [
+    { id: "default", model: catalog.value.default.model },
+    ...catalog.value.options,
+  ].filter((o) => o.id !== current);
+});
+
+async function openRebind() {
+  rebindOpen.value = true;
+  rebindTarget.value = "";
+  try {
+    catalog.value = await listEmbedders();
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+async function doRebind() {
+  if (!props.kb || !rebindTarget.value) return;
+  rebinding.value = true;
+  try {
+    await rebindEmbedder(props.kb.id, rebindTarget.value);
+    toast.success("换绑成功，向量后台重建中（文档多时需等待片刻）");
+    rebindOpen.value = false;
+    emit("saved");                  // 父组件刷新 KB 列表（config 已变）
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : String(err));
+  } finally {
+    rebinding.value = false;
+  }
+}
 
 const chunkSize = ref(512);
 const chunkOverlap = ref(64);
@@ -100,11 +146,46 @@ async function save() {
         <DialogDescription>分块与增强仅影响后续新上传文档；检索策略即时生效</DialogDescription>
       </DialogHeader>
       <div class="flex flex-col gap-4">
-        <!-- 向量模型绑定只读展示（M5-2）：建库时定死，改绑=全库向量作废，
-             故这里不提供修改入口，仅让管理员看清当前库用的是哪个模型 -->
+        <!-- 向量模型绑定（M5-2 建库定死 → 现支持显式换绑）：换绑=全库向量
+             作废并按新模型后台重嵌入（基于存量文本，不重新解析/不产生OCR费），
+             重操作走确认流程，admin 才见入口。 -->
         <div class="flex items-center justify-between text-sm">
-          <span class="text-[var(--text-2)]">向量模型（建库时绑定，不可更改）</span>
-          <span class="text-[var(--text-3)]">{{ kb?.config?.embedder ?? "默认" }}</span>
+          <span class="text-[var(--text-2)]">向量模型</span>
+          <span class="flex items-center gap-2">
+            <span class="text-[var(--text-3)]">{{ kb?.config?.embedder ?? "默认" }}</span>
+            <button
+              v-if="isAdmin && !rebindOpen"
+              type="button"
+              class="text-xs text-[var(--accent-text)] hover:underline"
+              @click="openRebind"
+            >
+              更换…
+            </button>
+          </span>
+        </div>
+        <div v-if="rebindOpen" class="rounded-[var(--radius-ctl)] border border-[var(--warn)] bg-[var(--warn-weak)] p-3">
+          <p class="mb-2 text-xs text-[var(--warn)]">
+            换绑后该库全部向量作废，将按新模型后台重新嵌入（基于已解析文本，
+            不重新解析文件）。文档多时耗时较长，期间检索结果可能不完整。
+          </p>
+          <div class="flex items-center gap-2">
+            <Select v-model="rebindTarget">
+              <SelectTrigger class="w-56"><SelectValue placeholder="选择新向量模型" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem
+                  v-for="opt in rebindOptions"
+                  :key="opt.id"
+                  :value="opt.id"
+                >
+                  {{ opt.id === "default" ? "默认" : opt.id }}（{{ opt.model }}）
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <Button size="sm" :disabled="rebinding || !rebindTarget" @click="doRebind">
+              {{ rebinding ? "提交中…" : "确认换绑并重建" }}
+            </Button>
+            <Button size="sm" variant="outline" @click="rebindOpen = false">取消</Button>
+          </div>
         </div>
         <label class="flex flex-col gap-1">
           <span class="text-sm text-[var(--text-2)]">分块大小 chunk_size（64-4096）</span>

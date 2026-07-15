@@ -272,6 +272,13 @@ export function listEmbedders(): Promise<EmbeddersCatalog> {
   return req("/api/embedders");
 }
 
+// 换绑向量模型（admin 重操作）：全库向量作废，按新模型后台重嵌入重建
+export function rebindEmbedder(
+  kbId: string, embedder: string,
+): Promise<{ ok: boolean; from: string; to: string }> {
+  return req(`/api/kb/${kbId}/rebind-embedder`, jsonInit({ embedder }));
+}
+
 export function deleteKb(kbId: string): Promise<{ ok: boolean }> {
   return req(`/api/kb/${kbId}`, { method: "DELETE" });
 }

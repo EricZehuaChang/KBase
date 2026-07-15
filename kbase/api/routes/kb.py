@@ -17,7 +17,8 @@ from fastapi.responses import FileResponse
 from kbase import chunk_admin, kb_acl
 from kbase.api.routes import RouteDeps
 from kbase.api.schemas import (ChunkUpdate, DocumentReview, KBConfigBody,
-                               KBCreate, KbGrantsBody, UrlImportBody)
+                               KBCreate, KbGrantsBody, RebindEmbedderBody,
+                               UrlImportBody)
 from kbase.api.services import Services
 from kbase.models import Chunk, Conversation, Document, KnowledgeBase, Message
 
@@ -141,6 +142,51 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         # 二次清理：若行删除期间有摄取在途 upsert 重建了集合，扫掉这批孤儿向量
         store.delete_collection(kb_id)
         return {"ok": True}
+
+    @router.post("/kb/{kb_id}/rebind-embedder",
+                 dependencies=[deps.require_admin, deps.audit_mutation])
+    def rebind_embedder(kb_id: str, body: RebindEmbedderBody, bg: BackgroundTasks):
+        """换绑向量模型（vault 待办：换绑=触发全库重建的引导流程）。
+        admin 门槛：全库向量作废+按新模型重嵌入是重操作（万块级分钟-小时）。
+        流程：校验→更新绑定→后台[删旧collection→reindex_kb 存量chunk重嵌入]；
+        重嵌入基于 DB 存量文本，不重新解析原始文件（不产生 OCR 费用）。
+        新模型实例**先行构建**（密钥缺失当场 503，而不是绑定改完了后台才炸
+        ——那会留下"绑定已换但向量还是旧空间"的坏状态）。"""
+        from kbase.plugins.embedders.factory import kb_embedder_id
+        from kbase.reindex import reindex_kb
+        with sf() as s:
+            if s.get(KnowledgeBase, kb_id) is None:
+                raise HTTPException(404, f"知识库不存在: {kb_id}")
+        if body.embedder not in svc.embedder_ids:
+            raise HTTPException(
+                422, f"未知的向量模型: {body.embedder}，可选: {sorted(svc.embedder_ids)}")
+        current = kb_embedder_id(sf, kb_id) or "default"
+        if body.embedder == current:
+            raise HTTPException(409, f"该库已绑定 {current}，无需换绑")
+        try:
+            new_embedder = svc.embedder_pool.get(body.embedder)
+        except (RuntimeError, ValueError, KeyError) as e:
+            raise HTTPException(503, f"新向量模型不可用（先配好密钥/端点）: {e}") from e
+
+        with sf() as s:
+            kb = s.get(KnowledgeBase, kb_id)
+            try:
+                config = json.loads(kb.config) if kb.config else {}
+            except (json.JSONDecodeError, TypeError):
+                config = {}
+            if body.embedder == "default":
+                config.pop("embedder", None)
+            else:
+                config["embedder"] = body.embedder
+            kb.config = json.dumps(config, ensure_ascii=False) if config else None
+            s.commit()
+
+        def _rebuild() -> None:
+            store.delete_collection(kb_id)     # 旧向量空间整体作废
+            reindex_kb(sf, keyword_index, new_embedder, store, kb_id)
+
+        bg.add_task(_rebuild)
+        return {"ok": True, "from": current, "to": body.embedder}
 
     @router.put("/kb/{kb_id}/config", dependencies=[deps.require_editor, deps.audit_mutation])
     def put_kb_config(kb_id: str, body: KBConfigBody):
