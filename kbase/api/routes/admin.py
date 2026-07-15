@@ -32,6 +32,14 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         """无答案（拒答）问题清单——运营看'用户问了什么答不上'补知识。"""
         return {"items": qa_stats.unanswered_questions(sf, limit=limit)}
 
+    @router.get("/stats/feedback", dependencies=[deps.require_admin])
+    def stats_feedback(limit: int = Query(default=50, ge=1, le=200)):
+        """M6-4 反馈闭环看板：赞/踩总量 + 差评清单（带问题原文与答案摘录）。
+        与无答案清单互补：拒答=答不上，差评=答了但答砸了。"""
+        from kbase import feedback
+        return {**feedback.feedback_stats(sf),
+                "items": feedback.negative_list(sf, limit=limit)}
+
     @router.post("/settings/api-keys",
                  dependencies=[deps.require_admin, deps.audit_mutation])
     def create_api_key(body: ApiKeyCreate):

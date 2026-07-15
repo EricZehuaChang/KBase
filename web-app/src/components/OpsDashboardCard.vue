@@ -5,18 +5,22 @@
 import { onMounted, ref } from "vue";
 import { Badge } from "@/components/ui/badge";
 import {
-  getQaStats, getUnanswered, type QaOverview, type UnansweredItem,
+  getQaStats, getUnanswered, getFeedbackStats,
+  type QaOverview, type UnansweredItem, type FeedbackStats,
 } from "@/lib/api";
 
 const overview = ref<QaOverview | null>(null);
 const unanswered = ref<UnansweredItem[]>([]);
+const feedback = ref<FeedbackStats | null>(null);
 const error = ref<string | null>(null);
 
 onMounted(async () => {
   try {
-    const [ov, un] = await Promise.all([getQaStats(7), getUnanswered(20)]);
+    const [ov, un, fb] = await Promise.all([
+      getQaStats(7), getUnanswered(20), getFeedbackStats(20)]);
     overview.value = ov;
     unanswered.value = un.items;
+    feedback.value = fb;
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err);
   }
@@ -50,6 +54,14 @@ function pct(rate: number): string {
           </div>
           <div class="text-xs text-[var(--text-3)]">拒答率</div>
         </div>
+        <div v-if="feedback">
+          <div class="text-2xl font-semibold">
+            <span class="text-[var(--ok)]">{{ feedback.up }}</span>
+            <span class="mx-1 text-base text-[var(--text-3)]">/</span>
+            <span class="text-[var(--err)]">{{ feedback.down }}</span>
+          </div>
+          <div class="text-xs text-[var(--text-3)]">赞 / 踩（M6-4 反馈）</div>
+        </div>
       </div>
 
       <div class="mt-4">
@@ -70,6 +82,31 @@ function pct(rate: number): string {
             <span class="ml-auto shrink-0 text-xs text-[var(--text-3)]">
               {{ item.ts.slice(0, 16).replace("T", " ") }}
             </span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- M6-4 差评清单：与无答案清单互补——拒答=答不上，差评=答砸了 -->
+      <div v-if="feedback?.items.length" class="mt-4">
+        <div class="mb-2 text-sm font-medium text-[var(--text-2)]">
+          最近差评回答（建议核查文档或检索配置）
+        </div>
+        <ul class="flex flex-col gap-1.5">
+          <li
+            v-for="item in feedback.items"
+            :key="item.message_id"
+            class="text-sm"
+          >
+            <div class="flex items-center gap-2">
+              <Badge class="bg-[var(--err-weak)] text-[var(--err)]">差评</Badge>
+              <span class="truncate text-[var(--text-2)]">{{ item.question ?? "（问题缺失）" }}</span>
+              <span class="ml-auto shrink-0 text-xs text-[var(--text-3)]">
+                {{ item.created_at.slice(0, 16).replace("T", " ") }}
+              </span>
+            </div>
+            <div v-if="item.note" class="mt-0.5 pl-12 text-xs text-[var(--text-3)]">
+              备注：{{ item.note }}
+            </div>
           </li>
         </ul>
       </div>

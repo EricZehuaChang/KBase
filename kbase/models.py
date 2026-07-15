@@ -158,6 +158,18 @@ class AuditLog(Base):
     ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
+class MessageFeedback(Base):
+    """问答反馈（M6-4）：对助手消息点赞/点踩+可选备注。一条消息至多一条
+    反馈（重复提交覆盖），差评清单喂运营看板定位坏答案。"""
+    __tablename__ = "message_feedback"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    message_id: Mapped[str] = mapped_column(String(36), unique=True, index=True)
+    conv_id: Mapped[str] = mapped_column(String(36), index=True)
+    rating: Mapped[int] = mapped_column(Integer)              # 1=赞 | -1=踩
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class EvalSet(Base):
     """检索评测集（B 评测回归）：一组"问题+期望命中"用例，绑定单库。
     cases 存 JSON 数组 [{question, expect_doc?, expect_text?}, ...]——

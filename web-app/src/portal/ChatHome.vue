@@ -17,7 +17,7 @@ import SessionSidebar from "./SessionSidebar.vue";
 import EmptyState from "./EmptyState.vue";
 import { kbId, provider, extraKbIds } from "./topbar-state";
 import { useSessions } from "./useSessions";
-import { type Conversation, type Citation } from "@/lib/api";
+import { type Conversation, type Citation, listMessages, submitFeedback } from "@/lib/api";
 import { groupByTime } from "@/lib/chat-utils";
 import { useChat } from "@/composables/useChat";
 
@@ -110,6 +110,26 @@ function handleOpenCitation(index: number, messageId: string) {
   openCitation.value = msg?.citations.find((c) => c.index === index) ?? null;
 }
 
+// M6-4 反馈：流式新生成的消息 id 是本地占位（local-N），落库后的真实 id
+// 要重新拉一次消息列表才拿得到——点按钮时才解析（懒），不打扰正常聊天流。
+// 解析规则：local id 且是最后一条助手消息 → 服务端该会话最后一条 assistant。
+async function handleFeedback(messageId: string, rating: 1 | -1) {
+  try {
+    let realId = messageId;
+    if (messageId.startsWith("local-")) {
+      if (!convId.value) return;
+      const serverMsgs = await listMessages(convId.value);
+      const lastAssistant = [...serverMsgs].reverse().find((m) => m.role === "assistant");
+      if (!lastAssistant) return;
+      realId = lastAssistant.id;
+    }
+    await submitFeedback(realId, rating);
+    toast.success(rating === 1 ? "感谢反馈" : "已记录，我们会改进该问题的回答");
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : String(err));
+  }
+}
+
 // "重新提问"只回填输入框，不自动发送——用户点这个按钮通常是想在原问题
 // 基础上改两个字再问，不是原样重发（原样重发直接再点一次上一条用户消息
 // 复制粘贴也能做到，不需要专门功能）。
@@ -150,7 +170,7 @@ if (typeof route.query.q === "string" && route.query.q) {
     <div class="flex min-h-0 flex-1 flex-col">
       <div class="flex-1 overflow-y-auto px-6 py-6">
         <EmptyState v-if="messages.length === 0" @pick="handleSend" />
-        <MessageStream v-else :messages="messages" @open-citation="handleOpenCitation" @reask="handleReask" />
+        <MessageStream v-else :messages="messages" @open-citation="handleOpenCitation" @reask="handleReask" @feedback="handleFeedback" />
       </div>
 
       <footer class="shrink-0 border-t border-[var(--border)] p-4">

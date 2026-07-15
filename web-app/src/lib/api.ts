@@ -310,6 +310,31 @@ export function uploadDocs(
   return req(`/api/kb/${kbId}/documents`, { method: "POST", body: files });
 }
 
+// M6-4 反馈看板：赞/踩总量 + 差评清单（带问题原文与备注）
+export interface FeedbackStats {
+  up: number;
+  down: number;
+  items: {
+    message_id: string;
+    kb_id: string | null;
+    question: string | null;
+    answer_excerpt: string;
+    note: string | null;
+    created_at: string;
+  }[];
+}
+
+export function getFeedbackStats(limit = 20): Promise<FeedbackStats> {
+  return req(`/api/stats/feedback?limit=${limit}`);
+}
+
+// M6-4 反馈闭环：对助手消息点赞(1)/点踩(-1)，重复提交覆盖
+export function submitFeedback(
+  messageId: string, rating: 1 | -1, note?: string,
+): Promise<{ message_id: string; rating: number }> {
+  return req(`/api/messages/${messageId}/feedback`, jsonInit({ rating, note }));
+}
+
 // E POC 演示数据一键装载：幂等——演示库已存在时 created=false 直接返回其 id
 export function loadDemoData(): Promise<{ id: string; name: string; created: boolean }> {
   return req("/api/demo-data", { method: "POST" });
