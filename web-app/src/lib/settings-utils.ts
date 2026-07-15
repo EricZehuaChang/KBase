@@ -148,10 +148,25 @@ export interface LicenseBannerInfo {
   message: string;
 }
 
-/** valid 状态不展示横幅（返回 null）；trial 用提示色，expired/invalid 用警告色
- * （spec：不锁功能，只提示）。AppShell 顶部细条横幅据此渲染文案与配色。 */
-export function licenseBannerInfo(license: LicenseLike): LicenseBannerInfo | null {
-  if (license.status === "valid") return null;
+/** 许可证到期前提醒窗口（天）：valid 但临近到期时提前亮横幅（E）。 */
+export const LICENSE_EXPIRY_WARN_DAYS = 30;
+
+/** valid 状态不展示横幅（返回 null），但临近到期（30 天内）提前警示；
+ * trial 用提示色，expired/invalid 用警告色（spec：不锁功能，只提示）。
+ * AppShell 顶部细条横幅据此渲染文案与配色。now 仅测试注入用，生产不传。 */
+export function licenseBannerInfo(license: LicenseLike,
+                                  now: Date = new Date()): LicenseBannerInfo | null {
+  if (license.status === "valid") {
+    if (!license.expires) return null;
+    // expires 为 YYYY-MM-DD；解析失败（NaN）不提醒，过期由后端 expired 态兜底
+    const expiry = new Date(`${license.expires}T00:00:00`);
+    const daysLeft = Math.ceil((expiry.getTime() - now.getTime()) / 86400000);
+    if (Number.isNaN(daysLeft) || daysLeft > LICENSE_EXPIRY_WARN_DAYS) return null;
+    return {
+      tone: "warn",
+      message: `许可证将于 ${license.expires} 到期（剩余 ${Math.max(daysLeft, 0)} 天），请提前联系供应商续期`,
+    };
+  }
   if (license.status === "trial") {
     return { tone: "info", message: "当前为试用模式，功能不受限，建议尽快导入正式许可证" };
   }

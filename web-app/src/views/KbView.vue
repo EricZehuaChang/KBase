@@ -22,7 +22,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  listKbs, createKb, deleteKb, listDocs, uploadDocs, deleteDoc, retryDoc, retryOcr,
+  listKbs, createKb, deleteKb, listDocs, uploadDocsWithProgress, deleteDoc, retryDoc, retryOcr,
+  loadDemoData,
   listEmbedders, currentRole,
   type Kb, type DocumentItem, type EmbeddersCatalog,
 } from "@/lib/api";
@@ -146,6 +147,8 @@ async function confirmDeleteKb() {
 // 解析模式（F）：auto=既有管道；vlm=满血视觉模型深度识别（仅图片格式生效，
 // 识别后停"待确认"等人工校验入库）。批量上传共用同一模式。
 const parseMode = ref<"auto" | "ocr" | "vlm">("auto");
+// E 上传进度：null=不在上传；0-100=字节送达服务器的百分比
+const uploadPercent = ref<number | null>(null);
 
 async function handleFilesSelected(files: File[]) {
   if (!kbId.value) return;
@@ -160,14 +163,35 @@ async function handleFilesSelected(files: File[]) {
 
   const form = new FormData();
   files.forEach((f) => form.append("files", f));
+  uploadPercent.value = 0;
   try {
-    await uploadDocs(kbId.value, form, parseMode.value);
+    await uploadDocsWithProgress(kbId.value, form, parseMode.value,
+      (p) => { uploadPercent.value = p; });
     toast.success(`已提交 ${files.length} 个文件`
       + (parseMode.value === "vlm" ? "（深度识别，完成后需校验确认）" : ""));
   } catch (err) {
     toast.error(err instanceof Error ? err.message : String(err));
   } finally {
+    uploadPercent.value = null;
     await loadDocs();
+  }
+}
+
+// ---- POC 演示数据一键装载（E）----
+const demoLoading = ref(false);
+
+async function loadDemo() {
+  demoLoading.value = true;
+  try {
+    const result = await loadDemoData();
+    toast.success(result.created ? "演示知识库已创建，样例文档解析中"
+      : "演示知识库已存在，直接打开");
+    await loadKbs();
+    openKb(result.id);
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : String(err));
+  } finally {
+    demoLoading.value = false;
   }
 }
 
@@ -285,6 +309,16 @@ onMounted(loadKbs);
           <span class="text-sm">新建知识库</span>
         </button>
       </div>
+
+      <!-- POC 演示数据（E）：还没有任何库时提供一键装载，秒出可演示效果 -->
+      <div v-if="canManage && !kbs.length" class="mt-6 text-center">
+        <Button variant="outline" :disabled="demoLoading" @click="loadDemo">
+          {{ demoLoading ? "装载中…" : "一键装载演示数据" }}
+        </Button>
+        <p class="mt-2 text-xs text-[var(--text-3)]">
+          创建"演示知识库"并导入三篇样例（制度/表格/FAQ），即刻可问答
+        </p>
+      </div>
     </template>
 
     <!-- 单库详情 -->
@@ -326,6 +360,20 @@ onMounted(loadKbs);
         </Select>
       </div>
       <UploadZone v-if="canManage" class="mb-4" @files-selected="handleFilesSelected" />
+
+      <!-- E 上传进度条：仅传输阶段显示；解析/向量化进度看文档状态列 -->
+      <div v-if="uploadPercent !== null" class="mb-4">
+        <div class="mb-1 flex justify-between text-xs text-[var(--text-3)]">
+          <span>正在上传…</span>
+          <span>{{ uploadPercent }}%</span>
+        </div>
+        <div class="h-1.5 overflow-hidden rounded-full bg-[var(--surface-2)]">
+          <div
+            class="h-full rounded-full bg-[var(--accent)] transition-[width] duration-200"
+            :style="{ width: `${uploadPercent}%` }"
+          />
+        </div>
+      </div>
 
       <DocumentTable
         :docs="docs"
