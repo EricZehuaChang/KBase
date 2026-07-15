@@ -27,7 +27,11 @@ COPY pyproject.toml ./
 # COPY 覆盖进来（内容不同不影响已装的第三方依赖，仅重装本包自身，很快）。
 RUN mkdir -p kbase kbase_mcp \
     && touch kbase/__init__.py kbase_mcp/__init__.py
-RUN pip install --no-cache-dir ".[mcp]"
+# local-embed 必须进镜像：lite profile 默认配置是进程内 bge-m3/reranker
+# （config/kbase.yaml embedder=bge-local），不装 sentence-transformers 会在
+# 启动构建默认 embedder 时 ImportError。standard profile 多装无害（被 TEI
+# 容器取代不加载）。代价是镜像多 ~1.5GB（torch CPU），一次性。
+RUN pip install --no-cache-dir ".[mcp,local-embed]"
 
 # 代码层：变更频繁，放在依赖安装之后，改代码不触发依赖重装。
 # web/ 是前端构建产物（web-app/ 编译后提交进仓库的静态文件），镜像内不装

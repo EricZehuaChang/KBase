@@ -263,32 +263,51 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
 
     @router.post("/demo-data", dependencies=[deps.require_editor, deps.audit_mutation])
     def load_demo_data(request: Request, bg: BackgroundTasks):
-        """POC 演示数据一键装载（E）：建"演示知识库"并摄取三篇内置样例
-        （制度/表格/FAQ，覆盖招牌能力）。幂等：同名库已存在直接返回其 id，
+        """POC 演示数据一键装载（E，全功能版）：主库（制度/表格/FAQ md +
+        含插图 docx——演示多模态回答与 caption 级锚定）+ 副库（案例 md——
+        顶栏联查即演示多库联合问答）。幂等：主库同名已存在直接返回其 id，
         不重复灌数——演示环境反复点不会攒出一堆重复库。"""
-        from kbase.demo_data import DEMO_DOCS, DEMO_KB_NAME
+        from kbase.demo_data import (DEMO_DOCS, DEMO_DOCS_KB2, DEMO_KB2_NAME,
+                                     DEMO_KB_NAME, demo_docx_bytes)
+        actor = getattr(request.state, "actor", None)
+        owner_id = actor.get("user_id") if actor else None
         with sf() as s:
             existing = (s.query(KnowledgeBase)
                         .filter(KnowledgeBase.name == DEMO_KB_NAME).first())
             if existing is not None:
                 return {"id": existing.id, "name": DEMO_KB_NAME,
-                        "created": False, "accepted": []}
-            actor = getattr(request.state, "actor", None)
-            kb = KnowledgeBase(id=str(uuid.uuid4()), name=DEMO_KB_NAME,
-                               owner_id=(actor.get("user_id") if actor else None))
-            s.add(kb)
+                        "created": False, "accepted": [], "kb_ids": [existing.id]}
+            kb1 = KnowledgeBase(id=str(uuid.uuid4()), name=DEMO_KB_NAME,
+                                owner_id=owner_id)
+            kb2 = KnowledgeBase(id=str(uuid.uuid4()), name=DEMO_KB2_NAME,
+                                owner_id=owner_id)
+            s.add_all([kb1, kb2])
             s.commit()
-            kb_id = kb.id
+            kb1_id, kb2_id = kb1.id, kb2.id
         upload_dir = cfg.data_dir / "uploads"
         upload_dir.mkdir(parents=True, exist_ok=True)
-        items: list[tuple[Path, str]] = []
-        for filename, content in DEMO_DOCS:
-            dest = upload_dir / f"{uuid.uuid4()}-{filename}"
-            dest.write_text(content, encoding="utf-8")
-            items.append((dest, filename))
-        bg.add_task(_ingest_batch, kb_id, items, "auto")
-        return {"id": kb_id, "name": DEMO_KB_NAME, "created": True,
-                "accepted": [f for f, _ in DEMO_DOCS]}
+
+        def _stage_texts(docs) -> list[tuple[Path, str]]:
+            staged = []
+            for filename, content in docs:
+                dest = upload_dir / f"{uuid.uuid4()}-{filename}"
+                dest.write_text(content, encoding="utf-8")
+                staged.append((dest, filename))
+            return staged
+
+        items1 = _stage_texts(DEMO_DOCS)
+        docx_name = "差旅管理办法.docx"
+        docx_dest = upload_dir / f"{uuid.uuid4()}-{docx_name}"
+        docx_dest.write_bytes(demo_docx_bytes())
+        items1.append((docx_dest, docx_name))
+        items2 = _stage_texts(DEMO_DOCS_KB2)
+
+        bg.add_task(_ingest_batch, kb1_id, items1, "auto")
+        bg.add_task(_ingest_batch, kb2_id, items2, "auto")
+        return {"id": kb1_id, "name": DEMO_KB_NAME, "created": True,
+                "kb_ids": [kb1_id, kb2_id],
+                "accepted": [f for f, _ in DEMO_DOCS] + [docx_name]
+                            + [f for f, _ in DEMO_DOCS_KB2]}
 
     @router.put("/documents/{doc_id}/review",
                 dependencies=[deps.require_editor, deps.audit_mutation])
