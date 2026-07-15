@@ -34,6 +34,11 @@ _COLUMN_MIGRATIONS = [
     ("chunks", "layout", "TEXT"),
     # F VLM 深度识别：文档解析模式（NULL=auto 既有管道）。
     ("documents", "parse_mode", "TEXT"),
+    # M6-3 库级权限：建库人（老库 NULL）。kb_grants 是新表，由 create_all
+    # 自动建，不在列迁移里。
+    ("knowledge_bases", "owner_id", "TEXT"),
+    # M6-2 多库联合问答：会话绑定的全部库（JSON；NULL=单库老行为）。
+    ("conversations", "kb_ids", "TEXT"),
 ]
 
 _FTS_DDL = (

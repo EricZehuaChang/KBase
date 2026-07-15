@@ -74,6 +74,9 @@ class ContextBlock:
     # M5-2 引用定位：命中叶子块在源文件中的页码（文本层 PDF 摄取时回填，
     # 其他格式/老数据为 None）。取叶子而非父块的页——引用要跳去的是命中处。
     page: int | None = None
+    # M6-2 多库联合问答：命中块所属知识库（跨库检索时溯源需要区分来源库；
+    # 单库检索时也回填，前端可选择性展示）。
+    kb_id: str | None = None
 
 
 @dataclass
@@ -304,5 +307,22 @@ class Retriever:
                     snippet=leaf.text,
                     score=score,
                     page=leaf.page,
+                    kb_id=leaf.kb_id,
                 ))
         return blocks
+
+    def retrieve_multi(self, kb_ids: list[str], query: str, top_k: int = 5,
+                       strategy=None):
+        """M6-2 跨库联合检索（散射-聚合）：对每个库独立跑一次 retrieve()
+        （复用其全套策略/向量模型/重排逻辑），把各库结果块合并后按分数全局
+        重排，取前 top_k。
+
+        为什么全局按分数合并可行：重排分（交叉编码器 query-doc 相关度）跨库
+        天然可比；未重排时的余弦分在各库用同一 embedder 时也可比（不同
+        embedder 的库混排是近似——但那是 KB 级向量模型的少见组合，v1 接受）。
+        每库先取 top_k 个候选块再合并，保证任一库的强命中不会被别库淹没。"""
+        merged: list[ContextBlock] = []
+        for kb_id in kb_ids:
+            merged.extend(self.retrieve(kb_id, query, top_k, strategy=strategy))
+        merged.sort(key=lambda b: b.score, reverse=True)
+        return merged[:top_k]

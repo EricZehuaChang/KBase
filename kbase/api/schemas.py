@@ -48,6 +48,9 @@ class KBRetrievalBody(BaseModel):
 
 class ConversationCreate(BaseModel):
     kb_id: str
+    # M6-2 多库联合问答：额外绑定的库（含 kb_id 或不含都可，服务端会并入
+    # 并去重）。缺省/空=单库会话（老行为）。
+    kb_ids: list[str] | None = None
 
 
 class ConversationRename(BaseModel):
@@ -115,6 +118,12 @@ class DocumentReview(BaseModel):
     """PUT /api/documents/{id}/review（F）：markdown=None 按落盘的识别结果
     原样入库；给了则以编辑稿为准（先写回 content.md 再入库）。"""
     markdown: str | None = None
+
+
+class KbGrantsBody(BaseModel):
+    """PUT /api/kb/{id}/grants（M6-3）：全量设置该库授权用户 id 集合
+    （空列表=恢复公开，所有登录用户可见）。"""
+    user_ids: list[str] = []
 
 
 class ChunkUpdate(BaseModel):

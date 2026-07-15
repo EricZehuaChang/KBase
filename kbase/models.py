@@ -14,6 +14,21 @@ class KnowledgeBase(Base):
     name: Mapped[str] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     config: Mapped[str | None] = mapped_column(Text, nullable=True)   # JSON: 分块/增强配置
+    # M6-3 库级权限：建库人 user_id（owner 永远可访问自己建的库）。
+    # 老库/auth=off 建的库为 NULL（无 owner，只受 grant 规则约束）。
+    owner_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+
+class KbGrant(Base):
+    """M6-3 库级授权：某用户对某知识库的访问权。
+    语义（"不配就公开，一配就收紧"，与检索策略同哲学，向后兼容）：某 KB
+    没有任何 grant 行=公开（所有登录用户可见）；一旦有 grant 行=仅 grant
+    内 user_id + owner + admin 可见。principal 目前只到 user_id 级。"""
+    __tablename__ = "kb_grants"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    kb_id: Mapped[str] = mapped_column(String(36), index=True)
+    user_id: Mapped[str] = mapped_column(String(36), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class Document(Base):
@@ -62,7 +77,10 @@ class Chunk(Base):
 class Conversation(Base):
     __tablename__ = "conversations"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    kb_id: Mapped[str] = mapped_column(String(36), index=True)
+    kb_id: Mapped[str] = mapped_column(String(36), index=True)   # 主库（向后兼容/列表分组）
+    # M6-2 多库联合问答：会话绑定的全部知识库 id（JSON 列表）。NULL/空=单库
+    # （只用 kb_id，老会话行为不变）；非空时检索跨这些库联合召回。
+    kb_ids: Mapped[str | None] = mapped_column(Text, nullable=True)
     title: Mapped[str] = mapped_column(String(200), default="新会话")
     # M5-1 F2：会话归属（鉴权改造前，会话是全局的，没有归属概念）。可空——
     # ①历史遗留会话没有归属，迁移时不倒推补全（谁都不该被动认领别人的老会话）；

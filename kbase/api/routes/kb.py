@@ -10,12 +10,14 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from fastapi import BackgroundTasks, Form, HTTPException, Query, UploadFile
+from fastapi import (BackgroundTasks, Form, HTTPException, Query, Request,
+                     UploadFile)
 from fastapi.responses import FileResponse
 
-from kbase import chunk_admin
+from kbase import chunk_admin, kb_acl
 from kbase.api.routes import RouteDeps
-from kbase.api.schemas import ChunkUpdate, DocumentReview, KBConfigBody, KBCreate
+from kbase.api.schemas import (ChunkUpdate, DocumentReview, KBConfigBody,
+                               KBCreate, KbGrantsBody)
 from kbase.api.services import Services
 from kbase.models import Chunk, Conversation, Document, KnowledgeBase, Message
 
@@ -29,8 +31,28 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         """建库下拉用：默认向量模型 + cfg.embedders 可选清单（M5-2）。"""
         return svc.embedder_catalog
 
+    # ---- 库级权限管理（M6-3，admin）----
+
+    @router.get("/kb/{kb_id}/grants", dependencies=[deps.require_admin])
+    def get_kb_grants(kb_id: str):
+        """某库授权用户清单；空=公开库（所有登录用户可见）。"""
+        with sf() as s:
+            if s.get(KnowledgeBase, kb_id) is None:
+                raise HTTPException(404, f"知识库不存在: {kb_id}")
+        return {"grants": kb_acl.list_grants(sf, kb_id)}
+
+    @router.put("/kb/{kb_id}/grants",
+                dependencies=[deps.require_admin, deps.audit_mutation])
+    def put_kb_grants(kb_id: str, body: KbGrantsBody):
+        """全量设置授权用户集合（空列表=恢复公开）。"""
+        with sf() as s:
+            if s.get(KnowledgeBase, kb_id) is None:
+                raise HTTPException(404, f"知识库不存在: {kb_id}")
+        kb_acl.set_grants(sf, kb_id, body.user_ids)
+        return {"ok": True, "count": len(set(body.user_ids))}
+
     @router.post("/kb", dependencies=[deps.require_editor, deps.audit_mutation])
-    def create_kb(body: KBCreate):
+    def create_kb(body: KBCreate, request: Request):
         # 绑定校验先行：向量模型 id 必须在配置清单内，建完不可改
         #（换模型=向量空间不可比，该库全部向量作废，只能重建）。
         embedder_id = body.embedder or "default"
@@ -39,18 +61,25 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
                 422, f"未知的向量模型: {embedder_id}，可选: {sorted(svc.embedder_ids)}")
         config = (json.dumps({"embedder": embedder_id}, ensure_ascii=False)
                   if embedder_id != "default" else None)
-        kb = KnowledgeBase(id=str(uuid.uuid4()), name=body.name, config=config)
+        actor = getattr(request.state, "actor", None)
+        kb = KnowledgeBase(id=str(uuid.uuid4()), name=body.name, config=config,
+                           owner_id=(actor.get("user_id") if actor else None))
         with sf() as s:
             s.add(kb)
             s.commit()
         return {"id": kb.id, "name": kb.name, "embedder": embedder_id}
 
     @router.get("/kb", dependencies=[deps.require_viewer])
-    def list_kb():
+    def list_kb(request: Request):
+        # M6-3 库级权限：按 ACL 过滤——admin 全见；其余仅见公开库（无授权
+        # 记录）+ 被授权的库 + 自己建的库。
+        actor = getattr(request.state, "actor", None) or {"role": "admin"}
+        mode, visible = kb_acl.visible_kb_filter(sf, actor)
         with sf() as s:
             return [{"id": k.id, "name": k.name,
                      "config": json.loads(k.config) if k.config else None}
-                    for k in s.query(KnowledgeBase).all()]
+                    for k in s.query(KnowledgeBase).all()
+                    if mode == "all" or k.id in visible]
 
     @router.delete("/kb/{kb_id}", dependencies=[deps.require_editor, deps.audit_mutation])
     def delete_kb(kb_id: str):

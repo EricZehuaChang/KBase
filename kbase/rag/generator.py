@@ -48,7 +48,9 @@ class Generator:
                  "score": round(b.score, 3),
                  # M5-2 引用定位：源文件页码（文本层 PDF 才有，其余 None）。
                  # 前端据此在原文件预览里 #page= 跳页。
-                 "page": b.page}
+                 "page": b.page,
+                 # M6-2 多库联合：命中块所属库（多库会话时前端标注来源库）。
+                 "kb_id": b.kb_id}
                 for i, b in enumerate(blocks)]
 
     def _build_messages(self, question: str, blocks: list[ContextBlock],
