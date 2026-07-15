@@ -64,6 +64,10 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         # 保证引用编号与答案中的 [n] 标记对齐（拒答时 citations 为空列表）
         usable = gen.usable_blocks(blocks)
         citations = gen.citations(usable)
+        # 多模态回答（图片一期）：引用命中文本层 PDF 某页时附上该页插图
+        # （前端在答案下方渲染缩略图）。图片不进 prompt——零幻觉风险。
+        from kbase.doc_images import attach_images
+        attach_images(sf, citations)
 
         # 运营看板（C）：拒答=检索无可用依据（usable 为空）。单独落
         # query_refused 审计，让"用户问了什么我们答不上"成为可查的知识缺口

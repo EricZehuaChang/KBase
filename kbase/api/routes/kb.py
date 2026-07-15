@@ -393,6 +393,20 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
 
     # ---- Chunk 运营管理（M6-1）----
 
+    @router.get("/documents/{doc_id}/images/{filename}",
+                dependencies=[deps.require_viewer])
+    def get_document_image(doc_id: str, filename: str):
+        """回答附图直链（多模态一期）：files/{doc_id}/images/ 下的提取图。
+        filename 强制取纯文件名（Path().name），杜绝 ../ 路径穿越。"""
+        safe = Path(filename).name
+        if safe != filename or not safe:
+            raise HTTPException(404, "图片不存在")
+        img_path = cfg.data_dir / "files" / doc_id / "images" / safe
+        if not img_path.is_file():
+            raise HTTPException(404, "图片不存在")
+        media_type = mimetypes.guess_type(safe)[0] or "application/octet-stream"
+        return FileResponse(str(img_path), media_type=media_type)
+
     @router.get("/documents/{doc_id}/chunks", dependencies=[deps.require_viewer])
     def list_document_chunks(doc_id: str, offset: int = Query(default=0, ge=0),
                              limit: int = Query(default=50, ge=1, le=200),
