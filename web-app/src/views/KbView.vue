@@ -5,7 +5,7 @@
 // 避免后台定时器继续对已卸载组件的响应式状态写入。
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { Plus, RotateCw, Settings2, Trash2 } from "@lucide/vue";
+import { Plus, RotateCw, Settings2, Trash2, Shield } from "@lucide/vue";
 import { toast } from "vue-sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,7 @@ import DocumentTable from "@/components/DocumentTable.vue";
 import KbConfigDialog from "@/components/KbConfigDialog.vue";
 import ChunkManagerDialog from "@/components/ChunkManagerDialog.vue";
 import ReviewDialog from "@/components/ReviewDialog.vue";
+import KbGrantsDialog from "@/components/KbGrantsDialog.vue";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -26,12 +27,21 @@ import {
   type Kb, type DocumentItem, type EmbeddersCatalog,
 } from "@/lib/api";
 import { hasPendingOcr } from "@/lib/kb-utils";
-import { canManageContent } from "@/lib/auth-utils";
+import { canManageContent, canAdminister } from "@/lib/auth-utils";
 import { useKbDocs } from "@/composables/useKbDocs";
 
 // viewer 隐藏上传/删除/新建库按钮（后端已用 require_editor 强制校验，这里
 // 只是防呆，不替代后端）。
 const canManage = computed(() => canManageContent(currentRole.value ?? ""));
+const isAdmin = computed(() => canAdminister(currentRole.value ?? ""));
+
+// ---- 库级权限（M6-3）----
+const grantsKb = ref<Kb | null>(null);
+const grantsOpen = ref(false);
+function openGrants(kb: Kb) {
+  grantsKb.value = kb;
+  grantsOpen.value = true;
+}
 
 const route = useRoute();
 const router = useRouter();
@@ -241,16 +251,27 @@ onMounted(loadKbs);
           @keydown.enter="openKb(kb.id)"
           @keydown.space.prevent="openKb(kb.id)"
         >
-          <button
-            v-if="canManage"
-            type="button"
-            class="absolute right-2 top-2 rounded-[var(--radius-ctl)] p-1 text-[var(--text-3)] opacity-0 transition-opacity hover:bg-[var(--err-weak)] hover:text-[var(--err)] focus-visible:opacity-100 group-hover:opacity-100"
-            aria-label="删除知识库"
-            @click.stop="kbDeleteTarget = kb"
-          >
-            <Trash2 class="size-3.5" />
-          </button>
-          <div class="truncate pr-6 font-medium">{{ kb.name }}</div>
+          <div class="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+            <button
+              v-if="isAdmin"
+              type="button"
+              class="rounded-[var(--radius-ctl)] p-1 text-[var(--text-3)] hover:bg-[var(--accent-weak)] hover:text-[var(--accent-text)]"
+              aria-label="访问权限"
+              @click.stop="openGrants(kb)"
+            >
+              <Shield class="size-3.5" />
+            </button>
+            <button
+              v-if="canManage"
+              type="button"
+              class="rounded-[var(--radius-ctl)] p-1 text-[var(--text-3)] hover:bg-[var(--err-weak)] hover:text-[var(--err)]"
+              aria-label="删除知识库"
+              @click.stop="kbDeleteTarget = kb"
+            >
+              <Trash2 class="size-3.5" />
+            </button>
+          </div>
+          <div class="truncate pr-12 font-medium">{{ kb.name }}</div>
           <div class="mt-1 text-sm text-[var(--text-3)]">{{ docCounts[kb.id] ?? 0 }} 篇文档</div>
         </div>
 
@@ -370,6 +391,7 @@ onMounted(loadKbs);
   <KbConfigDialog v-model:open="configOpen" :kb="currentKb" @saved="loadKbs" />
   <ChunkManagerDialog v-model:open="chunkOpen" :doc="chunkDoc" />
   <ReviewDialog v-model:open="reviewOpen" :doc="reviewDoc" @approved="loadDocs" />
+  <KbGrantsDialog v-model:open="grantsOpen" :kb="grantsKb" />
 
   <!-- 删除知识库确认 Dialog -->
   <Dialog :open="!!kbDeleteTarget" @update:open="(v) => { if (!v) kbDeleteTarget = null; }">

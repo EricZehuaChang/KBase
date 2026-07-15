@@ -276,6 +276,22 @@ export function deleteKb(kbId: string): Promise<{ ok: boolean }> {
   return req(`/api/kb/${kbId}`, { method: "DELETE" });
 }
 
+// ---- 库级权限（M6-3）：空授权=公开，一配即收紧 ----
+
+export interface KbGrant {
+  user_id: string;
+  username: string | null;
+  created_at: string;
+}
+
+export function getKbGrants(kbId: string): Promise<{ grants: KbGrant[] }> {
+  return req(`/api/kb/${kbId}/grants`);
+}
+
+export function putKbGrants(kbId: string, userIds: string[]): Promise<{ ok: boolean; count: number }> {
+  return req(`/api/kb/${kbId}/grants`, jsonInit({ user_ids: userIds }, "PUT"));
+}
+
 export function putKbConfig(kbId: string, config: KbConfig): Promise<{ ok: boolean }> {
   return req(`/api/kb/${kbId}/config`, jsonInit(config, "PUT"));
 }
@@ -398,8 +414,11 @@ export function listConvs(opts?: {
   return req(`/api/conversations${qs ? `?${qs}` : ""}`);
 }
 
-export function createConv(kbId: string): Promise<Conversation> {
-  return req("/api/conversations", jsonInit({ kb_id: kbId }));
+// M6-2：kbIds 多于一个=多库联合会话（跨这些库检索）；单个/不传=单库老行为。
+export function createConv(kbId: string, kbIds?: string[]): Promise<Conversation> {
+  const body = kbIds && kbIds.length > 1
+    ? { kb_id: kbId, kb_ids: kbIds } : { kb_id: kbId };
+  return req("/api/conversations", jsonInit(body));
 }
 
 export function listMessages(convId: string): Promise<Message[]> {

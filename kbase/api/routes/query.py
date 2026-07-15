@@ -11,6 +11,7 @@ from fastapi.concurrency import run_in_threadpool
 from sse_starlette.sse import EventSourceResponse
 
 from kbase import conversations as conv_store
+from kbase import kb_acl
 from kbase import retrieval_strategy as rs
 from kbase.api.routes import RouteDeps
 from kbase.api.schemas import (ConversationCreate, ConversationRename,
@@ -26,7 +27,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
     async def _run_query(kb_id: str, body: QueryBody, *,
                          history: list[dict] | None = None,
                          on_complete=None, retrieval_query: str | None = None,
-                         request=None):
+                         request=None, kb_ids: list[str] | None = None):
         """共享检索+生成编排：会话端点与旧的 /api/kb/{id}/query 端点复用同一份
         逻辑，保证事件序列（citations→token*→done）与拒答语义完全一致。
 
@@ -48,9 +49,15 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         strategy = rs.resolve_strategy(cfg, rs.kb_retrieval_config(sf, kb_id))
         min_score = rs.pick_min_score(cfg, strategy, retriever.rerank_active)
         query_text = retrieval_query if retrieval_query is not None else body.question
-        # 检索（含向量化）是同步 CPU/IO 混合操作，进线程池避免阻塞事件循环
-        blocks = await run_in_threadpool(
-            retriever.retrieve, kb_id, query_text, body.top_k, False, strategy)
+        # 检索（含向量化）是同步 CPU/IO 混合操作，进线程池避免阻塞事件循环。
+        # M6-2：kb_ids 非空且多于一个库 → 跨库联合检索（散射-聚合，见
+        # retriever.retrieve_multi）；否则走单库既有路径（行为字节级不变）。
+        if kb_ids and len(kb_ids) > 1:
+            blocks = await run_in_threadpool(
+                retriever.retrieve_multi, kb_ids, query_text, body.top_k, strategy)
+        else:
+            blocks = await run_in_threadpool(
+                retriever.retrieve, kb_id, query_text, body.top_k, False, strategy)
         gen = Generator(llm, min_score=min_score,
                         min_include_score=cfg.retrieval.min_include_score)
         # 关键契约：usable_blocks 只算一次，citations 与 answer_stream 用同一份列表，
@@ -88,17 +95,25 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
 
         return EventSourceResponse(events())
 
+    def _guard_kb(kb_id: str, request: Request) -> None:
+        """M6-3 库级权限：无权访问的库统一 404（不泄漏"存在但无权"）。"""
+        actor = getattr(request.state, "actor", None) or {"role": "admin"}
+        if not kb_acl.can_access(sf, kb_id, actor):
+            raise HTTPException(404, f"知识库不存在: {kb_id}")
+
     @router.post("/kb/{kb_id}/query", dependencies=[deps.require_viewer])
     async def query(kb_id: str, body: QueryBody, request: Request):
+        _guard_kb(kb_id, request)
         write_query_audit(sf, request, resource=f"kb_id={kb_id}", question=body.question)
         return await _run_query(kb_id, body, request=request)
 
     @router.post("/kb/{kb_id}/search", dependencies=[deps.require_viewer])
-    async def search(kb_id: str, body: SearchBody):
+    async def search(kb_id: str, body: SearchBody, request: Request):
         """检索调试端点：debug=False 只返回 blocks（不含 trace key，向后兼容展示用途）；
         debug=True 额外返回各阶段 trace（dense/keyword/fused[/reranked]），用于排查召回质量。
         body 的 use_keyword/use_rerank/candidates 为请求级策略覆盖（试跑对比用，
         不落库；缺省=KB 策略/全局默认）。检索进线程池避免阻塞事件循环。"""
+        _guard_kb(kb_id, request)
         strategy = rs.resolve_strategy(
             cfg, rs.kb_retrieval_config(sf, kb_id),
             overrides={"use_keyword": body.use_keyword,
@@ -118,8 +133,14 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
     # viewer 就完全没法用问答页，这是与设计文档矛盾的实现疏漏，这里一并修正。
     @router.post("/conversations", dependencies=[deps.require_viewer, deps.audit_mutation])
     def create_conversation(body: ConversationCreate, request: Request):
+        # M6-2 多库：合并 kb_id + kb_ids 去重，逐库 ACL 校验（无权任一库即 404）。
+        kb_ids = list(dict.fromkeys([body.kb_id, *(body.kb_ids or [])]))
+        for k in kb_ids:
+            _guard_kb(k, request)
         actor = request.state.actor
-        return conv_store.create_conversation(sf, body.kb_id, user_id=actor.get("user_id"))
+        return conv_store.create_conversation(
+            sf, body.kb_id, user_id=actor.get("user_id"),
+            kb_ids=(kb_ids if len(kb_ids) > 1 else None))
 
     @router.get("/conversations", dependencies=[deps.require_viewer])
     def list_conversations(request: Request, kb_id: str | None = None,
@@ -184,6 +205,9 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
             conv_store.append_round(sf, conv_id, body.question, answer,
                                     citations, provider)
 
+        # M6-2：多库会话跨其绑定的全部库联合检索（conv_store 已解析 kb_ids）。
+        conv_kb_ids = conv_store.conversation_kb_ids(sf, conv_id)
         return await _run_query(conv.kb_id, body, history=history,
                                retrieval_query=rewrite_res.query,
-                               on_complete=_persist, request=request)
+                               on_complete=_persist, request=request,
+                               kb_ids=conv_kb_ids)

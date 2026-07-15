@@ -31,12 +31,29 @@ def _visible_filter(user_id: str | None):
     return or_(Conversation.user_id == user_id, Conversation.user_id.is_(None))
 
 
-def create_conversation(sf, kb_id: str, user_id: str | None = None) -> dict:
-    conv = Conversation(id=str(uuid.uuid4()), kb_id=kb_id, user_id=user_id)
+def create_conversation(sf, kb_id: str, user_id: str | None = None,
+                        kb_ids: list[str] | None = None) -> dict:
+    # M6-2：kb_ids 非空=多库会话（落 JSON）；None=单库（老行为，字节级不变）。
+    conv = Conversation(id=str(uuid.uuid4()), kb_id=kb_id, user_id=user_id,
+                        kb_ids=(json.dumps(kb_ids, ensure_ascii=False)
+                                if kb_ids else None))
     with sf() as s:
         s.add(conv)
         s.commit()
-    return {"id": conv.id, "kb_id": conv.kb_id, "title": conv.title}
+    return {"id": conv.id, "kb_id": conv.kb_id, "kb_ids": kb_ids,
+            "title": conv.title}
+
+
+def conversation_kb_ids(sf, conv_id: str) -> list[str] | None:
+    """M6-2：会话绑定的全部库 id（多库会话返回列表；单库/老会话返回 None）。"""
+    with sf() as s:
+        conv = s.get(Conversation, conv_id)
+        if conv is None or not conv.kb_ids:
+            return None
+        try:
+            return json.loads(conv.kb_ids) or None
+        except (json.JSONDecodeError, TypeError):
+            return None
 
 
 def list_conversations(sf, kb_id: str | None = None, *,
