@@ -18,6 +18,7 @@ import KbConfigDialog from "@/components/KbConfigDialog.vue";
 import ChunkManagerDialog from "@/components/ChunkManagerDialog.vue";
 import ReviewDialog from "@/components/ReviewDialog.vue";
 import KbGrantsDialog from "@/components/KbGrantsDialog.vue";
+import PageHeader from "@/components/PageHeader.vue";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -283,14 +284,14 @@ onMounted(loadKbs);
   <div class="p-6">
     <!-- 卡片网格 -->
     <template v-if="!kbId">
-      <h1 class="mb-4 text-lg font-semibold">知识库</h1>
+      <PageHeader title="知识库" subtitle="管理企业知识库、文档导入与访问权限" />
       <div class="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
         <div
           v-for="kb in kbs"
           :key="kb.id"
           role="button"
           tabindex="0"
-          class="group relative rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-4 text-left transition-colors hover:border-[var(--accent)]"
+          class="group relative rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-4 text-left transition-all duration-150 hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-md"
           @click="openKb(kb.id)"
           @keydown.enter="openKb(kb.id)"
           @keydown.space.prevent="openKb(kb.id)"
@@ -348,7 +349,7 @@ onMounted(loadKbs);
           <button type="button" class="text-sm text-[var(--text-3)] hover:text-[var(--text)]" @click="backToGrid">
             ← 返回知识库列表
           </button>
-          <h1 class="text-lg font-semibold">{{ currentKb?.name ?? kbId }}</h1>
+          <h1 class="text-xl font-semibold tracking-tight">{{ currentKb?.name ?? kbId }}</h1>
         </div>
         <div class="flex items-center gap-2">
           <Button

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
+import PageHeader from "@/components/PageHeader.vue";
 import ProviderCard from "@/components/ProviderCard.vue";
 import ProviderFormDialog from "@/components/ProviderFormDialog.vue";
 import UserManagementCard from "@/components/UserManagementCard.vue";
@@ -119,13 +120,14 @@ onMounted(async () => {
 
 <template>
   <div class="p-6">
-    <div class="flex items-center justify-between">
-      <h1 class="text-lg font-semibold">设置</h1>
-      <Button size="sm" @click="openCreateDialog">
-        <Plus class="size-3.5" />
-        添加 Provider
-      </Button>
-    </div>
+    <PageHeader title="设置" subtitle="模型 Provider、用户与密钥、许可证与系统状态">
+      <template #actions>
+        <Button size="sm" @click="openCreateDialog">
+          <Plus class="size-3.5" />
+          添加 Provider
+        </Button>
+      </template>
+    </PageHeader>
 
     <!-- Provider 卡片列表 -->
     <section class="mt-4">
