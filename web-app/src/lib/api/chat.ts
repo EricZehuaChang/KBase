@@ -14,6 +14,9 @@ export interface Citation {
   // M5-2 引用定位：命中内容在源文件中的页码（文本层 PDF 才有；老消息/其他
   // 格式为 null 或缺失）。预览原文件时用 #page= 跳页。
   page?: number | null;
+  // 多模态回答（图片一期）：命中页的文档内嵌插图（文本层 PDF 才有）。
+  // 前端在答案下方渲染缩略图；图片不进 LLM prompt，纯检索事实关联。
+  images?: { url: string; name: string; width: number; height: number }[];
 }
 
 export interface ContextBlock {

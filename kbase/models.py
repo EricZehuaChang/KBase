@@ -158,6 +158,21 @@ class AuditLog(Base):
     ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
+class DocumentImage(Base):
+    """文档内嵌图片索引（多模态回答第一期）：文本层 PDF 摄取时提取的
+    插图，按 (doc_id, page) 关联——回答引用命中某页时，该页图片随
+    citations 一起返回，前端在答案下方渲染缩略图。filename 是相对
+    files/{doc_id}/images/ 的纯文件名（服务端点凭它回文件）。"""
+    __tablename__ = "document_images"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    doc_id: Mapped[str] = mapped_column(String(36), index=True)
+    page: Mapped[int] = mapped_column(Integer, index=True)
+    filename: Mapped[str] = mapped_column(String(200))
+    width: Mapped[int] = mapped_column(Integer, default=0)
+    height: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class MessageFeedback(Base):
     """问答反馈（M6-4）：对助手消息点赞/点踩+可选备注。一条消息至多一条
     反馈（重复提交覆盖），差评清单喂运营看板定位坏答案。"""

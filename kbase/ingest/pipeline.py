@@ -2,6 +2,7 @@
 单文件失败只标记该文档，不向外抛异常（批次隔离）。"""
 import hashlib
 import json
+import logging
 import uuid
 from pathlib import Path
 
@@ -11,6 +12,8 @@ from kbase.embed_text import embed_input, keyword_input
 from kbase.models import Chunk, Document, KnowledgeBase
 from kbase.plugins.base import Chunker, Embedder, OCRUnavailable, VectorStore
 from kbase.plugins.chunkers.structure import StructureChunker
+
+logger = logging.getLogger(__name__)
 
 _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
 
@@ -204,6 +207,17 @@ class IngestPipeline:
         if ocr_layout:
             (out_dir / "layout.json").write_text(
                 json.dumps(ocr_layout, ensure_ascii=False), encoding="utf-8")
+
+        # 多模态回答（图片一期）：文本层 PDF 提取内嵌插图，按页关联落库
+        # ——回答引用命中某页时随 citations 附图。提图失败只损失附图能力，
+        # 不阻塞摄取（与页码定位同一容错哲学）。
+        if suffix == ".pdf" and not needs_ocr:
+            try:
+                from kbase.doc_images import extract_pdf_images
+                extract_pdf_images(self._sf, doc_id, path, out_dir / "images")
+            except Exception as e:  # noqa: BLE001
+                logger.warning("文档 %s 内嵌图片提取失败（不影响摄取）: %s",
+                               doc_id, e)
 
         self._index_markdown(
             kb_id, doc_id, markdown, name,

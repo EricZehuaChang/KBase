@@ -36,6 +36,22 @@ function segmentsOf(content: string) {
   return renderWithChips(content);
 }
 
+/** 多模态回答（图片一期）：收集这条消息全部引用附带的插图，按 url 去重
+ * （多条引用命中同一页时图片只展示一次）。空数组=不渲染图片区。 */
+function imagesOf(message: ChatMessage): { url: string; name: string }[] {
+  const seen = new Set<string>();
+  const out: { url: string; name: string }[] = [];
+  for (const c of message.citations) {
+    for (const img of c.images ?? []) {
+      if (!seen.has(img.url)) {
+        seen.add(img.url);
+        out.push(img);
+      }
+    }
+  }
+  return out;
+}
+
 /** 按角标编号在这条消息自己的 citations 里查找——渲染层的越界兜底：
  * renderWithChips 纯函数不知道 citations 数组内容，找不到时（模型编号超出
  * 实际引用数、或历史消息 citations 载荷缺失）返回 undefined，popover 据此
@@ -135,6 +151,30 @@ function reask(index: number) {
               </Popover>
             </sup>
           </template>
+        </div>
+
+        <!-- 多模态回答：引用命中页的文档插图缩略图（点击原图新开标签页）。
+        懒加载防长会话一次性拉几十张图；最大高度限制防大图撑爆气泡。 -->
+        <div
+          v-if="!message.streaming && imagesOf(message).length"
+          class="mt-3 flex flex-wrap gap-2"
+        >
+          <a
+            v-for="img in imagesOf(message)"
+            :key="img.url"
+            :href="img.url"
+            target="_blank"
+            rel="noopener"
+            class="block overflow-hidden rounded-[var(--radius-ctl)] border border-[var(--border)] transition-transform hover:scale-[1.02]"
+            :title="`查看原图 ${img.name}`"
+          >
+            <img
+              :src="img.url"
+              :alt="img.name"
+              loading="lazy"
+              class="max-h-40 w-auto max-w-60 object-contain"
+            />
+          </a>
         </div>
 
         <div
