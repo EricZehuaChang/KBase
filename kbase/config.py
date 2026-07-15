@@ -151,8 +151,20 @@ class ServerConfig(BaseModel):
     threadpool_size: int = 40
 
 
+class SsoConfig(BaseModel):
+    """企业 SSO（M6-8，OIDC 授权码流）。enabled=false（默认）时零行为变化。
+    client_secret 走环境变量（密钥不进配置文件，与 ProviderConfig 同规矩）。"""
+    enabled: bool = False
+    issuer: str = ""                     # 如 https://idp.corp.com/realms/main
+    client_id: str = ""
+    client_secret_env: str = "KBASE_OIDC_CLIENT_SECRET"
+    # IdP 回调后新用户的默认角色；已有同名用户直接复用其现有角色
+    default_role: str = "viewer"
+
+
 class AppConfig(BaseModel):
     data_dir: Path = Path("./data")
+    sso: SsoConfig = Field(default_factory=SsoConfig)
     db: DBConfig = Field(default_factory=DBConfig)
     embedder: EmbedderConfig = Field(default_factory=EmbedderConfig)
     # KB 级可选向量模型清单（M5-2）：建库时可从 [default]+embedders 中选一个

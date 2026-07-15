@@ -2,11 +2,11 @@
 // 独立登录页（不套 AppShell，见 App.vue 按路由分流渲染）。成功后跳转到
 // router.query.redirect 指定的原目标路径（redirectTarget 纯函数校验，防开
 // 放重定向），无 redirect 时回首页。
-import { ref } from "vue";
+import { onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { login, clearSessionCache } from "@/lib/api";
+import { login, clearSessionCache, getSsoStatus } from "@/lib/api";
 import { redirectTarget } from "@/lib/auth-utils";
 
 const route = useRoute();
@@ -16,6 +16,20 @@ const username = ref("");
 const password = ref("");
 const error = ref<string | null>(null);
 const submitting = ref(false);
+
+// M6-8 企业 SSO：后端启用 OIDC 时显示企业账号入口（整页跳转到 IdP）
+const ssoEnabled = ref(false);
+onMounted(async () => {
+  try {
+    ssoEnabled.value = (await getSsoStatus()).enabled;
+  } catch {
+    // 探测失败不影响密码登录
+  }
+});
+
+function ssoLogin() {
+  window.location.href = "/api/auth/sso/login";
+}
 
 async function submit() {
   if (!username.value.trim() || !password.value) {
@@ -63,6 +77,10 @@ async function submit() {
 
       <Button type="submit" :disabled="submitting" class="mt-1">
         {{ submitting ? "登录中…" : "登录" }}
+      </Button>
+
+      <Button v-if="ssoEnabled" type="button" variant="outline" @click="ssoLogin">
+        使用企业账号登录（SSO）
       </Button>
     </form>
   </div>

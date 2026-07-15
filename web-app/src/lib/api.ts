@@ -310,6 +310,11 @@ export function uploadDocs(
   return req(`/api/kb/${kbId}/documents`, { method: "POST", body: files });
 }
 
+// M6-8 企业 SSO：登录页据此显示"企业账号登录"入口
+export function getSsoStatus(): Promise<{ enabled: boolean }> {
+  return req("/api/auth/sso/status");
+}
+
 // M6-7 URL 连接器：拉取网页导入知识库（内网 wiki/门户为主用途）
 export function importUrl(kbId: string, url: string): Promise<{ accepted: string[] }> {
   return req(`/api/kb/${kbId}/import-url`, jsonInit({ url }));
