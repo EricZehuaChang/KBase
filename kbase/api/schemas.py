@@ -25,6 +25,21 @@ class QueryBody(BaseModel):
     top_k: int = 5
 
 
+class ChatMessageIn(BaseModel):
+    """OpenAI 兼容消息（M6-5）：content 允许纯文本或分段数组（多模态段忽略）。"""
+    role: str
+    content: str | list = ""
+
+
+class ChatCompletionsBody(BaseModel):
+    """POST /v1/chat/completions（M6-5）：model=kb_id 或唯一库名；
+    top_k 为 KBase 扩展参数（标准客户端不传即用默认）。"""
+    model: str
+    messages: list[ChatMessageIn]
+    stream: bool = False
+    top_k: int = 5
+
+
 class SearchBody(BaseModel):
     query: str
     top_k: int = 5

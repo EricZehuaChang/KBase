@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, FastAPI, Response
 from kbase.api.routes import RouteDeps
 from kbase.api.routes import (admin as admin_routes, auth as auth_routes,
                               jobs as jobs_routes, kb as kb_routes,
+                              openai_compat as openai_routes,
                               query as query_routes,
                               settings as settings_routes)
 from kbase.api.services import build_services
@@ -148,6 +149,10 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
     jobs_routes.register(router, svc, deps)
 
     app.include_router(router)
+
+    # M6-5 OpenAI 兼容 API：挂在 /v1（不在 /api 前缀下），鉴权与 /api 相同
+    # （Bearer API Key / 会话 Cookie），供 OpenAI 生态客户端零改造接入。
+    openai_routes.register(app, svc, actor_dependency)
 
     web_dir = Path(__file__).resolve().parents[2] / "web"
     if web_dir.exists():
