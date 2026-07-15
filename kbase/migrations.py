@@ -39,6 +39,8 @@ _COLUMN_MIGRATIONS = [
     ("knowledge_bases", "owner_id", "TEXT"),
     # M6-2 多库联合问答：会话绑定的全部库（JSON；NULL=单库老行为）。
     ("conversations", "kb_ids", "TEXT"),
+    # 多模态扩展：docx 插图的 caption 级锚点（PDF 行该列为 NULL，锚在 page）。
+    ("document_images", "heading", "TEXT"),
 ]
 
 _FTS_DDL = (

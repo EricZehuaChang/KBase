@@ -166,7 +166,10 @@ class DocumentImage(Base):
     __tablename__ = "document_images"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     doc_id: Mapped[str] = mapped_column(String(36), index=True)
+    # 锚点二选一：PDF=页码（1 起）；docx 无页概念用 0 作哨兵、锚在 heading
+    #（避免 SQLite 改列可空的重建成本，0 与真实页码永不冲突）。
     page: Mapped[int] = mapped_column(Integer, index=True)
+    heading: Mapped[str | None] = mapped_column(Text, nullable=True)
     filename: Mapped[str] = mapped_column(String(200))
     width: Mapped[int] = mapped_column(Integer, default=0)
     height: Mapped[int] = mapped_column(Integer, default=0)
