@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/select";
 import {
   listKbs, createKb, deleteKb, listDocs, uploadDocsWithProgress, deleteDoc, retryDoc, retryOcr,
-  loadDemoData,
+  loadDemoData, importUrl,
   listEmbedders, currentRole,
   type Kb, type DocumentItem, type EmbeddersCatalog,
 } from "@/lib/api";
@@ -173,6 +173,26 @@ async function handleFilesSelected(files: File[]) {
     toast.error(err instanceof Error ? err.message : String(err));
   } finally {
     uploadPercent.value = null;
+    await loadDocs();
+  }
+}
+
+// ---- URL 导入（M6-7）----
+const importUrlText = ref("");
+const importing = ref(false);
+
+async function handleImportUrl() {
+  const url = importUrlText.value.trim();
+  if (!url || !kbId.value) return;
+  importing.value = true;
+  try {
+    const r = await importUrl(kbId.value, url);
+    toast.success(`已导入网页: ${r.accepted[0]}`);
+    importUrlText.value = "";
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : String(err));
+  } finally {
+    importing.value = false;
     await loadDocs();
   }
 }
@@ -360,6 +380,21 @@ onMounted(loadKbs);
         </Select>
       </div>
       <UploadZone v-if="canManage" class="mb-4" @files-selected="handleFilesSelected" />
+
+      <!-- M6-7 URL 导入：内网 wiki/门户页面直接进库 -->
+      <div v-if="canManage" class="mb-4 flex items-center gap-2">
+        <input
+          v-model="importUrlText"
+          type="url"
+          placeholder="或粘贴网页地址导入（http/https，内网 wiki 亦可）"
+          class="flex-1 rounded-[var(--radius-ctl)] border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
+          aria-label="导入网页地址"
+          @keydown.enter="handleImportUrl"
+        />
+        <Button variant="outline" size="sm" :disabled="importing || !importUrlText.trim()" @click="handleImportUrl">
+          {{ importing ? "导入中…" : "导入网页" }}
+        </Button>
+      </div>
 
       <!-- E 上传进度条：仅传输阶段显示；解析/向量化进度看文档状态列 -->
       <div v-if="uploadPercent !== null" class="mb-4">
