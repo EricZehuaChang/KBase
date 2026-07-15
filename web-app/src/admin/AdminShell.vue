@@ -1,14 +1,16 @@
 <script setup lang="ts">
-// 【管理端】根组件（Vite 入口 admin.html 挂载）。≈ 分端改造前的 AppShell.vue，
-// 差异：①导航去掉"问答"（M5-1 F1 把问答收进使用端 PortalShell，见 spec §3）；
-// ②知识库入口路径从原来的 "/kb" 改成 "/"（管理端首页即知识库页，落地矩阵
-// 见 src/admin/guard.ts）；③新增"返回问答"整页跳转入口——两端是各自独立的
-// Vite bundle，没有共享 router 实例可以 push 过去，只能 location 整页导航。
-// /login、/forbidden 两个路由不套这层导航壳（分别是登录卡片页与无权限终态
-// 页），逻辑与原 App.vue 的路由分流一致，这里内联在同一个文件里。
+// 【管理端】根组件（Vite 入口 admin.html 挂载）。G 重设计对标 Vben v5 /
+// Soybean Admin 的管理端骨架共性：侧边栏=logo 区+置顶分组导航+激活左指示条；
+// 顶栏=面包屑+主题切换+用户区（用户块从侧栏底部上移到顶栏，主内容区加
+// 统一浅底）。功能与路由结构不变：导航无"问答"（在使用端 PortalShell），
+// 管理端首页即知识库页；"返回问答"是整页跳转（两端是独立 Vite bundle，
+// 无共享 router 实例）。/login、/forbidden 不套导航壳。
 import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { Folder, ScanSearch, FileText, Settings, Sun, Moon, LogOut, ArrowLeft } from "@lucide/vue";
+import {
+  Folder, ScanSearch, FileText, Settings, Sun, Moon, LogOut, ArrowLeft,
+  Database,
+} from "@lucide/vue";
 import { theme, toggleTheme } from "@/lib/theme";
 import { getSession, logout, getLicense, currentRole, type Me } from "@/lib/api";
 import { roleLabel, roleBadgeClass, canAdminister } from "@/lib/auth-utils";
@@ -18,21 +20,47 @@ import { Toaster } from "@/components/ui/sonner";
 const route = useRoute();
 const router = useRouter();
 
-const ALL_NAV_ITEMS = [
-  { path: "/", label: "知识库", icon: Folder },
-  { path: "/analysis", label: "检索分析", icon: ScanSearch },
-  { path: "/generate", label: "生成", icon: FileText },
-  { path: "/settings", label: "设置", icon: Settings },
+// 分组导航（Vben/Soybean 风）：内容 | 分析 | 系统
+const NAV_GROUPS = [
+  {
+    label: "内容",
+    items: [{ path: "/", label: "知识库", icon: Folder }],
+  },
+  {
+    label: "分析",
+    items: [
+      { path: "/analysis", label: "检索分析", icon: ScanSearch },
+      { path: "/generate", label: "生成", icon: FileText },
+    ],
+  },
+  {
+    label: "系统",
+    items: [{ path: "/settings", label: "设置", icon: Settings }],
+  },
 ] as const;
 
-// 设置入口仅 admin 可见（editor/viewer 均隐藏——后端 settings/* 与用户管理
-// 端点都是 require_admin，这里隐藏只是防呆，不替代后端校验），沿用现状逻辑。
-const navItems = computed(() =>
-  ALL_NAV_ITEMS.filter((item) => item.path !== "/settings" || canAdminister(currentRole.value ?? "")));
+// 设置入口仅 admin 可见（后端 settings/* 均 require_admin，隐藏只是防呆）；
+// 组内全部被过滤时整组（含分组标题）不渲染。
+const navGroups = computed(() =>
+  NAV_GROUPS.map((g) => ({
+    label: g.label,
+    items: g.items.filter(
+      (item) => item.path !== "/settings" || canAdminister(currentRole.value ?? "")),
+  })).filter((g) => g.items.length));
 
 function isActive(path: string): boolean {
   return path === "/" ? route.path === "/" : route.path.startsWith(path);
 }
+
+// 顶栏面包屑：当前激活导航项的标签
+const currentLabel = computed(() => {
+  for (const g of NAV_GROUPS) {
+    for (const item of g.items) {
+      if (isActive(item.path)) return item.label;
+    }
+  }
+  return "";
+});
 
 const me = ref<Me | null>(null);
 onMounted(async () => {
@@ -45,7 +73,7 @@ onMounted(async () => {
   try {
     bannerInfo.value = licenseBannerInfo(await getLicense());
   } catch {
-    // 许可证探测失败不阻塞管理端主流程，静默忽略（与现状 AppShell 一致）
+    // 许可证探测失败不阻塞管理端主流程，静默忽略
   }
 });
 
@@ -58,8 +86,6 @@ async function handleLogout() {
 }
 
 function backToPortal() {
-  // 整页跳转（不是 router.push）：使用端是另一个 Vite 入口的独立 bundle，
-  // 没有共享的 router 实例可以导航过去。
   window.location.href = "/";
 }
 </script>
@@ -69,79 +95,99 @@ function backToPortal() {
   <template v-else>
     <div class="flex h-screen w-full overflow-hidden bg-[var(--bg)] text-[var(--text)]">
       <aside
-        class="flex h-full w-[208px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--surface)]"
+        class="flex h-full w-[220px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--surface)]"
       >
-        <!-- 顶部 logo + 返回问答 -->
-        <div class="flex h-14 items-center px-4 text-lg font-semibold tracking-tight">
-          KBase
+        <!-- logo 区：图标徽标 + 产品名 + 端标识 -->
+        <div class="flex h-14 shrink-0 items-center gap-2.5 border-b border-[var(--border)] px-4">
+          <span class="flex size-8 items-center justify-center rounded-lg bg-[var(--accent)] text-white">
+            <Database class="size-4.5" />
+          </span>
+          <span class="flex flex-col leading-tight">
+            <span class="text-[15px] font-semibold tracking-tight">KBase</span>
+            <span class="text-[11px] text-[var(--text-3)]">管理工作台</span>
+          </span>
         </div>
-        <button
-          type="button"
-          class="mx-2 mb-2 flex items-center gap-1.5 rounded-[var(--radius-ctl)] px-2 py-1.5 text-xs text-[var(--text-2)] transition-colors hover:bg-[var(--surface-2)]"
-          @click="backToPortal"
-        >
-          <ArrowLeft class="size-3.5" />
-          返回问答
-        </button>
 
-        <div class="flex-1" />
-
-        <!-- 底部导航 -->
-        <nav class="flex flex-col gap-1 border-t border-[var(--border)] p-2">
-          <router-link
-            v-for="item in navItems"
-            :key="item.path"
-            :to="item.path"
-            custom
-            v-slot="{ navigate }"
-          >
-            <button
-              type="button"
-              class="flex items-center gap-2 rounded-[var(--radius-ctl)] px-3 py-2 text-sm transition-colors"
-              :class="isActive(item.path)
-                ? 'bg-[var(--accent-weak)] text-[var(--accent-text)]'
-                : 'text-[var(--text-2)] hover:bg-[var(--surface-2)]'"
-              @click="navigate"
+        <!-- 置顶分组导航：激活项带左侧指示条（Vben 风） -->
+        <nav class="flex-1 overflow-y-auto p-2">
+          <div v-for="group in navGroups" :key="group.label" class="mb-2">
+            <div class="px-3 pb-1 pt-2 text-[11px] font-medium tracking-wide text-[var(--text-3)]">
+              {{ group.label }}
+            </div>
+            <router-link
+              v-for="item in group.items"
+              :key="item.path"
+              :to="item.path"
+              custom
+              v-slot="{ navigate }"
             >
-              <component :is="item.icon" class="size-4" />
-              <span>{{ item.label }}</span>
-            </button>
-          </router-link>
-
-          <button
-            type="button"
-            class="mt-1 flex items-center gap-2 rounded-[var(--radius-ctl)] px-3 py-2 text-sm text-[var(--text-2)] transition-colors hover:bg-[var(--surface-2)]"
-            @click="toggleTheme"
-          >
-            <component :is="theme === 'dark' ? Sun : Moon" class="size-4" />
-            <span>{{ theme === "dark" ? "浅色模式" : "深色模式" }}</span>
-          </button>
+              <button
+                type="button"
+                class="relative mb-0.5 flex w-full items-center gap-2.5 rounded-[var(--radius-ctl)] px-3 py-2 text-sm transition-colors"
+                :class="isActive(item.path)
+                  ? 'bg-[var(--accent-weak)] font-medium text-[var(--accent-text)]'
+                  : 'text-[var(--text-2)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]'"
+                @click="navigate"
+              >
+                <span
+                  v-if="isActive(item.path)"
+                  class="absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-[var(--accent)]"
+                />
+                <component :is="item.icon" class="size-4" />
+                <span>{{ item.label }}</span>
+              </button>
+            </router-link>
+          </div>
         </nav>
 
-        <!-- 底部用户块：用户名 + 角色徽章 + 登出 -->
-        <div v-if="me" class="flex items-center justify-between gap-2 border-t border-[var(--border)] p-3">
-          <div class="flex min-w-0 flex-col gap-1">
-            <span class="truncate text-sm text-[var(--text)]">{{ me.username }}</span>
-            <span
-              class="w-fit rounded-full px-1.5 py-0.5 text-xs"
-              :class="roleBadgeClass(me.role)"
-            >
-              {{ roleLabel(me.role) }}
-            </span>
-          </div>
+        <!-- 底部：返回使用端 -->
+        <div class="border-t border-[var(--border)] p-2">
           <button
             type="button"
-            class="shrink-0 rounded-[var(--radius-ctl)] p-2 text-[var(--text-2)] transition-colors hover:bg-[var(--surface-2)]"
-            title="登出"
-            @click="handleLogout"
+            class="flex w-full items-center gap-2 rounded-[var(--radius-ctl)] px-3 py-2 text-sm text-[var(--text-2)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--text)]"
+            @click="backToPortal"
           >
-            <LogOut class="size-4" />
+            <ArrowLeft class="size-4" />
+            返回问答
           </button>
         </div>
       </aside>
 
       <div class="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
-        <!-- 许可证横幅：trial=提示色、expired/invalid=警告色（tokens 语义色） -->
+        <!-- 顶栏：面包屑 + 主题切换 + 用户区（Soybean 风） -->
+        <header class="flex h-14 shrink-0 items-center justify-between border-b border-[var(--border)] bg-[var(--surface)] px-5">
+          <div class="flex items-center gap-1.5 text-sm">
+            <span class="text-[var(--text-3)]">管理工作台</span>
+            <span v-if="currentLabel" class="text-[var(--text-3)]">/</span>
+            <span class="font-medium">{{ currentLabel }}</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              class="rounded-[var(--radius-ctl)] p-2 text-[var(--text-2)] transition-colors hover:bg-[var(--surface-2)]"
+              :title="theme === 'dark' ? '切换到浅色模式' : '切换到深色模式'"
+              @click="toggleTheme"
+            >
+              <component :is="theme === 'dark' ? Sun : Moon" class="size-4" />
+            </button>
+            <div v-if="me" class="flex items-center gap-2 border-l border-[var(--border)] pl-3">
+              <span class="text-sm">{{ me.username }}</span>
+              <span class="rounded-full px-1.5 py-0.5 text-xs" :class="roleBadgeClass(me.role)">
+                {{ roleLabel(me.role) }}
+              </span>
+              <button
+                type="button"
+                class="rounded-[var(--radius-ctl)] p-2 text-[var(--text-2)] transition-colors hover:bg-[var(--surface-2)]"
+                title="登出"
+                @click="handleLogout"
+              >
+                <LogOut class="size-4" />
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <!-- 许可证横幅：trial=提示色、expired/invalid/临近到期=警告色 -->
         <div
           v-if="bannerInfo && !bannerDismissed"
           class="flex shrink-0 items-center justify-between gap-3 px-4 py-1.5 text-xs"

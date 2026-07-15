@@ -1,17 +1,17 @@
 {
-  "_LoginView-BcxICzgj.js": {
-    "file": "assets/LoginView-BcxICzgj.js",
+  "_LoginView-B1P-4id1.js": {
+    "file": "assets/LoginView-B1P-4id1.js",
     "name": "LoginView",
     "imports": [
       "_button-BjqQo6bu.js"
     ],
     "css": [
-      "assets/LoginView-BdpqPKV3.css"
+      "assets/LoginView-DkuDv_x3.css"
     ]
   },
-  "_LoginView-BdpqPKV3.css": {
-    "file": "assets/LoginView-BdpqPKV3.css",
-    "src": "_LoginView-BdpqPKV3.css"
+  "_LoginView-DkuDv_x3.css": {
+    "file": "assets/LoginView-DkuDv_x3.css",
+    "src": "_LoginView-DkuDv_x3.css"
   },
   "_SelectGroup-zMPnLI65.js": {
     "file": "assets/SelectGroup-zMPnLI65.js",
@@ -54,12 +54,12 @@
       "_button-BjqQo6bu.js"
     ]
   },
-  "_dialog-CMdr8Ox9.js": {
-    "file": "assets/dialog-CMdr8Ox9.js",
+  "_dialog-uShZoOE9.js": {
+    "file": "assets/dialog-uShZoOE9.js",
     "name": "dialog",
     "imports": [
       "_button-BjqQo6bu.js",
-      "_LoginView-BcxICzgj.js",
+      "_LoginView-B1P-4id1.js",
       "_SelectValue-C_Tqwa7C.js"
     ]
   },
@@ -85,13 +85,13 @@
     ]
   },
   "admin.html": {
-    "file": "assets/admin-C3d4B3aB.js",
+    "file": "assets/admin-DL3-Hm0F.js",
     "name": "admin",
     "src": "admin.html",
     "isEntry": true,
     "imports": [
       "_button-BjqQo6bu.js",
-      "_LoginView-BcxICzgj.js"
+      "_LoginView-B1P-4id1.js"
     ],
     "dynamicImports": [
       "src/views/KbView.vue",
@@ -101,43 +101,43 @@
     ]
   },
   "index.html": {
-    "file": "assets/main-DOqM3N3D.js",
+    "file": "assets/main-DVBLEaTB.js",
     "name": "main",
     "src": "index.html",
     "isEntry": true,
     "imports": [
       "_button-BjqQo6bu.js",
-      "_LoginView-BcxICzgj.js",
+      "_LoginView-B1P-4id1.js",
       "_SelectValue-C_Tqwa7C.js",
       "_copy-BYWP2QbF.js",
       "_download-CjfMeJ1k.js",
       "_pencil-OBH2Hp_Y.js",
-      "_dialog-CMdr8Ox9.js",
+      "_dialog-uShZoOE9.js",
       "_SelectGroup-zMPnLI65.js"
     ]
   },
   "src/views/AnalysisView.vue": {
-    "file": "assets/AnalysisView-YmyDFsuZ.js",
+    "file": "assets/AnalysisView-CoIdcUis.js",
     "name": "AnalysisView",
     "src": "src/views/AnalysisView.vue",
     "isDynamicEntry": true,
     "imports": [
       "_button-BjqQo6bu.js",
-      "_LoginView-BcxICzgj.js",
+      "_LoginView-B1P-4id1.js",
       "_SelectValue-C_Tqwa7C.js",
       "_search-CwhuYmqm.js",
-      "_dialog-CMdr8Ox9.js",
+      "_dialog-uShZoOE9.js",
       "_SelectGroup-zMPnLI65.js"
     ]
   },
   "src/views/GenerateView.vue": {
-    "file": "assets/GenerateView-B3Nkzw1L.js",
+    "file": "assets/GenerateView-6lTEFPKK.js",
     "name": "GenerateView",
     "src": "src/views/GenerateView.vue",
     "isDynamicEntry": true,
     "imports": [
       "_button-BjqQo6bu.js",
-      "_LoginView-BcxICzgj.js",
+      "_LoginView-B1P-4id1.js",
       "_SelectValue-C_Tqwa7C.js",
       "_download-CjfMeJ1k.js",
       "_SelectGroup-zMPnLI65.js",
@@ -145,35 +145,35 @@
     ]
   },
   "src/views/KbView.vue": {
-    "file": "assets/KbView-BWemmpD1.js",
+    "file": "assets/KbView-C-XxWHqe.js",
     "name": "KbView",
     "src": "src/views/KbView.vue",
     "isDynamicEntry": true,
     "imports": [
       "_button-BjqQo6bu.js",
-      "_LoginView-BcxICzgj.js",
+      "_LoginView-B1P-4id1.js",
       "_SelectValue-C_Tqwa7C.js",
       "_download-CjfMeJ1k.js",
       "_pencil-OBH2Hp_Y.js",
       "_search-CwhuYmqm.js",
       "_Switch-Dw8c5IKM.js",
-      "_dialog-CMdr8Ox9.js",
+      "_dialog-uShZoOE9.js",
       "_badge-Bn_7Fjbp.js"
     ]
   },
   "src/views/SettingsView.vue": {
-    "file": "assets/SettingsView-Cke_o6dZ.js",
+    "file": "assets/SettingsView-CwFdhXAy.js",
     "name": "SettingsView",
     "src": "src/views/SettingsView.vue",
     "isDynamicEntry": true,
     "imports": [
       "_button-BjqQo6bu.js",
-      "_LoginView-BcxICzgj.js",
+      "_LoginView-B1P-4id1.js",
       "_SelectValue-C_Tqwa7C.js",
       "_copy-BYWP2QbF.js",
       "_pencil-OBH2Hp_Y.js",
       "_Switch-Dw8c5IKM.js",
-      "_dialog-CMdr8Ox9.js",
+      "_dialog-uShZoOE9.js",
       "_SelectGroup-zMPnLI65.js",
       "admin.html",
       "_badge-Bn_7Fjbp.js"
