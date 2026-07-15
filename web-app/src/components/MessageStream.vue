@@ -113,7 +113,7 @@ function reask(index: number) {
     >
       <div
         v-if="message.role === 'user'"
-        class="max-w-[70%] rounded-[var(--radius-card)] bg-[var(--surface-2)] px-4 py-2.5 text-[var(--text)]"
+        class="max-w-[70%] rounded-2xl rounded-br-md bg-[var(--accent-weak)] px-4 py-2.5 text-[var(--text)]"
       >
         {{ message.content }}
       </div>
