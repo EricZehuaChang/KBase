@@ -31,6 +31,10 @@ RUN mkdir -p kbase kbase_mcp \
 # （config/kbase.yaml embedder=bge-local），不装 sentence-transformers 会在
 # 启动构建默认 embedder 时 ImportError。standard profile 多装无害（被 TEI
 # 容器取代不加载）。代价是镜像多 ~1.5GB（torch CPU），一次性。
+# 先钉住 CPU 版 torch：Linux 上 pip 默认解析 CUDA 版 torch + nvidia 全家桶
+# （5GB+），无 GPU 的 lite 部署纯浪费（1.95 服务器实测踩坑）。国内网络可把
+# index-url 换成 https://mirrors.aliyun.com/pytorch-wheels/cpu/。
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir ".[mcp,local-embed]"
 
 # 代码层：变更频繁，放在依赖安装之后，改代码不触发依赖重装。
