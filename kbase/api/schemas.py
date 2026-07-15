@@ -25,6 +25,29 @@ class QueryBody(BaseModel):
     top_k: int = 5
 
 
+class EvalCaseIn(BaseModel):
+    """评测用例（B）：question 必填，expect_doc（命中文档名）与 expect_text
+    （命中块含此子串）至少给一个——两个都没有的用例永远判不中，直接拒收。"""
+    question: str
+    expect_doc: str | None = None
+    expect_text: str | None = None
+
+    @model_validator(mode="after")
+    def _require_expectation(self):
+        if not self.expect_doc and not self.expect_text:
+            raise ValueError("用例必须给 expect_doc 或 expect_text 之一")
+        return self
+
+
+class EvalSetCreate(BaseModel):
+    name: str
+    cases: list[EvalCaseIn] = Field(min_length=1)
+
+
+class EvalRunBody(BaseModel):
+    top_k: int = Field(default=5, ge=1, le=50)
+
+
 class ChatMessageIn(BaseModel):
     """OpenAI 兼容消息（M6-5）：content 允许纯文本或分段数组（多模态段忽略）。"""
     role: str
