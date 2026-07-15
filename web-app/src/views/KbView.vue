@@ -205,7 +205,8 @@ async function loadDemo() {
   demoLoading.value = true;
   try {
     const result = await loadDemoData();
-    toast.success(result.created ? "演示知识库已创建，样例文档解析中"
+    toast.success(result.created
+      ? "演示数据已装载（制度库+案例库，含表格与插图样例），解析中"
       : "演示知识库已存在，直接打开");
     await loadKbs();
     openKb(result.id);
@@ -337,7 +338,7 @@ onMounted(loadKbs);
           {{ demoLoading ? "装载中…" : "一键装载演示数据" }}
         </Button>
         <p class="mt-2 text-xs text-[var(--text-3)]">
-          创建"演示知识库"并导入三篇样例（制度/表格/FAQ），即刻可问答
+          创建两个演示库（制度库含表格与插图 docx、案例库供多库联查），即刻可问答
         </p>
       </div>
     </template>

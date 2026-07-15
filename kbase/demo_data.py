@@ -1,10 +1,14 @@
-"""POC 演示数据（E）：一键装载的内置样例文档。
+"""POC 演示数据（E，全功能版）：一键装载即可演示全部招牌能力。
 
-三篇覆盖 KBase 的招牌能力：普通制度问答、表格问答（行线性化）、FAQ。
-内容为虚构示例，专供演示/培训环境快速出效果，正式环境可随时整库删除。
+- 主库"演示知识库"：制度 md（普通问答）+ 补贴表格 md（表格行线性化问答）
+  + FAQ md + **含插图的 docx**（多模态回答：命中"报销流程"章节附流程图）
+- 副库"演示案例库"：案例 md——顶栏"+联查"勾上即演示多库联合问答
+内容均为虚构示例，专供演示/培训环境快速出效果，正式环境可随时整库删除。
 """
+import io
 
 DEMO_KB_NAME = "演示知识库"
+DEMO_KB2_NAME = "演示案例库"
 
 DEMO_DOCS: list[tuple[str, str]] = [
     ("员工手册-考勤与休假.md", """# 考勤与休假制度（演示）
@@ -55,3 +59,63 @@ DEMO_DOCS: list[tuple[str, str]] = [
 直属上级确认后，人事部在最后工作日办理离职手续。
 """),
 ]
+
+DEMO_DOCS_KB2: list[tuple[str, str]] = [
+    ("差旅报销案例.md", """# 差旅报销案例实录（演示）
+
+## 案例：跨城出差多段行程报销
+
+某员工赴两地出差，行程含高铁与市内交通。处理要点：先在 OA 提交
+《出差行程单》，返程后 5 个工作日内提交报销单并附全部发票原件；
+多段行程按实际发生逐段列示，市内交通按包干标准计算。
+
+## 案例：发票遗失的补救
+
+住宿发票遗失时，凭酒店开具的入住证明与付款流水申请特批，
+金额超过 500 元需分管副总加签。
+"""),
+]
+
+
+def demo_flow_png() -> bytes:
+    """PIL 画报销流程示意图（演示插图用，默认字体只支持拉丁字符故用英文
+    标签，图题在 docx 正文里用中文说明）。"""
+    from PIL import Image, ImageDraw
+
+    img = Image.new("RGB", (640, 200), (250, 250, 252))
+    d = ImageDraw.Draw(img)
+    steps = [("Apply", (99, 102, 241)), ("Review", (14, 165, 164)),
+             ("Payment", (234, 121, 46))]
+    for i, (label, color) in enumerate(steps):
+        x = 40 + i * 210
+        d.rounded_rectangle([x, 60, x + 160, 140], radius=14, fill=color)
+        d.text((x + 45, 90), label, fill=(255, 255, 255))
+        if i < 2:
+            ax = x + 165
+            d.line([ax, 100, ax + 40, 100], fill=(120, 120, 130), width=4)
+            d.polygon([(ax + 40, 92), (ax + 40, 108), (ax + 52, 100)],
+                      fill=(120, 120, 130))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def demo_docx_bytes() -> bytes:
+    """含插图的演示 docx：插图锚在"报销流程"章节（caption 级锚定演示——
+    问报销附流程图，问差旅标准不附）。"""
+    from docx import Document
+    from docx.shared import Inches
+
+    doc = Document()
+    doc.add_heading("差旅管理办法", level=1)
+    doc.add_paragraph("本办法适用于全体员工的因公出差管理，含交通、住宿与补贴标准。")
+    doc.add_heading("差旅标准", level=2)
+    doc.add_paragraph("高铁二等座实报实销；住宿费一线城市每晚上限 500 元，"
+                      "其他城市 350 元；出差补贴每天 100 元。")
+    doc.add_heading("报销流程", level=2)
+    doc.add_paragraph("报销分三步：员工提交申请（附行程单与发票）→ 部门与财务"
+                      "两级审核 → 财务打款。全流程线上完成，示意图如下：")
+    doc.add_picture(io.BytesIO(demo_flow_png()), width=Inches(5))
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()

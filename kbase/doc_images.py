@@ -20,8 +20,10 @@ from kbase.models import DocumentImage
 
 logger = logging.getLogger(__name__)
 
-MIN_DIMENSION = 64          # 宽或高小于该值视为图标/装饰，跳过
-MIN_BYTES = 5 * 1024        # 过小的图多为线条/logo
+MIN_DIMENSION = 64          # 宽或高小于该值视为图标/装饰，跳过（主过滤器）
+# 字节线只兜"尺寸元数据虚标"的极端件：纯色块示意图 PNG 压缩率很高
+# （640x200 流程图可低至 ~3KB），5KB 会误杀有效插图，取 2KB。
+MIN_BYTES = 2 * 1024
 MAX_IMAGES_PER_DOC = 200    # 防御异常 PDF（每页塞几百张小图）撑爆磁盘
 
 

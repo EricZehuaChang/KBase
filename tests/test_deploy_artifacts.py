@@ -21,7 +21,8 @@ def test_dockerfile_has_key_stages():
     text = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
     assert "FROM python:3.11-slim" in text
     assert "libgomp1" in text          # torch/bge 运行期依赖
-    assert 'pip install --no-cache-dir ".[mcp]"' in text
+    # local-embed 必须在镜像里：lite 档默认进程内 bge-m3，缺 extra 启动即炸
+    assert 'pip install --no-cache-dir ".[mcp,local-embed]"' in text
     assert "COPY kbase/ kbase/" in text
     assert "COPY kbase_mcp/ kbase_mcp/" in text
     assert "COPY web/ web/" in text     # 前端构建产物，镜像内不装 Node
