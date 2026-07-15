@@ -1,6 +1,6 @@
 # KBase 私有化知识库系统
 
-KBase 是一套私有化交付的 B 端知识库系统：摄取（markitdown 解析）→ 分块（父子分块+结构分块）→ 索引（向量库）→ 检索 → 生成（带引用溯源），全链路插件化（Embedder / VectorStore / LLMProvider / Chunker 均为可替换插槽），支持容器化私有化部署。当前代码为 **M1 / lite 演示形态**：单实例、SQLite + Chroma 嵌入式 + 进程内 bge-m3，用于快速验证 RAG 骨架与演示；生产形态（standard profile）见架构文档。
+KBase 是一套私有化交付的 B 端知识库系统：摄取（markitdown 解析）→ 分块（父子分块+结构分块）→ 索引（向量库）→ 检索 → 生成（带引用溯源），全链路插件化（Embedder / VectorStore / LLMProvider / Chunker 均为可替换插槽），支持容器化私有化部署。当前版本 **v1.0.0（首个产品版本）**：RAG 全链路（含表格能力/多模态插图回答）、模型接入全页面配置化、企业能力（RBAC/库级ACL/SSO/OpenAI兼容API/评测回归/运营看板）、运维三件套齐备。lite 形态（SQLite+Chroma+进程内 bge-m3）适合 POC/小团队，standard 形态（PostgreSQL+Qdrant+TEI）支撑生产十万级文档；完整功能清单与后续计划见 [CHANGELOG.md](CHANGELOG.md)，运维手册见 docs/manual/。
 
 ## 快速开始（lite 模式）
 
