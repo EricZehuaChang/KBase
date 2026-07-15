@@ -13,8 +13,8 @@ from fastapi import BackgroundTasks, HTTPException
 
 from kbase import model_catalog, providers_store
 from kbase.api.routes import RouteDeps
-from kbase.api.schemas import (ActiveProviderBody, ModelRefreshBody,
-                               ProviderCreate, ProviderUpdate)
+from kbase.api.schemas import (ActiveProviderBody, EmbedderKeyBody,
+                               ModelRefreshBody, ProviderCreate, ProviderUpdate)
 from kbase.api.services import Services
 
 logger = logging.getLogger(__name__)
@@ -63,6 +63,34 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         if not found:
             raise HTTPException(404, f"provider 不存在: {name}")
         svc.invalidate_llm_cache(name)
+        return {"ok": True}
+
+    # ---- 向量模型密钥页面配置：DB 覆盖 > api_key_env，改/清后丢缓存实例 ----
+
+    @router.get("/settings/embedder-keys", dependencies=[deps.require_admin])
+    def list_embedder_keys():
+        """cfg.embedders 中云端向量选项（openai-embed）的密钥脱敏状态。"""
+        from kbase import embedder_keys
+        return {"items": embedder_keys.list_status(sf, svc.cfg)}
+
+    @router.put("/settings/embedder-keys/{option_id}",
+                dependencies=[deps.require_admin, deps.audit_mutation])
+    def put_embedder_key(option_id: str, body: EmbedderKeyBody):
+        from kbase import embedder_keys
+        known = {o.id for o in svc.cfg.embedders if o.plugin == "openai-embed"}
+        if option_id not in known:
+            raise HTTPException(404, f"向量模型选项不存在或无密钥概念: {option_id}")
+        embedder_keys.set_key(sf, option_id, body.api_key)
+        svc.embedder_pool.invalidate(option_id)   # 下次使用按新密钥重建
+        return {"ok": True}
+
+    @router.delete("/settings/embedder-keys/{option_id}",
+                   dependencies=[deps.require_admin, deps.audit_mutation])
+    def delete_embedder_key(option_id: str):
+        from kbase import embedder_keys
+        if not embedder_keys.delete_key(sf, option_id):
+            raise HTTPException(404, f"该选项未配置页面密钥: {option_id}")
+        svc.embedder_pool.invalidate(option_id)   # 回落到 api_key_env
         return {"ok": True}
 
     @router.put("/settings/active-provider",

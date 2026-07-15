@@ -28,8 +28,9 @@ def build_default_embedder(cfg):
     return registry.create("embedder", cfg.embedder.name, model=cfg.embedder.model)
 
 
-def build_option_embedder(opt):
-    """按 cfg.embedders 里的一项（EmbedderOption）构建 embedder 实例。"""
+def build_option_embedder(opt, api_key: str | None = None):
+    """按 cfg.embedders 里的一项（EmbedderOption）构建 embedder 实例。
+    api_key：页面配置的 DB 覆盖密钥（优先于 api_key_env），仅 openai-embed 用。"""
     if opt.plugin == "tei":
         import kbase.plugins.embedders.tei  # noqa: F401
         if not opt.endpoint:
@@ -42,6 +43,8 @@ def build_option_embedder(opt):
                 f"embedder 选项 {opt.id}: plugin=openai-embed 必须配置 base_url 与 model")
         kwargs = {"base_url": opt.base_url, "model": opt.model,
                   "api_key_env": opt.api_key_env}
+        if api_key:
+            kwargs["api_key"] = api_key
         if opt.batch_size is not None:
             kwargs["batch_size"] = opt.batch_size
         return registry.create("embedder", "openai-embed", **kwargs)
@@ -56,10 +59,13 @@ def build_option_embedder(opt):
 class EmbedderPool:
     """default + cfg.embedders 各选项的惰性单例缓存（进程内共享）。"""
 
-    def __init__(self, cfg, default_embedder=None):
+    def __init__(self, cfg, default_embedder=None, key_resolver=None):
+        """key_resolver: (option_id) -> str | None，页面配置的 DB 覆盖密钥
+        （优先于选项的 api_key_env）；None=不启用覆盖（行为与改造前一致）。"""
         self._cfg = cfg
         self._options = {opt.id: opt for opt in cfg.embedders}
         self._cache: dict = {}
+        self._key_resolver = key_resolver
         if default_embedder is not None:      # 测试注入 FakeEmbedder 走这里
             self._cache[DEFAULT_EMBEDDER_ID] = default_embedder
 
@@ -78,9 +84,15 @@ class EmbedderPool:
                 raise KeyError(
                     f"向量模型选项未配置: {oid}（已配置: "
                     f"{[DEFAULT_EMBEDDER_ID, *self._options]}）")
-            instance = build_option_embedder(opt)
+            api_key = self._key_resolver(oid) if self._key_resolver else None
+            instance = build_option_embedder(opt, api_key=api_key)
         self._cache[oid] = instance
         return instance
+
+    def invalidate(self, option_id: str) -> None:
+        """密钥在页面被改/清后调用：丢弃缓存实例，下次使用按新密钥重建。
+        不失效的话旧实例（旧 key）会一直用到进程重启。"""
+        self._cache.pop(option_id, None)
 
     def catalog(self) -> dict:
         """给前端建库下拉用的公开清单（不含 api_key_env 等部署细节）。"""

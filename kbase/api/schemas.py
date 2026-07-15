@@ -25,6 +25,11 @@ class QueryBody(BaseModel):
     top_k: int = 5
 
 
+class EmbedderKeyBody(BaseModel):
+    """向量模型选项的页面密钥（DB 覆盖 > api_key_env）。"""
+    api_key: str = Field(min_length=1)
+
+
 class UrlImportBody(BaseModel):
     """URL 连接器（M6-7）：从网页地址导入内容。"""
     url: str
