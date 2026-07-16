@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { renderWithChips, groupByTime, appendConversationPage, originalPreviewKind } from "../chat-utils";
+import { renderWithChips, groupByTime, appendConversationPage, originalPreviewKind, inlineMarkdownHtml } from "../chat-utils";
 
 describe("renderWithChips", () => {
   it("将 [n] 角标切分为 chip 片段，其余为文本片段，文本内容完整不丢字符", () => {
@@ -125,5 +125,32 @@ describe("originalPreviewKind（M5-2 原始文件预览类型判定）", () => {
     expect(originalPreviewKind("no-ext")).toBe(null);
     expect(originalPreviewKind(null)).toBe(null);
     expect(originalPreviewKind(undefined)).toBe(null);
+  });
+});
+
+describe("inlineMarkdownHtml（回答气泡行内 Markdown）", () => {
+  it("**加粗** 渲染为 strong", () => {
+    expect(inlineMarkdownHtml("1. **定位与概述**：它是一个平台"))
+      .toBe("1. <strong>定位与概述</strong>：它是一个平台");
+  });
+
+  it("行内代码免疫加粗且内容原样", () => {
+    const html = inlineMarkdownHtml("执行 `a ** b` 即可");
+    expect(html).toContain("<code");
+    expect(html).toContain("a ** b");
+    expect(html).not.toContain("<strong>");
+  });
+
+  it("HTML 注入被转义（防 XSS）", () => {
+    const html = inlineMarkdownHtml("<img src=x onerror=alert(1)> **bold**");
+    expect(html).not.toContain("<img");
+    expect(html).toContain("&lt;img");
+    expect(html).toContain("<strong>bold</strong>");
+  });
+
+  it("*斜体* 保守匹配", () => {
+    expect(inlineMarkdownHtml("这是 *强调* 内容")).toContain("<em>强调</em>");
+    // 单个星号不误伤
+    expect(inlineMarkdownHtml("5 * 3 = 15")).toBe("5 * 3 = 15");
   });
 });

@@ -12,7 +12,7 @@ import { Copy, ExternalLink, Image as ImageIcon, RotateCcw, ThumbsDown, ThumbsUp
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { renderWithChips } from "@/lib/chat-utils";
+import { inlineMarkdownHtml, renderWithChips } from "@/lib/chat-utils";
 import type { ChatMessage } from "@/composables/useChat";
 import type { Citation } from "@/lib/api";
 
@@ -124,7 +124,9 @@ function reask(index: number) {
         </div>
         <div v-else class="whitespace-pre-wrap text-[var(--text)]">
           <template v-for="(seg, si) in segmentsOf(message.content)" :key="si">
-            <span v-if="seg.type === 'text'">{{ seg.text }}</span>
+            <!-- 行内 Markdown（**加粗**/`code`/*斜体*）：inlineMarkdownHtml
+            先全量转义再拼白名单标签，v-html 的是受控产物（防注入原则不破） -->
+            <span v-if="seg.type === 'text'" v-html="inlineMarkdownHtml(seg.text)"></span>
             <sup v-else class="mx-0.5 align-middle">
               <Popover>
                 <PopoverTrigger as-child>

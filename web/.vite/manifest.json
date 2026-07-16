@@ -1,17 +1,17 @@
 {
-  "_LoginView-Bz66TwhJ.js": {
-    "file": "assets/LoginView-Bz66TwhJ.js",
+  "_LoginView-CM2_sgkA.css": {
+    "file": "assets/LoginView-CM2_sgkA.css",
+    "src": "_LoginView-CM2_sgkA.css"
+  },
+  "_LoginView-CmkhpP3l.js": {
+    "file": "assets/LoginView-CmkhpP3l.js",
     "name": "LoginView",
     "imports": [
       "_api-C6JyM9t2.js"
     ],
     "css": [
-      "assets/LoginView-C1E3_Kdr.css"
+      "assets/LoginView-CM2_sgkA.css"
     ]
-  },
-  "_LoginView-C1E3_Kdr.css": {
-    "file": "assets/LoginView-C1E3_Kdr.css",
-    "src": "_LoginView-C1E3_Kdr.css"
   },
   "_PageHeader-DjVZ-Q3I.js": {
     "file": "assets/PageHeader-DjVZ-Q3I.js",
@@ -75,13 +75,13 @@
     ]
   },
   "admin.html": {
-    "file": "assets/admin-QjHVLRBs.js",
+    "file": "assets/admin-DImWeEEW.js",
     "name": "admin",
     "src": "admin.html",
     "isEntry": true,
     "imports": [
       "_api-C6JyM9t2.js",
-      "_LoginView-Bz66TwhJ.js"
+      "_LoginView-CmkhpP3l.js"
     ],
     "dynamicImports": [
       "src/views/KbView.vue",
@@ -91,13 +91,13 @@
     ]
   },
   "index.html": {
-    "file": "assets/main-B0jR9ait.js",
+    "file": "assets/main-B3PAmFiw.js",
     "name": "main",
     "src": "index.html",
     "isEntry": true,
     "imports": [
       "_api-C6JyM9t2.js",
-      "_LoginView-Bz66TwhJ.js",
+      "_LoginView-CmkhpP3l.js",
       "_SelectValue-B7lIwvFQ.js",
       "_copy-KM4do-gb.js",
       "_download-BlqMiQlv.js",
@@ -106,26 +106,26 @@
     ]
   },
   "src/views/AnalysisView.vue": {
-    "file": "assets/AnalysisView-BHI694uV.js",
+    "file": "assets/AnalysisView-SMxctUTm.js",
     "name": "AnalysisView",
     "src": "src/views/AnalysisView.vue",
     "isDynamicEntry": true,
     "imports": [
       "_api-C6JyM9t2.js",
-      "_LoginView-Bz66TwhJ.js",
+      "_LoginView-CmkhpP3l.js",
       "_SelectValue-B7lIwvFQ.js",
       "_search-NZeDMH2g.js",
       "_SelectGroup-tr4bCxe9.js"
     ]
   },
   "src/views/GenerateView.vue": {
-    "file": "assets/GenerateView-Cgwpmwhw.js",
+    "file": "assets/GenerateView-DV5RFjWK.js",
     "name": "GenerateView",
     "src": "src/views/GenerateView.vue",
     "isDynamicEntry": true,
     "imports": [
       "_api-C6JyM9t2.js",
-      "_LoginView-Bz66TwhJ.js",
+      "_LoginView-CmkhpP3l.js",
       "_SelectValue-B7lIwvFQ.js",
       "_download-BlqMiQlv.js",
       "_SelectGroup-tr4bCxe9.js",
@@ -133,13 +133,13 @@
     ]
   },
   "src/views/KbView.vue": {
-    "file": "assets/KbView-CQOJkwJY.js",
+    "file": "assets/KbView-DSctM2Ap.js",
     "name": "KbView",
     "src": "src/views/KbView.vue",
     "isDynamicEntry": true,
     "imports": [
       "_api-C6JyM9t2.js",
-      "_LoginView-Bz66TwhJ.js",
+      "_LoginView-CmkhpP3l.js",
       "_SelectValue-B7lIwvFQ.js",
       "_download-BlqMiQlv.js",
       "_pencil-DgBWfQGZ.js",
@@ -149,13 +149,13 @@
     ]
   },
   "src/views/SettingsView.vue": {
-    "file": "assets/SettingsView-BjFDEHhu.js",
+    "file": "assets/SettingsView-Ks97Y_wH.js",
     "name": "SettingsView",
     "src": "src/views/SettingsView.vue",
     "isDynamicEntry": true,
     "imports": [
       "_api-C6JyM9t2.js",
-      "_LoginView-Bz66TwhJ.js",
+      "_LoginView-CmkhpP3l.js",
       "_SelectValue-B7lIwvFQ.js",
       "_copy-KM4do-gb.js",
       "_pencil-DgBWfQGZ.js",
