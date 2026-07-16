@@ -108,7 +108,13 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         actor = getattr(request.state, "actor", None) or {"role": "admin"}
         mode, visible = kb_acl.visible_kb_filter(sf, actor)
         with sf() as s:
+            # doc_count 随列表一次返回（单条 group by）：此前前端逐库拉文档
+            # 列表数数，既是 N+1 请求，又让卡片计数先显示 0 再跳变。
+            from sqlalchemy import func
+            counts = dict(s.query(Document.kb_id, func.count(Document.id))
+                          .group_by(Document.kb_id).all())
             return [{"id": k.id, "name": k.name,
+                     "doc_count": counts.get(k.id, 0),
                      "config": json.loads(k.config) if k.config else None}
                     for k in s.query(KnowledgeBase).all()
                     if mode == "all" or k.id in visible]
