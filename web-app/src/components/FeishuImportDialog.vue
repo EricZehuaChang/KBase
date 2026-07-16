@@ -88,20 +88,33 @@ async function doImport() {
       </DialogHeader>
 
       <div class="flex flex-col gap-3">
-        <!-- 凭据区：未配置就地输入；已配置只读展示 -->
+        <!-- 凭据区：未配置就地输入 + 完整三步指引；已配置收成一行 -->
         <div
           v-if="status && !status.configured"
           class="flex flex-col gap-2 rounded-[var(--radius-ctl)] border border-[var(--warn)] bg-[var(--warn-weak)] p-3"
         >
-          <p class="text-xs text-[var(--warn)]">
-            首次使用需配置飞书自建应用凭据（开放平台创建，授权 wiki 与
-            docx 只读）；保存后全站生效，也可稍后在 设置 → 连接器 里维护
-          </p>
+          <p class="text-xs font-medium text-[var(--warn)]">首次使用需完成三步配置（缺一不可）：</p>
+          <ol class="list-decimal pl-4 text-xs leading-relaxed text-[var(--text-2)]">
+            <li>
+              在<a href="https://open.feishu.cn/app" target="_blank" rel="noopener" class="text-[var(--accent-text)] underline">飞书开放平台</a>创建企业自建应用，取得 App ID 与 App Secret 填入下方
+            </li>
+            <li>
+              应用「权限管理」开通 <code class="rounded bg-black/5 px-1">wiki:wiki:readonly</code> 与
+              <code class="rounded bg-black/5 px-1">docx:document:readonly</code>，并<b>创建版本发布</b>（只勾选不发布不生效）
+            </li>
+            <li>
+              打开目标知识库 → 设置 → 成员 → <b>把该应用添加为成员</b>（仅有权限而未入库读不到内容）
+            </li>
+          </ol>
           <Input v-model="appId" placeholder="App ID（cli_ 开头）" />
           <Input v-model="appSecret" type="password" placeholder="App Secret" />
         </div>
         <p v-else-if="status?.configured" class="text-xs text-[var(--text-3)]">
-          使用已配置的飞书应用：{{ status.app_id }}（可在 设置 → 连接器 更换）
+          使用已配置的飞书应用：{{ status.app_id }}（设置 → 连接器 可更换；若报权限错误可
+          <a
+            :href="`https://open.feishu.cn/app/${status.app_id}/auth?q=wiki:wiki:readonly,docx:document:readonly&op_from=openapi&token_type=tenant`"
+            target="_blank" rel="noopener" class="text-[var(--accent-text)] underline"
+          >一键开通权限</a>后发布版本）
         </p>
 
         <Input
