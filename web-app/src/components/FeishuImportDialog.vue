@@ -99,9 +99,10 @@ async function doImport() {
               在<a href="https://open.feishu.cn/app" target="_blank" rel="noopener" class="text-[var(--accent-text)] underline">飞书开放平台</a>创建企业自建应用，取得 App ID 与 App Secret 填入下方
             </li>
             <li>
-              应用「权限管理」开通 <code class="rounded bg-black/5 px-1">wiki:wiki:readonly</code> 与
-              <code class="rounded bg-black/5 px-1">docx:document:readonly</code> 与
-        <code class="rounded bg-black/5 px-1">drive:drive:readonly</code>（下载文档内图片），并<b>创建版本发布</b>（只勾选不发布不生效）
+              应用「权限管理」<b>一次性开通全部只读权限</b>（应用身份权限需
+              管理员审核，一次开全避免反复审批）：wiki / docx / drive /
+              docs / sheets / bitable 六项 readonly，并<b>创建版本发布</b>
+              （只勾选不发布不生效；完整清单见 设置 → 连接器）
             </li>
             <li>
               打开目标知识库 → 设置 → 成员 → <b>把该应用添加为成员</b>（仅有权限而未入库读不到内容）
@@ -113,7 +114,7 @@ async function doImport() {
         <p v-else-if="status?.configured" class="text-xs text-[var(--text-3)]">
           使用已配置的飞书应用：{{ status.app_id }}（设置 → 连接器 可更换；若报权限错误可
           <a
-            :href="`https://open.feishu.cn/app/${status.app_id}/auth?q=wiki:wiki:readonly,docx:document:readonly,drive:drive:readonly&op_from=openapi&token_type=tenant`"
+            :href="`https://open.feishu.cn/app/${status.app_id}/auth?q=wiki:wiki:readonly,docx:document:readonly,drive:drive:readonly,docs:doc:readonly,sheets:spreadsheet:readonly,bitable:app:readonly&op_from=openapi&token_type=tenant`"
             target="_blank" rel="noopener" class="text-[var(--accent-text)] underline"
           >一键开通权限</a>后发布版本）
         </p>
@@ -132,10 +133,11 @@ async function doImport() {
         >
           <p class="font-medium text-[var(--err)]">导入失败：{{ error }}</p>
           <p class="mt-1.5 text-[var(--text-2)]">
-            常见原因排查：① 应用需在飞书开放平台开通并<b>发布版本</b>后权限才生效
-            （wiki 与 docx 只读）；② 应用必须被<b>添加为该知识库的成员</b>
-            （知识库设置 → 成员 → 添加应用），仅有权限而未入库同样读不到；
-            ③ 链接需是 wiki 页面地址（含 /wiki/），云文档 /docx/ 链接暂不支持直导
+            常见原因排查：① 应用需开通全部只读权限并<b>发布版本</b>后才生效
+            （权限清单与一键开通见上方或 设置 → 连接器）；② 应用必须被
+            <b>添加为该知识库的成员</b>（知识库设置 → 成员 → 添加应用），
+            仅有权限而未入库同样读不到；③ 链接需是 wiki 页面地址（含
+            /wiki/），云文档 /docx/ 链接暂不支持直导
           </p>
         </div>
       </div>

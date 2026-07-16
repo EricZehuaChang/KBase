@@ -86,15 +86,20 @@ async function clearCredentials() {
         创建企业自建应用，取得 App ID / App Secret
       </li>
       <li>
-        权限管理开通 <code class="rounded bg-black/5 px-1">wiki:wiki:readonly</code> 与
-        <code class="rounded bg-black/5 px-1">docx:document:readonly</code> 与
-        <code class="rounded bg-black/5 px-1">drive:drive:readonly</code>（下载文档内图片）
+        权限管理<b>一次性开通全部只读权限</b>
         <a
           v-if="status?.configured"
-          :href="`https://open.feishu.cn/app/${status.app_id}/auth?q=wiki:wiki:readonly,docx:document:readonly,drive:drive:readonly&op_from=openapi&token_type=tenant`"
+          :href="`https://open.feishu.cn/app/${status.app_id}/auth?q=wiki:wiki:readonly,docx:document:readonly,drive:drive:readonly,docs:doc:readonly,sheets:spreadsheet:readonly,bitable:app:readonly&op_from=openapi&token_type=tenant`"
           target="_blank" rel="noopener" class="ml-1 text-[var(--accent-text)] underline"
-        >（一键开通）</a>，
-        并<b>创建版本发布</b>——只勾选不发布不生效
+        >（一键开通）</a>：
+        <code class="rounded bg-black/5 px-1">wiki:wiki:readonly</code>（知识库树）、
+        <code class="rounded bg-black/5 px-1">docx:document:readonly</code>（文档正文）、
+        <code class="rounded bg-black/5 px-1">drive:drive:readonly</code>（文档内图片）、
+        <code class="rounded bg-black/5 px-1">docs:doc:readonly</code>（旧版文档）、
+        <code class="rounded bg-black/5 px-1">sheets:spreadsheet:readonly</code>（电子表格）、
+        <code class="rounded bg-black/5 px-1">bitable:app:readonly</code>（多维表格）。
+        应用身份权限需管理员审核，<b>建议一次开全避免反复审批</b>；
+        开通后<b>创建版本发布</b>——只勾选不发布不生效
       </li>
       <li>目标知识库 → 设置 → 成员 → <b>添加该应用为成员</b>——仅有权限未入库读不到内容</li>
     </ol>
