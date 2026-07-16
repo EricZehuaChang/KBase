@@ -1,12 +1,42 @@
 <script setup lang="ts">
-// 【使用端】问答页空会话状态：新会话/新用户看到的第一屏。纯展示 + 点击
-// 转发，不持有状态——快捷问题文案集中在 quick-questions.ts（含选题依据
-// 注释），这里只管渲染和把点击事件交给父组件（ChatHome 决定"点了就发送"
-// 这件事怎么做，本组件不关心 kbId/发送逻辑）。
+// 【使用端】问答页空会话状态：新会话/新用户看到的第一屏。
+//
+// 快捷问题按**当前库的真实文档**动态生成（文档名→问句模板），点了必然
+// 检索命中——此前是写死的四条旧评测语料（住宿费/公务卡那批），换个库
+// 就全部答不上，误导新用户（生产 UX 反馈）。库为空/加载失败时不显示
+// chips，只留引导文案（没有内容时给会拒答的假问题更糟）。
+import { onMounted, ref, watch } from "vue";
 import { MessageSquare } from "@lucide/vue";
-import { QUICK_QUESTIONS } from "./quick-questions";
+import { listDocs } from "@/lib/api";
+import { kbId } from "./topbar-state";
 
 const emit = defineEmits<{ pick: [question: string] }>();
+
+const questions = ref<string[]>([]);
+
+function docTitle(filename: string): string {
+  return filename.replace(/\.[^.]+$/, "");
+}
+
+async function buildQuestions() {
+  questions.value = [];
+  if (!kbId.value) return;
+  try {
+    const docs = (await listDocs(kbId.value)).filter((d) => d.status === "ready");
+    // 每库最多 4 条：前 3 条按文档主题问要点，第 4 条留一条对比/汇总式问法
+    const picks = docs.slice(0, 3).map(
+      (d) => `《${docTitle(d.filename)}》的主要内容有哪些？`);
+    if (docs.length > 1) {
+      picks.push(`${docTitle(docs[0].filename)}里有哪些具体标准或数字？`);
+    }
+    questions.value = picks;
+  } catch {
+    questions.value = [];   // 拉取失败只影响 chips，不影响输入框提问
+  }
+}
+
+onMounted(buildQuestions);
+watch(kbId, buildQuestions);
 </script>
 
 <template>
@@ -14,18 +44,20 @@ const emit = defineEmits<{ pick: [question: string] }>();
     <div class="flex flex-col items-center gap-2">
       <MessageSquare class="size-8 text-[var(--text-3)]" />
       <h2 class="text-lg font-medium text-[var(--text)]">有什么可以帮你？</h2>
-      <p class="text-sm text-[var(--text-3)]">提出一个问题，开始新的对话</p>
+      <p class="text-sm text-[var(--text-3)]">
+        {{ questions.length ? "试试下面的问题，或直接输入你的问题" : "提出一个问题，开始新的对话" }}
+      </p>
     </div>
 
-    <div class="flex w-full max-w-lg flex-col gap-2">
+    <div v-if="questions.length" class="flex w-full max-w-lg flex-col gap-2">
       <button
-        v-for="q in QUICK_QUESTIONS"
-        :key="q.id"
+        v-for="q in questions"
+        :key="q"
         type="button"
         class="rounded-[var(--radius-ctl)] border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 text-left text-sm text-[var(--text-2)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text)]"
-        @click="emit('pick', q.text)"
+        @click="emit('pick', q)"
       >
-        {{ q.text }}
+        {{ q }}
       </button>
     </div>
   </div>
