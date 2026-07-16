@@ -22,12 +22,15 @@ const source = ref("");
 const appId = ref("");
 const appSecret = ref("");
 const importing = ref(false);
+// 错误常驻对话框内（生产反馈：toast 一闪而过，用户只看到"没反应"）
+const error = ref<string | null>(null);
 
 watch(() => props.open, async (isOpen) => {
   if (!isOpen) return;
   source.value = "";
   appId.value = "";
   appSecret.value = "";
+  error.value = null;
   try {
     status.value = await getFeishuStatus();
   } catch {
@@ -38,21 +41,23 @@ watch(() => props.open, async (isOpen) => {
 async function doImport() {
   if (!props.kbId || !source.value.trim()) return;
   importing.value = true;
+  error.value = null;
   try {
     // 对话框里填了凭据 → 先保存（等价设置页配置，一次配置处处可用）
     if (!status.value?.configured) {
       if (!appId.value.trim() || !appSecret.value.trim()) {
-        toast.error("请先填写飞书应用凭据（App ID 与 App Secret）");
+        error.value = "请先填写飞书应用凭据（App ID 与 App Secret）";
         return;
       }
       await putFeishuCredentials(appId.value.trim(), appSecret.value.trim());
+      status.value = await getFeishuStatus();
     }
     const r = await importFeishu(props.kbId, source.value.trim());
     toast.success(`已导入 ${r.total} 篇飞书文档，解析中（层级结构已保留）`);
     emit("imported");
     emit("update:open", false);
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : String(err));
+    error.value = err instanceof Error ? err.message : String(err);
   } finally {
     importing.value = false;
   }
@@ -93,6 +98,20 @@ async function doImport() {
           aria-label="飞书 wiki 链接或空间 ID"
           @keydown.enter="doImport"
         />
+
+        <!-- 错误常驻展示（不随 toast 消失）+ 高频原因排查提示 -->
+        <div
+          v-if="error"
+          class="rounded-[var(--radius-ctl)] border border-[var(--err)] bg-[var(--err-weak)] p-3 text-xs"
+        >
+          <p class="font-medium text-[var(--err)]">导入失败：{{ error }}</p>
+          <p class="mt-1.5 text-[var(--text-2)]">
+            常见原因排查：① 应用需在飞书开放平台开通并<b>发布版本</b>后权限才生效
+            （wiki 与 docx 只读）；② 应用必须被<b>添加为该知识库的成员</b>
+            （知识库设置 → 成员 → 添加应用），仅有权限而未入库同样读不到；
+            ③ 链接需是 wiki 页面地址（含 /wiki/），云文档 /docx/ 链接暂不支持直导
+          </p>
+        </div>
       </div>
 
       <DialogFooter>
