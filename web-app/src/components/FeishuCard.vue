@@ -87,10 +87,11 @@ async function clearCredentials() {
       </li>
       <li>
         权限管理开通 <code class="rounded bg-black/5 px-1">wiki:wiki:readonly</code> 与
-        <code class="rounded bg-black/5 px-1">docx:document:readonly</code>
+        <code class="rounded bg-black/5 px-1">docx:document:readonly</code> 与
+        <code class="rounded bg-black/5 px-1">drive:drive:readonly</code>（下载文档内图片）
         <a
           v-if="status?.configured"
-          :href="`https://open.feishu.cn/app/${status.app_id}/auth?q=wiki:wiki:readonly,docx:document:readonly&op_from=openapi&token_type=tenant`"
+          :href="`https://open.feishu.cn/app/${status.app_id}/auth?q=wiki:wiki:readonly,docx:document:readonly,drive:drive:readonly&op_from=openapi&token_type=tenant`"
           target="_blank" rel="noopener" class="ml-1 text-[var(--accent-text)] underline"
         >（一键开通）</a>，
         并<b>创建版本发布</b>——只勾选不发布不生效

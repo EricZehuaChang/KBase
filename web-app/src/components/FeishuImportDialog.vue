@@ -100,7 +100,8 @@ async function doImport() {
             </li>
             <li>
               应用「权限管理」开通 <code class="rounded bg-black/5 px-1">wiki:wiki:readonly</code> 与
-              <code class="rounded bg-black/5 px-1">docx:document:readonly</code>，并<b>创建版本发布</b>（只勾选不发布不生效）
+              <code class="rounded bg-black/5 px-1">docx:document:readonly</code> 与
+        <code class="rounded bg-black/5 px-1">drive:drive:readonly</code>（下载文档内图片），并<b>创建版本发布</b>（只勾选不发布不生效）
             </li>
             <li>
               打开目标知识库 → 设置 → 成员 → <b>把该应用添加为成员</b>（仅有权限而未入库读不到内容）
@@ -112,7 +113,7 @@ async function doImport() {
         <p v-else-if="status?.configured" class="text-xs text-[var(--text-3)]">
           使用已配置的飞书应用：{{ status.app_id }}（设置 → 连接器 可更换；若报权限错误可
           <a
-            :href="`https://open.feishu.cn/app/${status.app_id}/auth?q=wiki:wiki:readonly,docx:document:readonly&op_from=openapi&token_type=tenant`"
+            :href="`https://open.feishu.cn/app/${status.app_id}/auth?q=wiki:wiki:readonly,docx:document:readonly,drive:drive:readonly&op_from=openapi&token_type=tenant`"
             target="_blank" rel="noopener" class="text-[var(--accent-text)] underline"
           >一键开通权限</a>后发布版本）
         </p>
