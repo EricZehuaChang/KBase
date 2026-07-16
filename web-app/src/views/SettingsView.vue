@@ -6,7 +6,7 @@
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { toast } from "vue-sonner";
-import { Boxes, Cpu, Gauge, Plus, Settings, Users } from "@lucide/vue";
+import { Boxes, Cpu, Gauge, Link2, Plus, Settings, Users } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -17,6 +17,7 @@ import ProviderFormDialog from "@/components/ProviderFormDialog.vue";
 import UserManagementCard from "@/components/UserManagementCard.vue";
 import ApiKeyCard from "@/components/ApiKeyCard.vue";
 import EmbedderKeysCard from "@/components/EmbedderKeysCard.vue";
+import FeishuCard from "@/components/FeishuCard.vue";
 import LicenseCard from "@/components/LicenseCard.vue";
 import OpsDashboardCard from "@/components/OpsDashboardCard.vue";
 import {
@@ -36,6 +37,7 @@ const SECTIONS = [
   { id: "providers", label: "模型服务", icon: Cpu, desc: "LLM Provider 与模型目录" },
   { id: "embedders", label: "向量模型", icon: Boxes, desc: "云端向量模型密钥" },
   { id: "access", label: "用户与权限", icon: Users, desc: "账号、角色与 API Key" },
+  { id: "connectors", label: "连接器", icon: Link2, desc: "飞书知识库等外部数据源" },
   { id: "ops", label: "运营看板", icon: Gauge, desc: "问答量、拒答与反馈" },
   { id: "system", label: "系统", icon: Settings, desc: "状态、许可证与外观" },
 ] as const;
@@ -215,6 +217,11 @@ onMounted(async () => {
             <UserManagementCard />
             <ApiKeyCard />
           </template>
+        </section>
+
+        <!-- 连接器（admin） -->
+        <section v-else-if="tab === 'connectors'">
+          <FeishuCard v-if="canAdminister(currentRole ?? '')" />
         </section>
 
         <!-- 运营看板 -->

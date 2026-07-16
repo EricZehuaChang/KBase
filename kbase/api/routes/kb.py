@@ -16,9 +16,9 @@ from fastapi.responses import FileResponse
 
 from kbase import chunk_admin, kb_acl
 from kbase.api.routes import RouteDeps
-from kbase.api.schemas import (ChunkUpdate, DocumentReview, KBConfigBody,
-                               KBCreate, KbGrantsBody, RebindEmbedderBody,
-                               UrlImportBody)
+from kbase.api.schemas import (ChunkUpdate, DocumentReview, FeishuImportBody,
+                               KBConfigBody, KBCreate, KbGrantsBody,
+                               RebindEmbedderBody, UrlImportBody)
 from kbase.api.services import Services
 from kbase.models import Chunk, Conversation, Document, KnowledgeBase, Message
 
@@ -266,6 +266,69 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         dest.write_bytes(content)
         bg.add_task(_ingest_batch, kb_id, [(dest, filename)], "auto")
         return {"accepted": [filename], "url": body.url}
+
+    @router.post("/kb/{kb_id}/import-feishu",
+                 dependencies=[deps.require_editor, deps.audit_mutation])
+    def import_feishu(kb_id: str, body: FeishuImportBody, bg: BackgroundTasks):
+        """飞书知识库导入（连接器一期）：wiki 节点链接=导该子树，
+        space_id=导整个空间。每个 wiki 文档一个 .md（wiki 路径注入标题链，
+        heading_path 保留完整层级），转换后走既有摄取管道。
+        凭据未配置返回 409——前端据此在导入对话框里就地引导输入。"""
+        from urllib.parse import urlparse
+
+        from kbase import feishu
+        with sf() as s:
+            if s.get(KnowledgeBase, kb_id) is None:
+                raise HTTPException(404, f"知识库不存在: {kb_id}")
+        app_id, app_secret = feishu.get_credentials(sf)
+        if not (app_id and app_secret):
+            raise HTTPException(409, "未配置飞书应用凭据（app_id/app_secret）")
+
+        source = body.source.strip()
+        try:
+            token = feishu._get_token(app_id, app_secret)
+            if source.startswith("http"):
+                # wiki 节点链接：/wiki/<node_token> → 定位空间与子树根
+                seg = [p for p in urlparse(source).path.split("/") if p]
+                if "wiki" not in seg:
+                    raise HTTPException(422, "不是飞书 wiki 链接（路径需含 /wiki/）")
+                node_token = seg[seg.index("wiki") + 1]
+                node = feishu.resolve_node(token, node_token)
+                space_id = str(node.get("space_id"))
+                root_title = node.get("title") or "未命名"
+                docs = feishu.collect_wiki_docs(
+                    token, space_id, root_node_token=node.get("node_token"),
+                    root_path=[root_title])
+                # 子树根自身若是 docx 也纳入
+                if node.get("obj_type") == "docx" and node.get("obj_token"):
+                    docs.insert(0, {"obj_token": node["obj_token"],
+                                    "title": root_title, "path": []})
+            else:
+                docs = feishu.collect_wiki_docs(token, source)
+        except HTTPException:
+            raise
+        except Exception as e:  # noqa: BLE001 —— 飞书侧错误给可读信息
+            raise HTTPException(502, f"飞书接口调用失败: {e}") from e
+        if not docs:
+            raise HTTPException(404, "该范围内没有可导入的文档（仅支持新版文档 docx）")
+
+        upload_dir = cfg.data_dir / "uploads"
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        items: list[tuple[Path, str]] = []
+        accepted = []
+        for doc in docs:
+            try:
+                markdown = feishu.doc_to_markdown(token, doc)
+            except Exception as e:  # noqa: BLE001 —— 单篇失败不拖垮整批
+                accepted.append(f"{doc['title']}（拉取失败: {e}）")
+                continue
+            filename = f"{Path(doc['title']).name or '未命名'}.md"
+            dest = upload_dir / f"{uuid.uuid4()}-{filename}"
+            dest.write_text(markdown, encoding="utf-8")
+            items.append((dest, filename))
+            accepted.append(filename)
+        bg.add_task(_ingest_batch, kb_id, items, "auto")
+        return {"accepted": accepted, "total": len(items)}
 
     @router.post("/demo-data", dependencies=[deps.require_editor, deps.audit_mutation])
     def load_demo_data(request: Request, bg: BackgroundTasks):

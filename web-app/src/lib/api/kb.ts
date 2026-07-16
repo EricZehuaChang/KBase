@@ -232,6 +232,14 @@ export function docOriginalUrl(
   return `${base}?disposition=inline${opts.page ? `#page=${opts.page}` : ""}`;
 }
 
+// 飞书知识库导入（连接器一期）：source 收 wiki 节点链接（导该子树）或
+// space_id（导整个空间）。凭据未配置时后端 409，调用方据此引导输入。
+export function importFeishu(
+  kbId: string, source: string,
+): Promise<{ accepted: string[]; total: number }> {
+  return req(`/api/kb/${kbId}/import-feishu`, jsonInit({ source }));
+}
+
 // M6-7 URL 连接器：拉取网页导入知识库（内网 wiki/门户为主用途）
 export function importUrl(kbId: string, url: string): Promise<{ accepted: string[] }> {
   return req(`/api/kb/${kbId}/import-url`, jsonInit({ url }));

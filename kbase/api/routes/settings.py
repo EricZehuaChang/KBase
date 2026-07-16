@@ -14,7 +14,8 @@ from fastapi import BackgroundTasks, HTTPException
 from kbase import model_catalog, providers_store
 from kbase.api.routes import RouteDeps
 from kbase.api.schemas import (ActiveProviderBody, EmbedderKeyBody,
-                               ModelRefreshBody, ProviderCreate, ProviderUpdate)
+                               FeishuCredentialsBody, ModelRefreshBody,
+                               ProviderCreate, ProviderUpdate)
 from kbase.api.services import Services
 
 logger = logging.getLogger(__name__)
@@ -91,6 +92,28 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         if not embedder_keys.delete_key(sf, option_id):
             raise HTTPException(404, f"该选项未配置页面密钥: {option_id}")
         svc.embedder_pool.invalidate(option_id)   # 回落到 api_key_env
+        return {"ok": True}
+
+    # ---- 飞书连接器凭据（页面维护，secret 脱敏） ----
+
+    @router.get("/settings/feishu", dependencies=[deps.require_admin])
+    def get_feishu_credentials():
+        from kbase import feishu
+        return feishu.credentials_status(sf)
+
+    @router.put("/settings/feishu",
+                dependencies=[deps.require_admin, deps.audit_mutation])
+    def put_feishu_credentials(body: FeishuCredentialsBody):
+        from kbase import feishu
+        feishu.set_credentials(sf, body.app_id.strip(), body.app_secret.strip())
+        return {"ok": True}
+
+    @router.delete("/settings/feishu",
+                   dependencies=[deps.require_admin, deps.audit_mutation])
+    def delete_feishu_credentials():
+        from kbase import feishu
+        if not feishu.delete_credentials(sf):
+            raise HTTPException(404, "未配置飞书凭据")
         return {"ok": True}
 
     @router.put("/settings/active-provider",
