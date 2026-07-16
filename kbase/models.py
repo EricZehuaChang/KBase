@@ -130,6 +130,9 @@ class User(Base):
     __tablename__ = "users"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     username: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    # 账号资料邮箱（建号时维护）：当前用于资料记录与后续邮件找回密码；
+    # 老库存量用户为 NULL
+    email: Mapped[str | None] = mapped_column(String(200), nullable=True)
     password_hash: Mapped[str] = mapped_column(String(200))
     role: Mapped[str] = mapped_column(String(20))            # admin | editor | viewer
     disabled: Mapped[bool] = mapped_column(Boolean, default=False)

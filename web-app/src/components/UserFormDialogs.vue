@@ -25,13 +25,15 @@ const emit = defineEmits<{
 
 // ---- 新建用户 ----
 const creating = ref(false);
-const newUser = reactive({ username: "", role: "viewer" as string, password: "" });
+const newUser = reactive({ username: "", role: "viewer" as string, password: "",
+                           email: "" });
 
 watch(() => props.createOpen, (isOpen) => {
   if (!isOpen) return;
   newUser.username = "";
   newUser.role = "viewer";
   newUser.password = "";
+  newUser.email = "";
 });
 
 async function submitCreate() {
@@ -40,6 +42,7 @@ async function submitCreate() {
   try {
     await createUser({
       username: newUser.username.trim(), role: newUser.role, password: newUser.password,
+      email: newUser.email.trim() || undefined,
     });
     toast.success(`已创建用户: ${newUser.username}`);
     emit("update:createOpen", false);
@@ -100,8 +103,12 @@ async function submitReset() {
           </Select>
         </label>
         <label class="flex flex-col gap-1">
+          <span class="text-sm text-[var(--text-2)]">邮箱（选填，用于账号资料与后续找回密码）</span>
+          <Input v-model="newUser.email" type="email" placeholder="name@company.com" />
+        </label>
+        <label class="flex flex-col gap-1">
           <span class="text-sm text-[var(--text-2)]">初始密码</span>
-          <Input v-model="newUser.password" type="password" placeholder="初始密码" />
+          <Input v-model="newUser.password" type="password" placeholder="初始密码（用户登录后可自行修改）" />
         </label>
       </div>
       <DialogFooter>

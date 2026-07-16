@@ -12,7 +12,8 @@
 // 需要跨组件树注入，PortalShell 不必再为它开一个挂载点。
 import { ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { LogOut, Sun, Moon } from "@lucide/vue";
+import { KeyRound, LogOut, Sun, Moon } from "@lucide/vue";
+import ChangePasswordDialog from "@/components/ChangePasswordDialog.vue";
 import { getSession, logout, type Me } from "@/lib/api";
 import { roleLabel, roleBadgeClass, canManageContent } from "@/lib/auth-utils";
 import { theme, toggleTheme } from "@/lib/theme";
@@ -46,6 +47,8 @@ watch(() => route.path, (path) => {
   getSession().then((session) => { me.value = session; });
   void ensureTopbarLoaded();
 }, { immediate: true });
+
+const changePwOpen = ref(false);
 
 async function handleLogout() {
   try {
@@ -146,6 +149,14 @@ function enterWorkbench() {
           <component :is="theme === 'dark' ? Sun : Moon" class="size-4" />
         </button>
         <div v-if="me" class="flex items-center gap-2">
+          <button
+            type="button"
+            class="rounded-[var(--radius-ctl)] p-2 text-[var(--text-2)] transition-colors hover:bg-[var(--surface-2)]"
+            title="修改密码"
+            @click="changePwOpen = true"
+          >
+            <KeyRound class="size-4" />
+          </button>
           <span class="text-sm text-[var(--text)]">{{ me.username }}</span>
           <span class="w-fit rounded-full px-1.5 py-0.5 text-xs" :class="roleBadgeClass(me.role)">
             {{ roleLabel(me.role) }}
@@ -166,5 +177,6 @@ function enterWorkbench() {
       <router-view />
     </main>
   </div>
+  <ChangePasswordDialog v-model:open="changePwOpen" />
   <Toaster />
 </template>

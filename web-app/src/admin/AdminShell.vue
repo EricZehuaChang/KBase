@@ -9,8 +9,9 @@ import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   Folder, ScanSearch, FileText, Settings, Sun, Moon, LogOut, ArrowLeft,
-  Database,
+  Database, KeyRound,
 } from "@lucide/vue";
+import ChangePasswordDialog from "@/components/ChangePasswordDialog.vue";
 import { theme, toggleTheme } from "@/lib/theme";
 import { getSession, logout, getLicense, currentRole, type Me } from "@/lib/api";
 import { roleLabel, roleBadgeClass, canAdminister } from "@/lib/auth-utils";
@@ -76,6 +77,8 @@ onMounted(async () => {
     // 许可证探测失败不阻塞管理端主流程，静默忽略
   }
 });
+
+const changePwOpen = ref(false);
 
 async function handleLogout() {
   try {
@@ -171,6 +174,14 @@ function backToPortal() {
               <component :is="theme === 'dark' ? Sun : Moon" class="size-4" />
             </button>
             <div v-if="me" class="flex items-center gap-2 border-l border-[var(--border)] pl-3">
+              <button
+                type="button"
+                class="rounded-[var(--radius-ctl)] p-2 text-[var(--text-2)] transition-colors hover:bg-[var(--surface-2)]"
+                title="修改密码"
+                @click="changePwOpen = true"
+              >
+                <KeyRound class="size-4" />
+              </button>
               <span class="text-sm">{{ me.username }}</span>
               <span class="rounded-full px-1.5 py-0.5 text-xs" :class="roleBadgeClass(me.role)">
                 {{ roleLabel(me.role) }}
@@ -212,5 +223,6 @@ function backToPortal() {
       </div>
     </div>
   </template>
+  <ChangePasswordDialog v-model:open="changePwOpen" />
   <Toaster />
 </template>

@@ -79,15 +79,17 @@ async function toggleDisabled(user: UserItem, disabled: boolean) {
       <TableHeader>
         <TableRow>
           <TableHead>用户名</TableHead>
+          <TableHead>邮箱</TableHead>
           <TableHead>角色</TableHead>
           <TableHead>状态</TableHead>
           <TableHead class="w-40">操作</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
-        <TableEmpty v-if="!loading && users.length === 0" :colspan="4">暂无用户</TableEmpty>
+        <TableEmpty v-if="!loading && users.length === 0" :colspan="5">暂无用户</TableEmpty>
         <TableRow v-for="u in users" :key="u.id">
           <TableCell>{{ u.username }}</TableCell>
+          <TableCell class="text-[var(--text-3)]">{{ u.email ?? "—" }}</TableCell>
           <TableCell>
             <Select
               :model-value="u.role"

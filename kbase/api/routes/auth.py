@@ -9,7 +9,7 @@ from fastapi import Response as FastAPIResponse
 from fastapi.responses import RedirectResponse
 
 from kbase.api.routes import RouteDeps
-from kbase.api.schemas import LoginBody
+from kbase.api.schemas import ChangePasswordBody, LoginBody
 from kbase.api.services import Services
 from kbase.audit import write_audit
 from kbase.auth import oidc, security
@@ -108,3 +108,19 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps, *,
     def auth_me(request: Request):
         actor = request.state.actor
         return {"username": actor["name"], "role": actor["role"]}
+
+    @router.post("/auth/change-password",
+                 dependencies=[deps.require_viewer, deps.audit_mutation])
+    def change_password(body: ChangePasswordBody, request: Request):
+        """登录用户自助改密（此前只能 admin 代改）：旧密码复核后落新哈希。
+        仅账号会话可用——API Key 身份没有对应"本人密码"语义（403）。"""
+        actor = request.state.actor
+        with sf() as s:
+            user = s.query(User).filter_by(username=actor["name"]).first()
+            if user is None:
+                raise HTTPException(403, "当前身份不支持修改密码（API Key 无账号密码）")
+            if not security.verify_password(body.old_password, user.password_hash):
+                raise HTTPException(401, "旧密码不正确")
+            user.password_hash = security.hash_password(body.new_password)
+            s.commit()
+        return {"ok": True}
