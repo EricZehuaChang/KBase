@@ -76,8 +76,9 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
 
     def _user_out(u: User) -> dict:
         # 从不返回 password_hash——列表/创建/更新的响应体统一走这个投影。
-        return {"id": u.id, "username": u.username, "role": u.role,
-                "disabled": u.disabled, "created_at": u.created_at.isoformat()}
+        return {"id": u.id, "username": u.username, "email": u.email,
+                "role": u.role, "disabled": u.disabled,
+                "created_at": u.created_at.isoformat()}
 
     @router.get("/users", dependencies=[deps.require_admin])
     def list_users():
@@ -91,6 +92,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
             if s.query(User).filter_by(username=body.username).first() is not None:
                 raise HTTPException(409, f"用户名已存在: {body.username}")
             user = User(id=str(uuid.uuid4()), username=body.username,
+                       email=(body.email or None),
                        password_hash=security.hash_password(body.password),
                        role=body.role, disabled=False)
             s.add(user)
@@ -129,6 +131,8 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
                 user.disabled = body.disabled
             if body.password is not None:
                 user.password_hash = security.hash_password(body.password)
+            if body.email is not None:
+                user.email = body.email or None   # 空串=清除邮箱
             s.commit()
             s.refresh(user)
             return _user_out(user)

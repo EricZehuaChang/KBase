@@ -41,6 +41,8 @@ _COLUMN_MIGRATIONS = [
     ("conversations", "kb_ids", "TEXT"),
     # 多模态扩展：docx 插图的 caption 级锚点（PDF 行该列为 NULL，锚在 page）。
     ("document_images", "heading", "TEXT"),
+    # 账号邮箱（老库存量用户 NULL）：资料记录+后续邮件找回密码。
+    ("users", "email", "TEXT"),
 ]
 
 _FTS_DDL = (

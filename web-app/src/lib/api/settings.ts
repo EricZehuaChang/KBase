@@ -157,6 +157,7 @@ export function healthz(): Promise<HealthzResponse> {
 export interface UserItem {
   id: string;
   username: string;
+  email: string | null;
   role: string;
   disabled: boolean;
   created_at: string;
@@ -166,12 +167,14 @@ export interface UserCreateBody {
   username: string;
   role: string;
   password: string;
+  email?: string;
 }
 
 export interface UserUpdateBody {
   role?: string;
   disabled?: boolean;
   password?: string;
+  email?: string;         // 空串=清除邮箱
 }
 
 export function listUsers(): Promise<UserItem[]> {

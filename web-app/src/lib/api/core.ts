@@ -87,6 +87,12 @@ export function getSsoStatus(): Promise<{ enabled: boolean }> {
   return req("/api/auth/sso/status");
 }
 
+// 自助改密（登录用户，旧密码复核）；API Key 身份无账号密码语义（后端 403）
+export function changePassword(oldPassword: string, newPassword: string): Promise<{ ok: boolean }> {
+  return req("/api/auth/change-password",
+             jsonInit({ old_password: oldPassword, new_password: newPassword }));
+}
+
 // 会话探测结果模块级缓存：路由守卫每次导航都要确认"有没有会话"，但不该每次
 // 都打一发 /api/auth/me——同一个会话生命周期内缓存结果，登出/401 时清空
 // （见 setUnauthorizedHandler 拦截器与 clearSessionCache 调用点）。

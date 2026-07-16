@@ -252,9 +252,17 @@ class UserCreate(BaseModel):
     username: str
     role: Role
     password: str
+    email: str | None = None
 
 
 class UserUpdate(BaseModel):
     role: Role | None = None
     disabled: bool | None = None
     password: str | None = None
+    email: str | None = None      # 传空串=清除邮箱
+
+
+class ChangePasswordBody(BaseModel):
+    """登录用户自助改密：必须携带旧密码复核（防止离席被人改密顶号）。"""
+    old_password: str
+    new_password: str = Field(min_length=6)
