@@ -72,11 +72,13 @@ async function loadKbs() {
 }
 
 function openKb(id: string) {
-  router.push({ path: "/kb", query: { kb: id } });
+  // 管理端首页即知识库页（M5-1 分端时 /kb → /，此处曾遗留旧路径导致
+  // 点卡片跳到无匹配路由白屏——生产实测撞出）
+  router.push({ path: "/", query: { kb: id } });
 }
 
 function backToGrid() {
-  router.push({ path: "/kb" });
+  router.push({ path: "/" });
 }
 
 // ---- 新建知识库 ----
