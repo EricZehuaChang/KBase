@@ -12,6 +12,7 @@ import {
   Database, KeyRound,
 } from "@lucide/vue";
 import ChangePasswordDialog from "@/components/ChangePasswordDialog.vue";
+import EmailPromptDialog from "@/components/EmailPromptDialog.vue";
 import { theme, toggleTheme } from "@/lib/theme";
 import { getSession, logout, getLicense, currentRole, type Me } from "@/lib/api";
 import { roleLabel, roleBadgeClass, canAdminister } from "@/lib/auth-utils";
@@ -64,9 +65,21 @@ const currentLabel = computed(() => {
 });
 
 const me = ref<Me | null>(null);
+const emailPromptOpen = ref(false);
 onMounted(async () => {
   me.value = await getSession();
+  // 首登邮箱引导（与 PortalShell 同规则）："稍后再说"记 sessionStorage，
+  // 本次浏览器会话内两端都不再弹
+  if (me.value && me.value.email === null
+      && !sessionStorage.getItem("kbase_email_prompt_dismissed")) {
+    emailPromptOpen.value = true;
+  }
 });
+
+function handleEmailSaved(email: string) {
+  // 原地改：getSession 缓存的是同一引用，保证后续读缓存不再触发弹窗
+  if (me.value) me.value.email = email;
+}
 
 const bannerInfo = ref<ReturnType<typeof licenseBannerInfo>>(null);
 const bannerDismissed = ref(false);
@@ -224,5 +237,6 @@ function backToPortal() {
     </div>
   </template>
   <ChangePasswordDialog v-model:open="changePwOpen" />
+  <EmailPromptDialog v-model:open="emailPromptOpen" @saved="handleEmailSaved" />
   <Toaster />
 </template>

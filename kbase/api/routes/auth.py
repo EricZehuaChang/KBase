@@ -1,19 +1,33 @@
 """认证路由：登录/登出/当前身份（spec §2/§7）+ 企业 SSO（M6-8 OIDC）。
 
-login 与 SSO 三端点挂在 app 级而不是共享 router 上——它们必须绕开 router
-级的 actor 依赖（未登录者才需要登录），是全部 /api 路由中仅有的例外。"""
+login、SSO 三端点与忘记密码两端点挂在 app 级而不是共享 router 上——它们
+必须绕开 router 级的 actor 依赖（未登录者才需要用），是 /api 路由中仅有的
+例外。"""
+import json
+import logging
+import secrets
+import time
 import uuid
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi import Response as FastAPIResponse
 from fastapi.responses import RedirectResponse
 
+from kbase import mailer
 from kbase.api.routes import RouteDeps
-from kbase.api.schemas import ChangePasswordBody, LoginBody
+from kbase.api.schemas import (ChangePasswordBody, ForgotBody, LoginBody,
+                               ProfileBody, ResetPasswordBody)
 from kbase.api.services import Services
 from kbase.audit import write_audit
 from kbase.auth import oidc, security
-from kbase.models import User
+from kbase.models import AppSetting, User
+
+logger = logging.getLogger(__name__)
+
+# 重置 token 有效期（秒）。KV key 形如 pwreset:{token}，value 为
+# json{"username", "exp"}——复用 AppSetting 存储，量级极小（同时在途的
+# 重置请求个位数），不值得建表。
+RESET_TOKEN_TTL_SECONDS = 30 * 60
 
 
 def register(app: FastAPI, router, svc: Services, deps: RouteDeps, *,
@@ -36,6 +50,89 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps, *,
             max_age=security.SESSION_TOKEN_TTL_SECONDS)
         write_audit(sf, actor=user.username, action="login_success", ip=ip)
         return {"username": user.username, "role": user.role}
+
+    # ---- 忘记密码（邮箱重置，app 级：未登录者使用） ----
+
+    @app.post("/api/auth/forgot")
+    def forgot_password(body: ForgotBody, request: Request,
+                        bg: BackgroundTasks):
+        """按用户名或邮箱找账号，发重置链接邮件。无论命中与否都返回同一
+        句话（防账号枚举）；发信走后台任务（响应时长不泄露命中与否）。"""
+        account = body.account.strip()
+        client = request.client
+        ip = client.host if client is not None else None
+        with sf() as s:
+            user = s.query(User).filter(
+                (User.username == account) | (User.email == account)).first()
+            # 顺手清掉过期 token，避免 KV 里越积越多
+            now = time.time()
+            for row in s.query(AppSetting).filter(
+                    AppSetting.key.like("pwreset:%")).all():
+                try:
+                    if json.loads(row.value).get("exp", 0) < now:
+                        s.delete(row)
+                except (ValueError, TypeError):
+                    s.delete(row)
+            if user is not None and user.email and not user.disabled:
+                token = secrets.token_urlsafe(32)
+                s.add(AppSetting(key=f"pwreset:{token}", value=json.dumps(
+                    {"username": user.username,
+                     "exp": now + RESET_TOKEN_TTL_SECONDS})))
+                login_url = str(request.base_url).rstrip("/")
+                to_addr = user.email
+                user_name = user.username
+
+                def _send():
+                    try:
+                        mailer.send_mail(
+                            sf, to_addr, "KBase 密码重置",
+                            f"你（或他人）请求重置 KBase 账号 "
+                            f"{user_name} 的密码。\n\n"
+                            f"请在 30 分钟内打开以下链接设置新密码：\n"
+                            f"{login_url}/?reset_token={token}\n\n"
+                            f"如果这不是你本人的操作，请忽略本邮件，"
+                            f"你的密码不会有任何变化。")
+                    except Exception:
+                        logger.exception("密码重置邮件发送失败: %s", to_addr)
+
+                bg.add_task(_send)
+            s.commit()
+        write_audit(sf, actor=account, action="password_forgot", ip=ip)
+        return {"ok": True,
+                "message": "如果该账号存在且已绑定邮箱，重置邮件已发出，请查收（含垃圾箱）"}
+
+    @app.post("/api/auth/reset")
+    def reset_password(body: ResetPasswordBody, request: Request):
+        """凭邮件里的一次性 token 设新密码：验存在+未过期→落新哈希→销毁
+        token（一次性）。"""
+        client = request.client
+        ip = client.host if client is not None else None
+        with sf() as s:
+            row = s.get(AppSetting, f"pwreset:{body.token}")
+            data = None
+            if row is not None:
+                try:
+                    data = json.loads(row.value)
+                except (ValueError, TypeError):
+                    data = None
+            if (data is None or data.get("exp", 0) < time.time()):
+                if row is not None:
+                    s.delete(row)
+                    s.commit()
+                write_audit(sf, actor="unknown", action="password_reset_failed",
+                            detail="invalid_or_expired_token", ip=ip)
+                raise HTTPException(400, "重置链接无效或已过期，请重新发起忘记密码")
+            user = s.query(User).filter_by(username=data["username"]).first()
+            if user is None or user.disabled:
+                s.delete(row)
+                s.commit()
+                raise HTTPException(400, "账号不存在或已被禁用")
+            user.password_hash = security.hash_password(body.new_password)
+            s.delete(row)
+            s.commit()
+            username = user.username
+        write_audit(sf, actor=username, action="password_reset", ip=ip)
+        return {"ok": True}
 
     # ---- 企业 SSO（M6-8 OIDC 授权码流）----
     # 三端点全部 app 级（未登录者使用）。sso.enabled=false 时 status 返回
@@ -107,7 +204,25 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps, *,
     @router.get("/auth/me", dependencies=[deps.require_viewer])
     def auth_me(request: Request):
         actor = request.state.actor
-        return {"username": actor["name"], "role": actor["role"]}
+        # email：前端首登据此引导补录（用于忘记密码重置）。API Key 身份
+        # 无对应用户行，email 为 None。
+        with sf() as s:
+            user = s.query(User).filter_by(username=actor["name"]).first()
+            email = user.email if user else None
+        return {"username": actor["name"], "role": actor["role"], "email": email}
+
+    @router.put("/auth/profile",
+                dependencies=[deps.require_viewer, deps.audit_mutation])
+    def update_profile(body: ProfileBody, request: Request):
+        """登录用户维护自己的邮箱（首登引导填写，用于忘记密码重置）。"""
+        actor = request.state.actor
+        with sf() as s:
+            user = s.query(User).filter_by(username=actor["name"]).first()
+            if user is None:
+                raise HTTPException(403, "当前身份不支持维护资料")
+            user.email = body.email.strip()
+            s.commit()
+        return {"ok": True}
 
     @router.post("/auth/change-password",
                  dependencies=[deps.require_viewer, deps.audit_mutation])

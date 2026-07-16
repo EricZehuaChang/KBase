@@ -86,7 +86,7 @@ def test_auth_me_returns_username_and_role(tmp_path, fake_embedder, monkeypatch)
     c.post("/api/auth/login", json={"username": "admin", "password": "adminpass123"})
     r = c.get("/api/auth/me")
     assert r.status_code == 200
-    assert r.json() == {"username": "admin", "role": "admin"}
+    assert r.json() == {"username": "admin", "role": "admin", "email": None}
 
 
 def test_origin_mismatch_403_on_mutating_request(tmp_path, fake_embedder, monkeypatch):
