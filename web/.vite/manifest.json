@@ -85,7 +85,7 @@
     ]
   },
   "admin.html": {
-    "file": "assets/admin-xfqTaQys.js",
+    "file": "assets/admin-DQ5DLl-4.js",
     "name": "admin",
     "src": "admin.html",
     "isEntry": true,
@@ -145,7 +145,7 @@
     ]
   },
   "src/views/KbView.vue": {
-    "file": "assets/KbView-BM0B7vaa.js",
+    "file": "assets/KbView-DrDmItEx.js",
     "name": "KbView",
     "src": "src/views/KbView.vue",
     "isDynamicEntry": true,
@@ -162,7 +162,7 @@
     ]
   },
   "src/views/SettingsView.vue": {
-    "file": "assets/SettingsView-Dh3Chr9s.js",
+    "file": "assets/SettingsView-BQkAHWdG.js",
     "name": "SettingsView",
     "src": "src/views/SettingsView.vue",
     "isDynamicEntry": true,

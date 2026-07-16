@@ -308,6 +308,10 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         except HTTPException:
             raise
         except Exception as e:  # noqa: BLE001 —— 飞书侧错误给可读信息
+            # 失败落审计：用户看到的 toast 会消失，运维在审计页可回查原始错误
+            from kbase.audit import write_audit
+            write_audit(sf, actor="feishu-import", action="feishu_import_failed",
+                        resource=f"kb_id={kb_id}", detail=str(e)[:400])
             raise HTTPException(502, f"飞书接口调用失败: {e}") from e
         if not docs:
             raise HTTPException(404, "该范围内没有可导入的文档（仅支持新版文档 docx）")
