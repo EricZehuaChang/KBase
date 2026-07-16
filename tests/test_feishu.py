@@ -72,9 +72,21 @@ def test_blocks_to_markdown_core_types():
     assert "|---|---|" in md
 
 
+def _jpeg_bytes(w=320, h=240) -> bytes:
+    import io as _io
+
+    from PIL import Image
+    buf = _io.BytesIO()
+    Image.frombytes(
+        "RGB", (w, h),
+        bytes((i * 37 + j * 11) % 256 for j in range(h) for i in range(w * 3))
+    ).save(buf, format="JPEG", quality=95)
+    return buf.getvalue()
+
+
 @pytest.fixture
 def feishu_stub(monkeypatch):
-    """打桩飞书 API：两层 wiki 树（指南目录 > 报销制度docx）。"""
+    """打桩飞书 API：两层 wiki 树（指南目录 > 报销制度docx，含插图块）。"""
     monkeypatch.setattr(feishu, "_get_token", lambda a, b: "fake-token")
 
     def fake_children(token, space_id, parent=None):
@@ -88,13 +100,17 @@ def feishu_stub(monkeypatch):
 
     monkeypatch.setattr(feishu, "list_children", fake_children)
     monkeypatch.setattr(feishu, "fetch_doc_blocks", lambda t, d: [
-        {"block_id": "p", "block_type": 1, "children": ["h", "t"]},
+        {"block_id": "p", "block_type": 1, "children": ["h", "t", "img"]},
         {"block_id": "h", "block_type": 3,
          "heading1": {"elements": [{"text_run": {"content": "审批流程"}}]}},
         {"block_id": "t", "block_type": 2,
          "text": {"elements": [{"text_run": {"content":
              "差旅报销走OA两级审批，住宿上限每晚500元。"}}]}},
+        {"block_id": "img", "block_type": 27,
+         "image": {"token": "media-token-1"}},
     ])
+    monkeypatch.setattr(feishu, "download_media",
+                        lambda t, mt: _jpeg_bytes())
 
 
 def test_import_requires_credentials(tmp_path, fake_embedder):
@@ -123,3 +139,23 @@ def test_import_space_end_to_end(tmp_path, fake_embedder, feishu_stub):
     assert hits
     hp = hits[0]["heading_path"]
     assert "员工指南" in hp and "报销制度" in hp and "审批流程" in hp, hp
+
+    # 图片同步：文档插图按章节锚落库，问答命中"审批流程"章节即附图
+    import json as _json
+    citations = []
+    with c.stream("POST", f"/api/kb/{kb}/query",
+                  json={"question": "住宿上限是多少", "top_k": 5}) as resp:
+        event = ""
+        for line in resp.iter_lines():
+            if line.startswith("event:"):
+                event = line[6:].strip()
+            elif line.startswith("data:") and event == "citations":
+                citations = _json.loads(line[5:].strip())
+                break
+    flow = [ci for ci in citations if "审批流程" in ci["heading_path"]]
+    assert flow and flow[0].get("images"), f"飞书插图应随引用附出: {citations}"
+    img = flow[0]["images"][0]
+    assert img["width"] == 320
+    got = c.get(img["url"])
+    assert got.status_code == 200
+    assert got.headers["content-type"].startswith("image/")

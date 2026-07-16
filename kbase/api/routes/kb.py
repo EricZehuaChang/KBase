@@ -318,21 +318,75 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
 
         upload_dir = cfg.data_dir / "uploads"
         upload_dir.mkdir(parents=True, exist_ok=True)
-        items: list[tuple[Path, str]] = []
+        staged: list[tuple[Path, str, list]] = []
         accepted = []
         for doc in docs:
+            images: list = []
             try:
-                markdown = feishu.doc_to_markdown(token, doc)
+                markdown = feishu.doc_to_markdown(token, doc, images_out=images)
             except Exception as e:  # noqa: BLE001 —— 单篇失败不拖垮整批
                 accepted.append(f"{doc['title']}（拉取失败: {e}）")
                 continue
             filename = f"{Path(doc['title']).name or '未命名'}.md"
             dest = upload_dir / f"{uuid.uuid4()}-{filename}"
             dest.write_text(markdown, encoding="utf-8")
-            items.append((dest, filename))
+            staged.append((dest, filename, images))
             accepted.append(filename)
-        bg.add_task(_ingest_batch, kb_id, items, "auto")
-        return {"accepted": accepted, "total": len(items)}
+        bg.add_task(_ingest_feishu_batch, kb_id, staged, token)
+        return {"accepted": accepted, "total": len(staged)}
+
+    def _ingest_feishu_batch(kb_id: str, staged: list, feishu_token: str) -> None:
+        """飞书批次专用 bg：逐篇摄取拿 doc_id 后，下载该篇图片素材落
+        DocumentImage（heading 锚，回答命中章节即附图）。单图失败只损失
+        那张图；重导命中 content_hash 去重时已有插图的文档跳过图片写入。"""
+        import io as _io
+        import logging as _logging
+
+        from kbase import feishu
+        from kbase.doc_images import MIN_BYTES, MIN_DIMENSION
+        from kbase.models import DocumentImage
+        _logger = _logging.getLogger(__name__)
+        for path, name, images in staged:
+            try:
+                doc_id = pipeline.ingest_file(kb_id, path, name, "auto")
+            except Exception as e:  # noqa: BLE001 —— 批次隔离，失败已由 pipeline 落库
+                _logger.warning("飞书文档 %s 摄取失败: %s", name, e)
+                continue
+            if not images:
+                continue
+            with sf() as s:
+                if (s.query(DocumentImage)
+                        .filter(DocumentImage.doc_id == doc_id).count()):
+                    continue                     # 重导去重：插图已在
+            img_dir = cfg.data_dir / "files" / doc_id / "images"
+            rows = []
+            for i, im in enumerate(images):
+                try:
+                    from PIL import Image as PILImage
+                    data = feishu.download_media(feishu_token, im["token"])
+                    if len(data) < MIN_BYTES:
+                        continue
+                    pil = PILImage.open(_io.BytesIO(data))
+                    width, height = pil.size
+                    if width < MIN_DIMENSION or height < MIN_DIMENSION:
+                        continue
+                    fmt = (pil.format or "PNG").lower()
+                    ext = "jpg" if fmt in ("jpeg", "jpg") else fmt
+                    filename = f"fs{i + 1}.{ext}"
+                    img_dir.mkdir(parents=True, exist_ok=True)
+                    (img_dir / filename).write_bytes(data)
+                    rows.append(DocumentImage(
+                        id=str(uuid.uuid4()), doc_id=doc_id, page=0,
+                        heading=im.get("heading") or None, filename=filename,
+                        width=width, height=height))
+                except Exception as e:  # noqa: BLE001 —— 单图容错
+                    _logger.warning("飞书图片下载失败（doc=%s token=%s）: %s "
+                                    "——若为 403 需应用开通 drive 读权限",
+                                    name, im.get("token"), e)
+            if rows:
+                with sf() as s:
+                    s.add_all(rows)
+                    s.commit()
 
     @router.post("/demo-data", dependencies=[deps.require_editor, deps.audit_mutation])
     def load_demo_data(request: Request, bg: BackgroundTasks):
