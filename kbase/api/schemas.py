@@ -40,6 +40,20 @@ class UrlImportBody(BaseModel):
     url: str
 
 
+class SmtpSettingsBody(BaseModel):
+    """发件箱配置（账号通知/找回密码等系统邮件）。password=None 保留旧值。"""
+    host: str = Field(min_length=1)
+    port: int = Field(default=465, ge=1, le=65535)
+    user: str = Field(min_length=1)
+    password: str | None = None
+    from_addr: str = ""
+    from_name: str = "KBase"
+
+
+class SmtpTestBody(BaseModel):
+    to: str = Field(min_length=3)
+
+
 class FeishuCredentialsBody(BaseModel):
     """飞书自建应用凭据（页面维护）。"""
     app_id: str = Field(min_length=1)

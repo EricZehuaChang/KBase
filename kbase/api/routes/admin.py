@@ -1,7 +1,7 @@
 """管理域路由：用户管理、API Key、审计查询、许可证状态（spec §3/§5，G3）。"""
 import uuid
 
-from fastapi import HTTPException, Query
+from fastapi import BackgroundTasks, HTTPException, Query, Request
 
 from kbase import qa_stats
 from kbase.api.routes import RouteDeps
@@ -87,7 +87,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
             return [_user_out(u) for u in rows]
 
     @router.post("/users", dependencies=[deps.require_admin, deps.audit_mutation])
-    def create_user(body: UserCreate):
+    def create_user(body: UserCreate, request: Request, bg: BackgroundTasks):
         with sf() as s:
             if s.query(User).filter_by(username=body.username).first() is not None:
                 raise HTTPException(409, f"用户名已存在: {body.username}")
@@ -98,7 +98,28 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
             s.add(user)
             s.commit()
             s.refresh(user)
-            return _user_out(user)
+            out = _user_out(user)
+        # 账号通知邮件：填了邮箱且发件箱已配置 → 后台发送（发信失败只落
+        # 日志，不影响建号——邮件是通知增强，不是建号的硬依赖）
+        if body.email:
+            from kbase import mailer
+            if mailer.status(sf)["configured"]:
+                login_url = str(request.base_url).rstrip("/")
+
+                def _notify(to=body.email, username=body.username,
+                            password=body.password, url=login_url):
+                    import logging as _logging
+                    try:
+                        mailer.send_mail(sf, to, "KBase 账号已开通",
+                            f"您的 KBase 知识库账号已创建：\n\n"
+                            f"登录地址：{url}\n用户名：{username}\n"
+                            f"初始密码：{password}\n\n"
+                            f"首次登录后请点击顶栏钥匙图标修改密码。")
+                    except Exception as e:  # noqa: BLE001
+                        _logging.getLogger(__name__).warning(
+                            "账号通知邮件发送失败（%s）: %s", to, e)
+                bg.add_task(_notify)
+        return out
 
     @router.put("/users/{user_id}", dependencies=[deps.require_admin, deps.audit_mutation])
     def update_user(user_id: str, body: UserUpdate):

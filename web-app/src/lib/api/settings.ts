@@ -127,6 +127,33 @@ export function deleteEmbedderKey(id: string): Promise<{ ok: boolean }> {
   return req(`/api/settings/embedder-keys/${id}`, { method: "DELETE" });
 }
 
+// ---- 发件箱（SMTP，账号通知等系统邮件；密码只写不回显） ----
+
+export interface SmtpStatus {
+  configured: boolean;
+  host: string | null;
+  port: number;
+  user: string | null;
+  from_addr: string | null;
+  from_name: string | null;
+  has_password: boolean;
+}
+
+export function getSmtpSettings(): Promise<SmtpStatus> {
+  return req("/api/settings/smtp");
+}
+
+export function putSmtpSettings(body: {
+  host: string; port: number; user: string;
+  password?: string | null; from_addr: string; from_name: string;
+}): Promise<{ ok: boolean }> {
+  return req("/api/settings/smtp", jsonInit(body, "PUT"));
+}
+
+export function testSmtp(to: string): Promise<{ ok: boolean }> {
+  return req("/api/settings/smtp/test", jsonInit({ to }));
+}
+
 // ---- 飞书连接器凭据（页面维护，secret 脱敏） ----
 
 export interface FeishuStatus {
