@@ -110,7 +110,7 @@ def feishu_stub(monkeypatch):
          "image": {"token": "media-token-1"}},
     ])
     monkeypatch.setattr(feishu, "download_media",
-                        lambda t, mt: _jpeg_bytes())
+                        lambda t, mt, doc_token=None: _jpeg_bytes())
 
 
 def test_import_requires_credentials(tmp_path, fake_embedder):
