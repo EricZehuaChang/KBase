@@ -125,10 +125,17 @@ def list_children(token: str, space_id: str,
         page_token = data.get("page_token")
 
 
-def download_media(token: str, media_token: str) -> bytes:
+def download_media(token: str, media_token: str,
+                   doc_token: str | None = None) -> bytes:
     """下载文档内嵌素材（图片）：drive medias download 会 302 到 CDN。
-    可能需要应用开通 drive 读权限——失败由调用方按单图容错处理。"""
+    飞书坑（1.95 真机实测）：docx 文档里的图片素材必须带 extra 参数声明
+    来源文档（drive_route_token=文档 obj_token），否则 400 Bad Request。"""
+    import json as _json
+    params = {}
+    if doc_token:
+        params["extra"] = _json.dumps({"drive_route_token": doc_token})
     resp = httpx.get(f"{FEISHU_BASE}/drive/v1/medias/{media_token}/download",
+                     params=params,
                      headers={"Authorization": f"Bearer {token}"},
                      timeout=30.0, follow_redirects=True)
     resp.raise_for_status()
@@ -299,5 +306,6 @@ def doc_to_markdown(token: str, doc: dict,
     if images_out is not None:
         for im in collected or []:
             im["heading"] = im["heading"] or doc["title"]
+            im["doc_token"] = doc["obj_token"]   # 素材下载的 extra 来源声明
             images_out.append(im)
     return "\n\n".join(["\n".join(prefix_lines), body])

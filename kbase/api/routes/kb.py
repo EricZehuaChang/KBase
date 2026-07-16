@@ -363,7 +363,8 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
             for i, im in enumerate(images):
                 try:
                     from PIL import Image as PILImage
-                    data = feishu.download_media(feishu_token, im["token"])
+                    data = feishu.download_media(feishu_token, im["token"],
+                                                 doc_token=im.get("doc_token"))
                     if len(data) < MIN_BYTES:
                         continue
                     pil = PILImage.open(_io.BytesIO(data))
