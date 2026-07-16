@@ -125,6 +125,16 @@ def list_children(token: str, space_id: str,
         page_token = data.get("page_token")
 
 
+def download_media(token: str, media_token: str) -> bytes:
+    """下载文档内嵌素材（图片）：drive medias download 会 302 到 CDN。
+    可能需要应用开通 drive 读权限——失败由调用方按单图容错处理。"""
+    resp = httpx.get(f"{FEISHU_BASE}/drive/v1/medias/{media_token}/download",
+                     headers={"Authorization": f"Bearer {token}"},
+                     timeout=30.0, follow_redirects=True)
+    resp.raise_for_status()
+    return resp.content
+
+
 def fetch_doc_blocks(token: str, document_id: str) -> list[dict]:
     """docx 全部块（分页取全，平铺列表，树关系在 parent_id/children）。"""
     items: list[dict] = []
@@ -155,11 +165,13 @@ _HEADING_FIELDS = {3: "heading1", 4: "heading2", 5: "heading3", 6: "heading4",
                    11: "heading9"}
 
 
-def blocks_to_markdown(blocks: list[dict], base_heading_level: int = 0) -> str:
+def blocks_to_markdown(blocks: list[dict], base_heading_level: int = 0,
+                       images_out: list | None = None) -> str:
     """飞书 docx 块 → Markdown。base_heading_level：文档内标题整体下移的
     级数（wiki 路径占用了前几级标题时传入，保持层级单调）。
-    一期覆盖：段落/标题1-9/无序/有序/代码/引用/分割线/表格；图片等
-    其余块型输出占位注释（二期接 media 下载进插图体系）。"""
+    覆盖：段落/标题1-9/无序/有序/代码/引用/分割线/表格。
+    images_out：传入列表时收集图片块 [{token, heading}]——heading 为图片
+    所在章节标题（caption 级锚，回答命中该章节即附图）；不传则图片跳过。"""
     by_id = {b.get("block_id"): b for b in blocks}
     page = next((b for b in blocks if b.get("block_type") == 1), None)
     order = (page or {}).get("children", []) or [
@@ -167,11 +179,14 @@ def blocks_to_markdown(blocks: list[dict], base_heading_level: int = 0) -> str:
 
     lines: list[str] = []
     ordered_counter = 0
+    current_heading = ""
     for bid in order:
         b = by_id.get(bid)
         if b is None:
             continue
         btype = b.get("block_type")
+        if btype in _HEADING_TYPES:
+            current_heading = _text_of(b, _HEADING_FIELDS[btype])
         if btype != 13:
             ordered_counter = 0
         if btype == 2:                                   # 段落
@@ -204,8 +219,11 @@ def blocks_to_markdown(blocks: list[dict], base_heading_level: int = 0) -> str:
             if md_table:
                 lines.append(md_table)
                 lines.append("")
-        elif btype == 27:                                # 图片：一期占位
-            lines.append("<!-- 图片（飞书素材，二期接入插图体系） -->")
+        elif btype == 27:                                # 图片 → 插图体系
+            media_token = (b.get("image") or {}).get("token")
+            if images_out is not None and media_token:
+                images_out.append({"token": media_token,
+                                   "heading": current_heading})
         # 其余块型（多维表格/画板/附件等）静默跳过——如实不猜内容
     return "\n".join(lines).strip() + "\n"
 
@@ -262,10 +280,12 @@ def collect_wiki_docs(token: str, space_id: str,
     return results
 
 
-def doc_to_markdown(token: str, doc: dict) -> str:
+def doc_to_markdown(token: str, doc: dict,
+                    images_out: list | None = None) -> str:
     """单个 wiki 文档 → 带层级前缀的 Markdown：wiki 路径占标题前几级，
     文档标题接续其后，正文标题整体下移，保证 heading_path 完整呈现
-    "空间路径 > 文档 > 文内章节"。"""
+    "空间路径 > 文档 > 文内章节"。images_out 见 blocks_to_markdown；
+    图片出现在任何文内标题之前时锚点回落文档标题。"""
     blocks = fetch_doc_blocks(token, doc["obj_token"])
     prefix_lines = []
     level = 1
@@ -273,5 +293,11 @@ def doc_to_markdown(token: str, doc: dict) -> str:
         prefix_lines.append("#" * min(level, 5) + " " + seg)
         level += 1
     prefix_lines.append("#" * min(level, 6) + " " + doc["title"])
-    body = blocks_to_markdown(blocks, base_heading_level=min(level, 5))
+    collected: list | None = [] if images_out is not None else None
+    body = blocks_to_markdown(blocks, base_heading_level=min(level, 5),
+                              images_out=collected)
+    if images_out is not None:
+        for im in collected or []:
+            im["heading"] = im["heading"] or doc["title"]
+            images_out.append(im)
     return "\n\n".join(["\n".join(prefix_lines), body])
