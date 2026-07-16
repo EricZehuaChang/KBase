@@ -15,7 +15,8 @@ from kbase import model_catalog, providers_store
 from kbase.api.routes import RouteDeps
 from kbase.api.schemas import (ActiveProviderBody, EmbedderKeyBody,
                                FeishuCredentialsBody, ModelRefreshBody,
-                               ProviderCreate, ProviderUpdate)
+                               ProviderCreate, ProviderUpdate,
+                               SmtpSettingsBody, SmtpTestBody)
 from kbase.api.services import Services
 
 logger = logging.getLogger(__name__)
@@ -92,6 +93,35 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         if not embedder_keys.delete_key(sf, option_id):
             raise HTTPException(404, f"该选项未配置页面密钥: {option_id}")
         svc.embedder_pool.invalidate(option_id)   # 回落到 api_key_env
+        return {"ok": True}
+
+    # ---- 发件箱（SMTP，账号通知/系统邮件；密码只写不回显） ----
+
+    @router.get("/settings/smtp", dependencies=[deps.require_admin])
+    def get_smtp():
+        from kbase import mailer
+        return mailer.status(sf)
+
+    @router.put("/settings/smtp",
+                dependencies=[deps.require_admin, deps.audit_mutation])
+    def put_smtp(body: SmtpSettingsBody):
+        from kbase import mailer
+        mailer.set_settings(sf, host=body.host.strip(), port=body.port,
+                            user=body.user.strip(), password=body.password,
+                            from_addr=body.from_addr.strip(),
+                            from_name=body.from_name.strip() or "KBase")
+        return {"ok": True}
+
+    @router.post("/settings/smtp/test",
+                 dependencies=[deps.require_admin, deps.audit_mutation])
+    def test_smtp(body: SmtpTestBody):
+        """发一封测试邮件验证配置连通（同步等结果，失败给可读原因）。"""
+        from kbase import mailer
+        try:
+            mailer.send_mail(sf, body.to.strip(), "KBase 发件箱测试",
+                             "这是一封来自 KBase 的测试邮件。收到即说明发件箱配置正确。")
+        except Exception as e:  # noqa: BLE001 —— SMTP 侧错误转可读信息
+            raise HTTPException(502, f"发送失败: {e}") from e
         return {"ok": True}
 
     # ---- 飞书连接器凭据（页面维护，secret 脱敏） ----

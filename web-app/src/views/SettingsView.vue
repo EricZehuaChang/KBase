@@ -18,6 +18,7 @@ import UserManagementCard from "@/components/UserManagementCard.vue";
 import ApiKeyCard from "@/components/ApiKeyCard.vue";
 import EmbedderKeysCard from "@/components/EmbedderKeysCard.vue";
 import FeishuCard from "@/components/FeishuCard.vue";
+import SmtpCard from "@/components/SmtpCard.vue";
 import LicenseCard from "@/components/LicenseCard.vue";
 import OpsDashboardCard from "@/components/OpsDashboardCard.vue";
 import {
@@ -248,6 +249,8 @@ onMounted(async () => {
               </div>
             </div>
           </div>
+
+          <SmtpCard v-if="canAdminister(currentRole ?? '')" />
 
           <LicenseCard v-if="canAdminister(currentRole ?? '')" />
 
