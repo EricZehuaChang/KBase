@@ -160,3 +160,32 @@ export function originalPreviewKind(filename: string | null | undefined): Previe
   if (IMAGE_EXTS.has(ext)) return "image";
   return null;
 }
+
+// ---- 回答气泡的行内 Markdown 渲染（生产反馈：LLM 输出的 **加粗** 原样
+// 显示星号）。安全边界：输入先全量 HTML 转义，之后只由本函数拼接白名单
+// 标签（strong/em/code）——进 v-html 的是受控产物而非原始字符串，与
+// "不把原始字符串塞进 v-html"的防注入原则实质一致。
+// 只做行内格式；块级（表格/多级列表）留给后续专项。 ----
+
+export function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/** 行内 Markdown → 受控 HTML：`code`（内部不再处理其他标记）、**bold**、
+ * *italic*（保守匹配，避免误伤单个星号）。 */
+export function inlineMarkdownHtml(text: string): string {
+  let html = escapeHtml(text);
+  const codes: string[] = [];
+  // 行内代码先行占位——code 内的 ** / * 属字面内容，不参与加粗斜体。
+  // 哨兵含转义后不可能出现在正文里的形态（"@@KBCODE数字@@"配合唯一批次）。
+  html = html.replace(/`([^`\n]+)`/g, (_, c: string) => {
+    codes.push(c);
+    return `@@KBCODE${codes.length - 1}@@`;
+  });
+  html = html.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, "$1<em>$2</em>");
+  html = html.replace(/@@KBCODE(\d+)@@/g, (_, i: string) =>
+    `<code class="rounded bg-[var(--surface-2)] px-1 py-0.5 text-[0.9em]">${codes[Number(i)]}</code>`);
+  return html;
+}
