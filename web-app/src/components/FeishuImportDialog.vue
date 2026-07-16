@@ -53,7 +53,19 @@ async function doImport() {
       status.value = await getFeishuStatus();
     }
     const r = await importFeishu(props.kbId, source.value.trim());
-    toast.success(`已导入 ${r.total} 篇飞书文档，解析中（层级结构已保留）`);
+    // total=0 = 树遍历成功但每篇正文都拉取失败（典型：docx 只读权限未
+    // 开通/未发布）——按失败呈现并带出首条原因，绝不能报成功（生产
+    // 实测用户被'已导入 0 篇'误导以为没反应）
+    if (r.total === 0) {
+      const first = r.accepted[0] ?? "";
+      error.value = `共发现 ${r.accepted.length} 篇文档，但正文全部拉取失败。`
+        + `首条原因：${first.slice(0, 160)}。若为 400/403，通常是应用缺少 `
+        + `docx:document:readonly 权限（开通后记得发布版本）`;
+      return;
+    }
+    const failed = r.accepted.length - r.total;
+    toast.success(`已导入 ${r.total} 篇飞书文档，解析中（层级结构已保留）`
+      + (failed > 0 ? `；${failed} 篇拉取失败已跳过` : ""));
     emit("imported");
     emit("update:open", false);
   } catch (err) {
