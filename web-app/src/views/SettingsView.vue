@@ -1,10 +1,12 @@
 <script setup lang="ts">
-// 设置页编排：Provider 卡片网格（ProviderCard）+ 添加/编辑 Dialog
-// （ProviderFormDialog）+ 删除确认 + 系统状态面板（healthz）+ 主题 Segmented。
-// 测试状态按 provider 名集中持有（testStates），编辑保存后作废对应徽章。
-import { onMounted, reactive, ref } from "vue";
+// 设置页编排（分栏版，生产 UX 反馈驱动）：左侧子导航分五组，右侧只渲染
+// 选中组——此前全部区块堆一页纵向滚动，找配置要滚很久。选中组同步到
+// URL ?tab=（深链接/刷新保位）。各功能卡片组件不动，本文件只管布局与
+// Provider 区块自身的编排（测试状态按 provider 名集中持有 testStates）。
+import { computed, onMounted, reactive, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { toast } from "vue-sonner";
-import { Plus } from "@lucide/vue";
+import { Boxes, Cpu, Gauge, Plus, Settings, Users } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -25,6 +27,28 @@ import {
 import { healthDot, type ProviderTestState } from "@/lib/settings-utils";
 import { canAdminister } from "@/lib/auth-utils";
 import { theme, setTheme } from "@/lib/theme";
+
+// ---- 分栏导航：五组，选中态走 URL ?tab=（刷新/分享保位） ----
+const route = useRoute();
+const router = useRouter();
+
+const SECTIONS = [
+  { id: "providers", label: "模型服务", icon: Cpu, desc: "LLM Provider 与模型目录" },
+  { id: "embedders", label: "向量模型", icon: Boxes, desc: "云端向量模型密钥" },
+  { id: "access", label: "用户与权限", icon: Users, desc: "账号、角色与 API Key" },
+  { id: "ops", label: "运营看板", icon: Gauge, desc: "问答量、拒答与反馈" },
+  { id: "system", label: "系统", icon: Settings, desc: "状态、许可证与外观" },
+] as const;
+type SectionId = (typeof SECTIONS)[number]["id"];
+
+const validIds = new Set(SECTIONS.map((s) => s.id));
+const tab = ref<SectionId>(
+  typeof route.query.tab === "string" && validIds.has(route.query.tab as SectionId)
+    ? (route.query.tab as SectionId) : "providers");
+watch(tab, (v) => {
+  router.replace({ query: { ...route.query, tab: v } });
+});
+const currentSection = computed(() => SECTIONS.find((s) => s.id === tab.value)!);
 
 const providers = ref<Provider[]>([]);
 const active = ref<string | null>(null);
@@ -123,92 +147,127 @@ onMounted(async () => {
   <div class="p-6">
     <PageHeader title="设置" subtitle="模型 Provider、用户与密钥、许可证与系统状态">
       <template #actions>
-        <Button size="sm" @click="openCreateDialog">
+        <Button v-if="tab === 'providers'" size="sm" @click="openCreateDialog">
           <Plus class="size-3.5" />
           添加 Provider
         </Button>
       </template>
     </PageHeader>
 
-    <!-- Provider 卡片列表 -->
-    <section class="mt-4">
-      <h2 class="mb-3 text-sm font-medium text-[var(--text-2)]">模型 Provider</h2>
-      <p v-if="loading" class="text-sm text-[var(--text-3)]">加载中…</p>
-      <p v-else-if="!providers.length" class="text-sm text-[var(--text-3)]">
-        暂无 provider，请先添加一个
-      </p>
-      <div v-else class="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
-        <ProviderCard
-          v-for="p in providers"
-          :key="p.name"
-          :provider="p"
-          :is-active="p.name === active"
-          :test-state="testStates[p.name]"
-          @set-active="handleSetActive(p.name)"
-          @edit="openEditDialog(p)"
-          @delete="deleteTarget = p"
-          @test="handleTest(p.name)"
-        />
-      </div>
-    </section>
+    <div class="flex gap-6">
+      <!-- 左侧分栏导航（Vben/Soybean 设置页范式）：每组一行图标+名称，
+      选中态与管理端侧栏同语言（accent-weak 底+左指示条） -->
+      <aside class="w-48 shrink-0">
+        <nav class="sticky top-4 flex flex-col gap-0.5">
+          <button
+            v-for="s in SECTIONS"
+            :key="s.id"
+            type="button"
+            class="relative flex items-center gap-2.5 rounded-[var(--radius-ctl)] px-3 py-2 text-left text-sm transition-colors"
+            :class="tab === s.id
+              ? 'bg-[var(--accent-weak)] font-medium text-[var(--accent-text)]'
+              : 'text-[var(--text-2)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]'"
+            @click="tab = s.id"
+          >
+            <span
+              v-if="tab === s.id"
+              class="absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-[var(--accent)]"
+            />
+            <component :is="s.icon" class="size-4" />
+            {{ s.label }}
+          </button>
+        </nav>
+      </aside>
 
-    <!-- 系统状态面板 -->
-    <section class="mt-8">
-      <h2 class="mb-3 text-sm font-medium text-[var(--text-2)]">系统状态</h2>
-      <div v-if="healthError" class="rounded-[var(--radius-card)] bg-[var(--err-weak)] p-4 text-sm text-[var(--err)]">
-        ⚠️ 健康检查失败：{{ healthError }}
-      </div>
-      <div
-        v-else-if="health"
-        class="flex flex-wrap gap-6 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-4"
-      >
-        <div v-for="key in (['status', 'embedder', 'vectorstore', 'reranker'] as const)" :key="key" class="flex items-center gap-2">
-          <span class="size-2.5 rounded-full" :class="healthDot(health[key]).class" />
-          <span class="text-sm text-[var(--text-2)]">
-            {{ key }}：<span class="text-[var(--text)]">{{ healthDot(health[key]).label }}</span>
-          </span>
-        </div>
-      </div>
-    </section>
+      <!-- 右侧内容区：只渲染选中组 -->
+      <div class="min-w-0 flex-1">
+        <p class="mb-4 text-sm text-[var(--text-3)]">{{ currentSection.desc }}</p>
 
-    <!-- 管理员专属：用户管理 / API Key / 许可证状态。后端已用 require_admin
-         强制校验，这里的 v-if 只是 UX 防呆——非 admin 理论上进不到这个路由
-         （AppShell 隐藏了设置入口），双重防御。 -->
-    <template v-if="canAdminister(currentRole ?? '')">
-      <section class="mt-8">
-        <h2 class="mb-3 text-sm font-medium text-[var(--text-2)]">管理</h2>
-        <div class="flex flex-col gap-4">
-          <OpsDashboardCard />
-          <UserManagementCard />
-          <ApiKeyCard />
+        <!-- 模型服务 -->
+        <section v-if="tab === 'providers'">
+          <p v-if="loading" class="text-sm text-[var(--text-3)]">加载中…</p>
+          <p v-else-if="!providers.length" class="text-sm text-[var(--text-3)]">
+            暂无 provider，请先添加一个
+          </p>
+          <div v-else class="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
+            <ProviderCard
+              v-for="p in providers"
+              :key="p.name"
+              :provider="p"
+              :is-active="p.name === active"
+              :test-state="testStates[p.name]"
+              @set-active="handleSetActive(p.name)"
+              @edit="openEditDialog(p)"
+              @delete="deleteTarget = p"
+              @test="handleTest(p.name)"
+            />
+          </div>
+        </section>
+
+        <!-- 向量模型 -->
+        <section v-else-if="tab === 'embedders'">
           <EmbedderKeysCard />
-          <LicenseCard />
-        </div>
-      </section>
-    </template>
+        </section>
 
-    <!-- 主题切换 -->
-    <section class="mt-8">
-      <h2 class="mb-3 text-sm font-medium text-[var(--text-2)]">外观</h2>
-      <div class="inline-flex rounded-[var(--radius-ctl)] border border-[var(--border)] bg-[var(--surface)] p-0.5">
-        <button
-          type="button"
-          class="rounded-[calc(var(--radius-ctl)-2px)] px-3 py-1.5 text-sm transition-colors"
-          :class="theme === 'light' ? 'bg-[var(--accent-weak)] text-[var(--accent-text)]' : 'text-[var(--text-2)]'"
-          @click="setTheme('light')"
-        >
-          亮
-        </button>
-        <button
-          type="button"
-          class="rounded-[calc(var(--radius-ctl)-2px)] px-3 py-1.5 text-sm transition-colors"
-          :class="theme === 'dark' ? 'bg-[var(--accent-weak)] text-[var(--accent-text)]' : 'text-[var(--text-2)]'"
-          @click="setTheme('dark')"
-        >
-          暗
-        </button>
+        <!-- 用户与权限（admin；后端 require_admin 强制，v-if 仅 UX 防呆） -->
+        <section v-else-if="tab === 'access'" class="flex flex-col gap-4">
+          <template v-if="canAdminister(currentRole ?? '')">
+            <UserManagementCard />
+            <ApiKeyCard />
+          </template>
+        </section>
+
+        <!-- 运营看板 -->
+        <section v-else-if="tab === 'ops'">
+          <OpsDashboardCard v-if="canAdminister(currentRole ?? '')" />
+        </section>
+
+        <!-- 系统：状态 + 许可证 + 外观 -->
+        <section v-else-if="tab === 'system'" class="flex flex-col gap-6">
+          <div>
+            <h2 class="mb-3 text-sm font-medium text-[var(--text-2)]">系统状态</h2>
+            <div v-if="healthError" class="rounded-[var(--radius-card)] bg-[var(--err-weak)] p-4 text-sm text-[var(--err)]">
+              ⚠️ 健康检查失败：{{ healthError }}
+            </div>
+            <div
+              v-else-if="health"
+              class="flex flex-wrap gap-6 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-4"
+            >
+              <div v-for="key in (['status', 'embedder', 'vectorstore', 'reranker'] as const)" :key="key" class="flex items-center gap-2">
+                <span class="size-2.5 rounded-full" :class="healthDot(health[key]).class" />
+                <span class="text-sm text-[var(--text-2)]">
+                  {{ key }}：<span class="text-[var(--text)]">{{ healthDot(health[key]).label }}</span>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <LicenseCard v-if="canAdminister(currentRole ?? '')" />
+
+          <div>
+            <h2 class="mb-3 text-sm font-medium text-[var(--text-2)]">外观</h2>
+            <div class="inline-flex rounded-[var(--radius-ctl)] border border-[var(--border)] bg-[var(--surface)] p-0.5">
+              <button
+                type="button"
+                class="rounded-[calc(var(--radius-ctl)-2px)] px-3 py-1.5 text-sm transition-colors"
+                :class="theme === 'light' ? 'bg-[var(--accent-weak)] text-[var(--accent-text)]' : 'text-[var(--text-2)]'"
+                @click="setTheme('light')"
+              >
+                亮
+              </button>
+              <button
+                type="button"
+                class="rounded-[calc(var(--radius-ctl)-2px)] px-3 py-1.5 text-sm transition-colors"
+                :class="theme === 'dark' ? 'bg-[var(--accent-weak)] text-[var(--accent-text)]' : 'text-[var(--text-2)]'"
+                @click="setTheme('dark')"
+              >
+                暗
+              </button>
+            </div>
+          </div>
+        </section>
       </div>
-    </section>
+    </div>
   </div>
 
   <ProviderFormDialog v-model:open="dialogOpen" :provider="editTarget" @saved="handleSaved" />
