@@ -127,6 +127,27 @@ export function deleteEmbedderKey(id: string): Promise<{ ok: boolean }> {
   return req(`/api/settings/embedder-keys/${id}`, { method: "DELETE" });
 }
 
+// ---- 飞书连接器凭据（页面维护，secret 脱敏） ----
+
+export interface FeishuStatus {
+  configured: boolean;
+  app_id: string | null;
+  secret_hint: string | null;
+}
+
+export function getFeishuStatus(): Promise<FeishuStatus> {
+  return req("/api/settings/feishu");
+}
+
+export function putFeishuCredentials(appId: string, appSecret: string): Promise<{ ok: boolean }> {
+  return req("/api/settings/feishu",
+             jsonInit({ app_id: appId, app_secret: appSecret }, "PUT"));
+}
+
+export function deleteFeishuCredentials(): Promise<{ ok: boolean }> {
+  return req("/api/settings/feishu", { method: "DELETE" });
+}
+
 export function healthz(): Promise<HealthzResponse> {
   return req("/healthz");
 }

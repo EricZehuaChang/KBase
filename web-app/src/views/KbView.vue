@@ -19,6 +19,7 @@ import ChunkManagerDialog from "@/components/ChunkManagerDialog.vue";
 import ReviewDialog from "@/components/ReviewDialog.vue";
 import KbGrantsDialog from "@/components/KbGrantsDialog.vue";
 import PageHeader from "@/components/PageHeader.vue";
+import FeishuImportDialog from "@/components/FeishuImportDialog.vue";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -189,6 +190,9 @@ async function handleImportUrl() {
     await loadDocs();
   }
 }
+
+// ---- 飞书知识库导入（连接器一期）----
+const feishuOpen = ref(false);
 
 // ---- POC 演示数据一键装载（E）----
 const demoLoading = ref(false);
@@ -388,6 +392,9 @@ onMounted(loadKbs);
         <Button variant="outline" size="sm" :disabled="importing || !importUrlText.trim()" @click="handleImportUrl">
           {{ importing ? "导入中…" : "导入网页" }}
         </Button>
+        <Button variant="outline" size="sm" @click="feishuOpen = true">
+          从飞书导入
+        </Button>
       </div>
 
       <!-- E 上传进度条：仅传输阶段显示；解析/向量化进度看文档状态列 -->
@@ -469,6 +476,7 @@ onMounted(loadKbs);
   <ChunkManagerDialog v-model:open="chunkOpen" :doc="chunkDoc" />
   <ReviewDialog v-model:open="reviewOpen" :doc="reviewDoc" @approved="loadDocs" />
   <KbGrantsDialog v-model:open="grantsOpen" :kb="grantsKb" />
+  <FeishuImportDialog v-model:open="feishuOpen" :kb-id="kbId" @imported="loadDocs" />
 
   <!-- 删除知识库确认 Dialog -->
   <Dialog :open="!!kbDeleteTarget" @update:open="(v) => { if (!v) kbDeleteTarget = null; }">

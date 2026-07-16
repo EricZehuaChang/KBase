@@ -40,6 +40,18 @@ class UrlImportBody(BaseModel):
     url: str
 
 
+class FeishuCredentialsBody(BaseModel):
+    """飞书自建应用凭据（页面维护）。"""
+    app_id: str = Field(min_length=1)
+    app_secret: str = Field(min_length=1)
+
+
+class FeishuImportBody(BaseModel):
+    """飞书知识库导入：source 收 wiki 节点链接（导该子树）或 space_id
+    （导整个空间）。"""
+    source: str = Field(min_length=1)
+
+
 class FeedbackBody(BaseModel):
     """问答反馈（M6-4）：rating 只收 1（赞）/-1（踩），note 可选补充说明。"""
     rating: Literal[1, -1]
