@@ -23,7 +23,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  listKbs, createKb, deleteKb, listDocs, uploadDocsWithProgress, deleteDoc, retryDoc, retryOcr,
+  listKbs, createKb, deleteKb, uploadDocsWithProgress, deleteDoc, retryDoc, retryOcr,
   loadDemoData, importUrl,
   listEmbedders, currentRole,
   type Kb, type DocumentItem, type EmbeddersCatalog,
@@ -55,20 +55,10 @@ const currentKb = computed(() => kbs.value.find((k) => k.id === kbId.value) ?? n
 
 const { docs, loading: docsLoading, loadDocs, stopPolling } = useKbDocs(kbId);
 
-// 卡片网格用：每个 kb 的文档数（并行拉取，失败静默为 0，不阻塞网格渲染）
-const docCounts = ref<Record<string, number>>({});
-
+// 文档数由 GET /api/kb 的 doc_count 随列表一次返回——此前前端逐库拉文档
+// 列表数数（N+1 请求），卡片计数会先显示 0 再跳变，体验差（生产反馈）。
 async function loadKbs() {
   kbs.value = await listKbs();
-  const counts: Record<string, number> = {};
-  await Promise.all(kbs.value.map(async (kb) => {
-    try {
-      counts[kb.id] = (await listDocs(kb.id)).length;
-    } catch {
-      counts[kb.id] = 0;
-    }
-  }));
-  docCounts.value = counts;
 }
 
 function openKb(id: string) {
@@ -320,7 +310,7 @@ onMounted(loadKbs);
             </button>
           </div>
           <div class="truncate pr-12 font-medium">{{ kb.name }}</div>
-          <div class="mt-1 text-sm text-[var(--text-3)]">{{ docCounts[kb.id] ?? 0 }} 篇文档</div>
+          <div class="mt-1 text-sm text-[var(--text-3)]">{{ kb.doc_count ?? 0 }} 篇文档</div>
         </div>
 
         <button
@@ -487,7 +477,7 @@ onMounted(loadKbs);
         <DialogTitle>删除知识库</DialogTitle>
         <DialogDescription>
           将删除「{{ kbDeleteTarget?.name }}」及其
-          {{ kbDeleteTarget ? (docCounts[kbDeleteTarget.id] ?? 0) : 0 }}
+          {{ kbDeleteTarget?.doc_count ?? 0 }}
           篇文档与相关会话，不可恢复。
         </DialogDescription>
       </DialogHeader>

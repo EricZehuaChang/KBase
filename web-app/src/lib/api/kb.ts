@@ -27,6 +27,9 @@ export interface KbConfig {
 export interface Kb {
   id: string;
   name: string;
+  // 文档数随库列表一次返回（服务端 group by），卡片计数不再异步跳变；
+  // createKb 的响应没有该字段（新库恒为 0），故可选
+  doc_count?: number;
   config: KbConfig | null;
 }
 
