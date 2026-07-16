@@ -30,6 +30,9 @@ services:
       # 国内网络：bge-m3/reranker 权重从 HF 镜像站下载（如
       # https://hf-mirror.com）；留空走官方源。
       HF_ENDPOINT: ${HF_ENDPOINT:-}
+      # 首启下载完权重后建议置 1：跳过启动期 HF 在线校验（镜像站故障
+      # 会卡启动，1.95 部署实测 hf-mirror 504 让容器卡 unhealthy）。
+      HF_HUB_OFFLINE: ${HF_HUB_OFFLINE:-}
     volumes:
       # 应用数据（SQLite 数据库 + Chroma 持久化目录 + 上传原件），持久化到宿主。
       - ./data:/app/data
