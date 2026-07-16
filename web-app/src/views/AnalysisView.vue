@@ -189,7 +189,7 @@ watch(() => route.query.q, async (q) => {
 
       <div v-else-if="searched && !kbHasDocs" class="py-12 text-center text-[var(--text-3)]">
         该知识库暂无文档，请先前往
-        <RouterLink :to="{ path: '/kb', query: { kb: kbId } }" class="text-[var(--accent-text)] underline">
+        <RouterLink :to="{ path: '/', query: { kb: kbId } }" class="text-[var(--accent-text)] underline">
           知识库管理页
         </RouterLink>
         导入文档
