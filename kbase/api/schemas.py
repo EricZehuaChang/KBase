@@ -280,3 +280,18 @@ class ChangePasswordBody(BaseModel):
     """登录用户自助改密：必须携带旧密码复核（防止离席被人改密顶号）。"""
     old_password: str
     new_password: str = Field(min_length=6)
+
+
+class ProfileBody(BaseModel):
+    """登录用户维护自己的资料（目前只有邮箱——用于忘记密码重置）。"""
+    email: str = Field(min_length=3)
+
+
+class ForgotBody(BaseModel):
+    """忘记密码：account 收用户名或邮箱。"""
+    account: str = Field(min_length=1)
+
+
+class ResetPasswordBody(BaseModel):
+    token: str = Field(min_length=10)
+    new_password: str = Field(min_length=6)

@@ -14,6 +14,7 @@ import { ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { KeyRound, LogOut, Sun, Moon } from "@lucide/vue";
 import ChangePasswordDialog from "@/components/ChangePasswordDialog.vue";
+import EmailPromptDialog from "@/components/EmailPromptDialog.vue";
 import { getSession, logout, type Me } from "@/lib/api";
 import { roleLabel, roleBadgeClass, canManageContent } from "@/lib/auth-utils";
 import { theme, toggleTheme } from "@/lib/theme";
@@ -44,11 +45,26 @@ const me = ref<Me | null>(null);
 // 时已经带着有效 Cookie 直接落地到 /"这种首次求值场景。
 watch(() => route.path, (path) => {
   if (path === "/login") return;
-  getSession().then((session) => { me.value = session; });
+  getSession().then((session) => {
+    me.value = session;
+    // 首登邮箱引导：没绑邮箱就提醒补（忘记密码重置的唯一通道）。
+    // "稍后再说"记 sessionStorage，本次浏览器会话内不再弹。
+    if (session && session.email === null
+        && !sessionStorage.getItem("kbase_email_prompt_dismissed")) {
+      emailPromptOpen.value = true;
+    }
+  });
   void ensureTopbarLoaded();
 }, { immediate: true });
 
 const changePwOpen = ref(false);
+const emailPromptOpen = ref(false);
+
+function handleEmailSaved(email: string) {
+  // 原地改而不是换新对象：getSession 缓存的就是这个引用，换新对象的话
+  // 下次路由变化 watch 重读缓存仍是 email:null，会再弹一次
+  if (me.value) me.value.email = email;
+}
 
 async function handleLogout() {
   try {
@@ -178,5 +194,6 @@ function enterWorkbench() {
     </main>
   </div>
   <ChangePasswordDialog v-model:open="changePwOpen" />
+  <EmailPromptDialog v-model:open="emailPromptOpen" @saved="handleEmailSaved" />
   <Toaster />
 </template>

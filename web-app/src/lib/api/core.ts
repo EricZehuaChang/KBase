@@ -64,6 +64,8 @@ export function jsonInit(body: unknown, method = "POST"): RequestInit {
 export interface Me {
   username: string;
   role: string;
+  // 账号邮箱（忘记密码重置用）；API Key 身份为 null。前端首登据此弹引导补录
+  email?: string | null;
 }
 
 export function login(username: string, password: string): Promise<Me> {
@@ -91,6 +93,21 @@ export function getSsoStatus(): Promise<{ enabled: boolean }> {
 export function changePassword(oldPassword: string, newPassword: string): Promise<{ ok: boolean }> {
   return req("/api/auth/change-password",
              jsonInit({ old_password: oldPassword, new_password: newPassword }));
+}
+
+// 登录用户维护自己的邮箱（首登引导填写，用于忘记密码重置）
+export function updateProfile(email: string): Promise<{ ok: boolean }> {
+  return req("/api/auth/profile", jsonInit({ email }, "PUT"));
+}
+
+// 忘记密码：无论账号是否存在都返回同一句话（后端防枚举）
+export function forgotPassword(account: string): Promise<{ ok: boolean; message: string }> {
+  return req("/api/auth/forgot", jsonInit({ account }));
+}
+
+// 凭邮件里的一次性 token 设新密码（登录页 ?reset_token= 流程）
+export function resetPassword(token: string, newPassword: string): Promise<{ ok: boolean }> {
+  return req("/api/auth/reset", jsonInit({ token, new_password: newPassword }));
 }
 
 // 会话探测结果模块级缓存：路由守卫每次导航都要确认"有没有会话"，但不该每次
