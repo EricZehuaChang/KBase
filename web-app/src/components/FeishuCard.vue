@@ -76,10 +76,27 @@ async function clearCredentials() {
         {{ status.configured ? "已配置" : "未配置" }}
       </Badge>
     </div>
-    <p class="mb-3 text-xs text-[var(--text-3)]">
-      飞书开放平台自建应用凭据（需授权 wiki 与 docx 只读权限）；配置后可在
-      库详情页从飞书 wiki 导入文档，层级结构自动保留
+    <p class="mb-2 text-xs text-[var(--text-3)]">
+      配置后可在库详情页从飞书 wiki 导入文档，层级结构自动保留进引用溯源
     </p>
+    <!-- 三步配置指引常驻：权限体系是飞书侧最高频的卡点，必须事前讲清 -->
+    <ol class="mb-3 list-decimal rounded-[var(--radius-ctl)] bg-[var(--surface-2)] py-2 pl-6 pr-3 text-xs leading-relaxed text-[var(--text-2)]">
+      <li>
+        <a href="https://open.feishu.cn/app" target="_blank" rel="noopener" class="text-[var(--accent-text)] underline">飞书开放平台</a>
+        创建企业自建应用，取得 App ID / App Secret
+      </li>
+      <li>
+        权限管理开通 <code class="rounded bg-black/5 px-1">wiki:wiki:readonly</code> 与
+        <code class="rounded bg-black/5 px-1">docx:document:readonly</code>
+        <a
+          v-if="status?.configured"
+          :href="`https://open.feishu.cn/app/${status.app_id}/auth?q=wiki:wiki:readonly,docx:document:readonly&op_from=openapi&token_type=tenant`"
+          target="_blank" rel="noopener" class="ml-1 text-[var(--accent-text)] underline"
+        >（一键开通）</a>，
+        并<b>创建版本发布</b>——只勾选不发布不生效
+      </li>
+      <li>目标知识库 → 设置 → 成员 → <b>添加该应用为成员</b>——仅有权限未入库读不到内容</li>
+    </ol>
 
     <div v-if="status?.configured && !editing" class="mb-3 flex items-center gap-3 text-sm">
       <span class="text-[var(--text-2)]">App ID：{{ status.app_id }}</span>
