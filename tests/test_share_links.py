@@ -93,6 +93,32 @@ def test_share_link_permissions_and_enumeration(app_on):
     assert anon.get("/api/share/no-such-token-xxxx").status_code == 404
 
 
+def test_share_image_public_access(app_on, tmp_path):
+    """附图免登录直链：token 校验 + 文档必须属于链接绑定的库 + 防穿越。"""
+    admin = _login(app_on)
+    kb = _prepare_kb_with_doc(admin)
+    doc_id = admin.get(f"/api/kb/{kb}/documents").json()[0]["id"]
+    # 落一张假图（端点只管文件系统与归属校验，不查 DocumentImage 行）
+    img_dir = tmp_path / "data" / "files" / doc_id / "images"
+    img_dir.mkdir(parents=True, exist_ok=True)
+    (img_dir / "t.png").write_bytes(b"\x89PNG-fake")
+
+    link = admin.post(f"/api/kb/{kb}/share-links", json={"name": "x"}).json()
+    anon = TestClient(app_on)
+    r = anon.get(f"/api/share/{link['token']}/images/{doc_id}/t.png")
+    assert r.status_code == 200 and r.content == b"\x89PNG-fake"
+
+    # 别的库的文档：404（不越权出图）
+    kb2 = admin.post("/api/kb", json={"name": "另一库"}).json()["id"]
+    link2 = admin.post(f"/api/kb/{kb2}/share-links", json={"name": "y"}).json()
+    assert anon.get(
+        f"/api/share/{link2['token']}/images/{doc_id}/t.png").status_code == 404
+    # 路径穿越拦截
+    assert anon.get(
+        f"/api/share/{link['token']}/images/{doc_id}/..%2Fcontent.md"
+    ).status_code == 404
+
+
 def test_advanced_ui_switch(app_on):
     """viewer 高级界面开关：默认关；admin 可开；me 按角色/开关给出单一判断源。"""
     admin = _login(app_on)

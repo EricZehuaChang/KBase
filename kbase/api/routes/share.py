@@ -8,16 +8,19 @@
   完全相同的 _run_query 编排（citations→token*→done 事件序列一致，引用/
   附图/拒答语义一致）。撤销即失效；未知/已撤销统一 404 不泄露存在性。
 """
+import mimetypes
 import secrets
 import uuid
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse
 
 from kbase.api.routes import RouteDeps
 from kbase.api.schemas import QueryBody, ShareLinkCreate
 from kbase.api.services import Services
 from kbase.audit import write_audit
-from kbase.models import KnowledgeBase, ShareLink
+from kbase.models import Document, KnowledgeBase, ShareLink
 
 
 def register(app: FastAPI, router, svc: Services, deps: RouteDeps,
@@ -84,6 +87,25 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps,
         with sf() as s:
             kb = s.get(KnowledgeBase, link.kb_id)
         return {"kb_name": kb.name, "name": link.name}
+
+    @app.get("/api/share/{token}/images/{doc_id}/{filename}")
+    def share_image(token: str, doc_id: str, filename: str):
+        """回答附图的免登录直链：/api/documents/... 是鉴权端点，匿名访客
+        取图 401 裂图（真机踩中）。校验链：token 有效 → 文档属于该链接
+        绑定的库 → 纯文件名（防 ../ 穿越）→ 出图。"""
+        link = _resolve(token)
+        with sf() as s:
+            doc = s.get(Document, doc_id)
+            if doc is None or doc.kb_id != link.kb_id:
+                raise HTTPException(404, "图片不存在")
+        safe = Path(filename).name
+        if safe != filename or not safe:
+            raise HTTPException(404, "图片不存在")
+        img_path = svc.cfg.data_dir / "files" / doc_id / "images" / safe
+        if not img_path.is_file():
+            raise HTTPException(404, "图片不存在")
+        media_type = mimetypes.guess_type(safe)[0] or "application/octet-stream"
+        return FileResponse(str(img_path), media_type=media_type)
 
     @app.post("/api/share/{token}/query")
     async def share_query(token: str, body: QueryBody, request: Request):
