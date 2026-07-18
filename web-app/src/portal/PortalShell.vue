@@ -44,7 +44,9 @@ const me = ref<Me | null>(null);
 // watch 能在每次 route.path 变化时重新判断，immediate:true 顶上"应用启动
 // 时已经带着有效 Cookie 直接落地到 /"这种首次求值场景。
 watch(() => route.path, (path) => {
-  if (path === "/login") return;
+  // /share/ 免登录页与 /login 同样跳过：匿名访客没有会话，这里发
+  // getSession() 会触发 401 拦截器把整页推去 /login（真机踩中）
+  if (path === "/login" || path.startsWith("/share/")) return;
   getSession().then((session) => {
     me.value = session;
     // 首登邮箱引导：没绑邮箱就提醒补（忘记密码重置的唯一通道）。
