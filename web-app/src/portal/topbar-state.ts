@@ -30,9 +30,18 @@ let loaded = false;
 export async function ensureTopbarLoaded(): Promise<void> {
   if (loaded) return;
   loaded = true;
-  kbs.value = await listKbs();
-  if (kbs.value.length && !kbId.value) kbId.value = kbs.value[0].id;
-  const providersResp = await listProviders();
-  providers.value = providersResp.providers;
-  if (!provider.value) provider.value = providersResp.active ?? undefined;
+  try {
+    kbs.value = await listKbs();
+    if (kbs.value.length && !kbId.value) kbId.value = kbs.value[0].id;
+    const providersResp = await listProviders();
+    providers.value = providersResp.providers;
+    if (!provider.value) provider.value = providersResp.active ?? undefined;
+  } catch (err) {
+    // 失败必须回滚闩锁：应用启动瞬间路由还是占位 "/"，PortalShell 的
+    // watch 会在未登录时提前触发一次本函数（401）——若闩锁不回滚，登录
+    // 成功后的再次调用会被永久短路，首次登录的用户面对空的知识库下拉，
+    // 只能刷新页面自救（真机 Playwright 全新会话实测踩中）。
+    loaded = false;
+    console.warn("顶栏 KB/模型加载失败（将在下次路由变化时重试）:", err);
+  }
 }
