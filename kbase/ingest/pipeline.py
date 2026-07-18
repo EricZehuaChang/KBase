@@ -173,6 +173,7 @@ class IngestPipeline:
             suffix == ".pdf" and not pdf_has_text_layer(path))
         ocr_confidence = None
         ocr_layout = None
+        odl_page_texts = None    # opendataloader 同源页文本（仅文本层 PDF 主路产出）
         if needs_ocr:
             if self._ocr is None:
                 raise ValueError("扫描件/图片需要 OCR，当前未配置 OCR 后端")
@@ -184,8 +185,18 @@ class IngestPipeline:
             # Markdown 表格进入表格感知分块，不依赖这份明细。
             ocr_layout = getattr(result, "layout", None)
         else:
-            from markitdown import MarkItDown
-            markdown = MarkItDown(enable_plugins=False).convert(str(path)).text_content
+            markdown = None
+            if suffix == ".pdf":
+                # 文本层 PDF 主路：opendataloader（真实标题层级/阅读序/边框
+                # 表格 + 同源页文本），不可用或失败返回 None 落回 markitdown
+                # ——回退即升级前现状，见 pdf_odl 模块 docstring。
+                from kbase.ingest import pdf_odl
+                parsed = pdf_odl.parse_pdf(path)
+                if parsed is not None:
+                    markdown, odl_page_texts = parsed
+            if markdown is None:
+                from markitdown import MarkItDown
+                markdown = MarkItDown(enable_plugins=False).convert(str(path)).text_content
         # \x0c（form feed）是 pdfminer/markitdown 的**页分隔符**，属于合法
         # 解析产物而非二进制垃圾——必须在下面的控制字符防线之前归一为换行，
         # 否则任何多页文本层 PDF 都会被误判"损坏"而摄取失败（M5-2 引用定位
@@ -228,11 +239,12 @@ class IngestPipeline:
 
         self._index_markdown(
             kb_id, doc_id, markdown, name,
-            pdf_locate_path=(path if (suffix == ".pdf" and not needs_ocr) else None))
+            pdf_locate_path=(path if (suffix == ".pdf" and not needs_ocr) else None),
+            page_texts=odl_page_texts)
         return ("ready", ocr_confidence)
 
     def _index_markdown(self, kb_id: str, doc_id: str, markdown: str, name: str,
-                        pdf_locate_path=None) -> None:
+                        pdf_locate_path=None, page_texts=None) -> None:
         """Markdown → 分块 → [页码定位] → [enrich] → 向量化 → chunk 行 →
         关键词索引。既有摄取与 F 的确认入库（approve_document）共用这一段，
         保证两条路径的索引语义完全一致。"""
@@ -243,9 +255,12 @@ class IngestPipeline:
 
         # 引用定位（M5-2）：文本层 PDF 逐页匹配叶子块页码。任何失败只损失
         # 定位能力，不阻塞摄取（页码是增强元数据，不是硬依赖）。
-        if pdf_locate_path is not None and leaves:
+        # page_texts 优先（opendataloader 路：与 markdown 同一次解析产出，
+        # 文本形态一致）；缺省回退 pdfminer 二次提取（markitdown 路现状）。
+        if leaves and (page_texts or pdf_locate_path is not None):
             try:
-                locate_chunk_pages(_pdf_page_texts(pdf_locate_path), leaves)
+                locate_chunk_pages(
+                    page_texts or _pdf_page_texts(pdf_locate_path), leaves)
             except Exception:  # noqa: BLE001
                 pass
 
