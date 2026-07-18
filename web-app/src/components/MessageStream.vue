@@ -12,7 +12,7 @@ import { Copy, ExternalLink, Image as ImageIcon, RotateCcw, ThumbsDown, ThumbsUp
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { inlineMarkdownHtml, renderWithChips } from "@/lib/chat-utils";
+import { citedIndexSet, inlineMarkdownHtml, renderWithChips } from "@/lib/chat-utils";
 import type { ChatMessage } from "@/composables/useChat";
 import type { Citation } from "@/lib/api";
 
@@ -37,15 +37,20 @@ function segmentsOf(content: string) {
   return renderWithChips(content);
 }
 
-/** 多模态回答（图片一期）：收集这条消息全部引用附带的插图，按 url 去重
+/** 多模态回答（图片一期）：收集这条消息引用附带的插图，按 url 去重
  * （多条引用命中同一页时图片只展示一次），并带上来源文档名/页码给
- * 灯箱标题用。空数组=不渲染图片区。 */
+ * 灯箱标题用。空数组=不渲染图片区。
+ * 只收**回答正文实际引用**（角标出现过）的条目——top-k 里未被引用的
+ * 边缘命中往往是不相关章节，它们的插图灌进来就是"无脑配图"（产线一次
+ * 回答 19 张的反馈）。正文一个角标都没有时退回全部引用（老模型行为）。 */
 interface AnswerImage { url: string; name: string; docName: string; page: number | null }
 
 function imagesOf(message: ChatMessage): AnswerImage[] {
+  const cited = citedIndexSet(message.content);
   const seen = new Set<string>();
   const out: AnswerImage[] = [];
-  for (const c of message.citations) {
+  for (const [i, c] of message.citations.entries()) {
+    if (cited.size && !cited.has(i + 1)) continue;
     for (const img of c.images ?? []) {
       if (!seen.has(img.url)) {
         seen.add(img.url);

@@ -72,6 +72,33 @@ def test_blocks_to_markdown_core_types():
     assert "|---|---|" in md
 
 
+def test_blocks_markdown_heading_chain_marker_and_board():
+    """图片锚=标题链（同名叶子跨模块不串）+ 正文文字标记（纯图章节可检索）
+    + 画板块收集（kind=board，架构图常见形态）。"""
+    blocks = [
+        {"block_id": "p", "block_type": 1,
+         "children": ["h1", "h2a", "img1", "h2b", "wb1"]},
+        {"block_id": "h1", "block_type": 3,
+         "heading1": {"elements": [{"text_run": {"content": "用户管理"}}]}},
+        {"block_id": "h2a", "block_type": 4,
+         "heading2": {"elements": [{"text_run": {"content": "添加"}}]}},
+        {"block_id": "img1", "block_type": 27,
+         "image": {"token": "m1"}},
+        {"block_id": "h2b", "block_type": 4,
+         "heading2": {"elements": [{"text_run": {"content": "物理架构图"}}]}},
+        {"block_id": "wb1", "block_type": 43,
+         "board": {"token": "wb-token-1"}},
+    ]
+    imgs: list = []
+    md = feishu.blocks_to_markdown(blocks, images_out=imgs)
+    # 正文标记：图片/画板所在位置都有可检索文本（空章节也能产 chunk）
+    assert "（图：添加）" in md and "（图：物理架构图）" in md
+    # 锚是标题链，不是叶子（"添加"在别的模块也有，叶子锚会跨章节乱配）
+    assert imgs[0] == {"token": "m1", "heading": "用户管理 > 添加"}
+    assert imgs[1]["token"] == "wb-token-1" and imgs[1]["kind"] == "board"
+    assert imgs[1]["heading"] == "用户管理 > 物理架构图"
+
+
 def _jpeg_bytes(w=320, h=240) -> bytes:
     import io as _io
 
@@ -142,7 +169,8 @@ def feishu_stub_deep(monkeypatch):
 
     monkeypatch.setattr(feishu, "list_children", fake_children)
     monkeypatch.setattr(feishu, "fetch_doc_blocks", lambda t, d: [
-        {"block_id": "p", "block_type": 1, "children": ["h", "t", "img"]},
+        {"block_id": "p", "block_type": 1,
+         "children": ["h", "t", "img", "wb"]},
         {"block_id": "h", "block_type": 3,
          "heading1": {"elements": [{"text_run": {"content": "登录驾驶舱"}}]}},
         {"block_id": "t", "block_type": 2,
@@ -150,9 +178,14 @@ def feishu_stub_deep(monkeypatch):
              "打开浏览器访问驾驶舱地址，输入账号密码完成登录。"}}]}},
         {"block_id": "img", "block_type": 27,
          "image": {"token": "media-deep-1"}},
+        # 画板块（架构图形态）：走 board download_as_image 导出
+        {"block_id": "wb", "block_type": 43,
+         "board": {"token": "board-deep-1"}},
     ])
     monkeypatch.setattr(feishu, "download_media",
                         lambda t, mt, doc_token=None: _jpeg_bytes())
+    monkeypatch.setattr(feishu, "download_board_image",
+                        lambda t, bt: _jpeg_bytes(640, 360))
 
 
 def test_deep_hierarchy_headings_and_images(tmp_path, fake_embedder,
@@ -188,6 +221,9 @@ def test_deep_hierarchy_headings_and_images(tmp_path, fake_embedder,
                 break
     with_img = [ci for ci in citations if ci.get("images")]
     assert with_img, f"深层级文档的插图应随引用附出: {citations}"
+    # 画板导出的图与普通图片一起附出（宽 640 的那张来自 board 下载桩）
+    widths = {img["width"] for ci in with_img for img in ci["images"]}
+    assert 640 in widths, f"画板图应一并附出: {with_img}"
 
 
 def test_import_space_end_to_end(tmp_path, fake_embedder, feishu_stub):
