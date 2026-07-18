@@ -43,10 +43,13 @@ const me = ref<Me | null>(null);
 // 顶栏 KB/模型选择器与用户名/角色徽章一直空着，得手动刷新页面才会出现。
 // watch 能在每次 route.path 变化时重新判断，immediate:true 顶上"应用启动
 // 时已经带着有效 Cookie 直接落地到 /"这种首次求值场景。
-watch(() => route.path, (path) => {
+// watch 源带 matched 门槛：启动瞬间路由是占位 "/"（matched 为空），此时
+// 发请求会在 /share/ 免登录直达场景触发 401→跳登录（真机踩中）；等路由
+// 真正解析完（matched 非空）才给出 path，null→真实值的变化保证必触发。
+watch(() => (route.matched.length ? route.path : null), (path) => {
   // /share/ 免登录页与 /login 同样跳过：匿名访客没有会话，这里发
-  // getSession() 会触发 401 拦截器把整页推去 /login（真机踩中）
-  if (path === "/login" || path.startsWith("/share/")) return;
+  // getSession() 会触发 401 拦截器把整页推去 /login
+  if (path === null || path === "/login" || path.startsWith("/share/")) return;
   getSession().then((session) => {
     me.value = session;
     // 首登邮箱引导：没绑邮箱就提醒补（忘记密码重置的唯一通道）。

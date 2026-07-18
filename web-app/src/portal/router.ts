@@ -38,7 +38,9 @@ router.beforeEach(async (to) => {
 // window.location，避免整页刷新丢失 SPA 状态。
 setUnauthorizedHandler(() => {
   const current = router.currentRoute.value;
-  if (current.path === "/login") return; // 已在登录页，不重复跳转造成循环
+  // 登录页不重复跳转；/share/ 免登录页对 401 免疫（匿名访客本就无会话，
+  // 跳登录等于把分享链接变成登录墙）
+  if (current.path === "/login" || current.path.startsWith("/share/")) return;
   router.push({ path: "/login", query: loginRedirectQuery(current.fullPath) });
 });
 
