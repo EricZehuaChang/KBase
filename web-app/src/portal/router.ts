@@ -14,6 +14,9 @@ const router = createRouter({
   history: createWebHistory("/"),
   routes: [
     { path: "/login", name: "portal-login", component: LoginView },
+    // 免登录分享页：token 即授权，不走会话守卫（对标 Dify WebApp 形态）
+    { path: "/share/:token", name: "portal-share",
+      component: () => import("@/views/ShareView.vue") },
     { path: "/", name: "portal-chat", component: ChatHome },
   ],
 });
@@ -23,7 +26,7 @@ const router = createRouter({
 // "进入工作台"入口是否可见（PortalShell.vue），不影响这两个路由本身能否
 // 进入。角色相关的强制拦截只存在于管理端（src/admin/guard.ts）。
 router.beforeEach(async (to) => {
-  if (to.path === "/login") return true;
+  if (to.path === "/login" || to.path.startsWith("/share/")) return true;
   const session = await getSession();
   if (session) return true;
   return { path: "/login", query: loginRedirectQuery(to.fullPath) };

@@ -136,6 +136,25 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(200))
     role: Mapped[str] = mapped_column(String(20))            # admin | editor | viewer
     disabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    # 高级界面开关（仅对 viewer 生效）：控制使用端顶栏的模型选择/多库联查
+    # 等高级菜单可见性。editor/admin 恒可见；viewer 默认简化界面，个别
+    # 需要的用户由管理员打开。
+    advanced_ui: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ShareLink(Base):
+    """知识库免登录分享链接（对标 Dify WebApp/FastGPT 免登录窗模式）：
+    token 即授权——持有链接者可对绑定库匿名问答；模型在建链接侧绑定
+    （provider，空=系统默认），终端用户无任何配置项。撤销即失效。"""
+    __tablename__ = "share_links"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    kb_id: Mapped[str] = mapped_column(String(36), index=True)
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(200), default="")
+    provider: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    revoked: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

@@ -21,7 +21,7 @@ from kbase.audit import write_query_audit
 from kbase.rag.generator import Generator
 
 
-def register(router, svc: Services, deps: RouteDeps) -> None:
+def register(router, svc: Services, deps: RouteDeps):
     sf, cfg, retriever = svc.sf, svc.cfg, svc.retriever
 
     async def _run_query(kb_id: str, body: QueryBody, *,
@@ -232,3 +232,6 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
                                retrieval_query=rewrite_res.query,
                                on_complete=_persist, request=request,
                                kb_ids=conv_kb_ids)
+
+    # 分享路由（routes/share.py）复用同一编排：事件序列/拒答语义完全一致
+    return _run_query
