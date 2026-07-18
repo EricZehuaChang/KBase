@@ -25,7 +25,12 @@ from langchain_text_splitters import (
 from kbase.plugins.base import ChunkData
 from kbase.plugins.registry import registry
 
-_HEADERS = [("#", "h1"), ("##", "h2"), ("###", "h3"), ("####", "h4")]
+# 覆盖 Markdown 全部六级：飞书 wiki 导入把祖先链注入为 1-N 级标题、文内
+# 标题整体下推（深链下推到 h5/h6），只认到 h4 会让文内章节进不了
+# heading_path——图片的章节锚（doc_images.attach_images 的 heading 包含
+# 匹配）随之全部失配（产线实测 0/165 张可匹配）。
+_HEADERS = [("#", "h1"), ("##", "h2"), ("###", "h3"), ("####", "h4"),
+            ("#####", "h5"), ("######", "h6")]
 
 # 两种表格来源：markitdown（Word/Excel/Markdown）产出 Markdown 管道表格；
 # GLM-OCR（扫描件）产出 HTML <table>——两者都要走表格感知分块，否则扫描件
@@ -222,7 +227,8 @@ class StructureChunker:
     def chunk(self, markdown: str, doc_name: str) -> list[ChunkData]:
         out: list[ChunkData] = []
         for section in self._header_splitter.split_text(markdown):
-            titles = [section.metadata[key] for key in ("h1", "h2", "h3", "h4")
+            titles = [section.metadata[key]
+                      for key in ("h1", "h2", "h3", "h4", "h5", "h6")
                       if key in section.metadata]
             heading_path = " > ".join([doc_name, *titles])
             parent = ChunkData(id=str(uuid.uuid4()), text=section.page_content,

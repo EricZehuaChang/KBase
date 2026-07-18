@@ -120,6 +120,76 @@ def test_import_requires_credentials(tmp_path, fake_embedder):
     assert r.status_code == 409          # 前端据此弹凭据输入
 
 
+@pytest.fixture
+def feishu_stub_deep(monkeypatch):
+    """打桩深层 wiki 树（复刻产线bug现场）：凌动驾驶舱 > 用户指南 > v6.0.0 >
+    驾驶舱使用手册(docx)。祖先链占掉 1-3 级标题、文档标题占 4 级，文内标题
+    被下推到 h5——此前 chunker 只认 h1-h4，文内标题进不了 heading_path，
+    图片的章节锚永远匹配不上（产线 0/165 张可匹配）。"""
+    monkeypatch.setattr(feishu, "_get_token", lambda a, b: "fake-token")
+
+    tree = {
+        None: [("n1", "凌动驾驶舱", True, "folder", None)],
+        "n1": [("n2", "用户指南", True, "folder", None)],
+        "n2": [("n3", "v6.0.0", True, "folder", None)],
+        "n3": [("n4", "驾驶舱使用手册", False, "docx", "doc-deep")],
+    }
+
+    def fake_children(token, space_id, parent=None):
+        return [{"node_token": nt, "title": t, "has_child": hc,
+                 "obj_type": ot, "obj_token": obj}
+                for nt, t, hc, ot, obj in tree.get(parent, [])]
+
+    monkeypatch.setattr(feishu, "list_children", fake_children)
+    monkeypatch.setattr(feishu, "fetch_doc_blocks", lambda t, d: [
+        {"block_id": "p", "block_type": 1, "children": ["h", "t", "img"]},
+        {"block_id": "h", "block_type": 3,
+         "heading1": {"elements": [{"text_run": {"content": "登录驾驶舱"}}]}},
+        {"block_id": "t", "block_type": 2,
+         "text": {"elements": [{"text_run": {"content":
+             "打开浏览器访问驾驶舱地址，输入账号密码完成登录。"}}]}},
+        {"block_id": "img", "block_type": 27,
+         "image": {"token": "media-deep-1"}},
+    ])
+    monkeypatch.setattr(feishu, "download_media",
+                        lambda t, mt, doc_token=None: _jpeg_bytes())
+
+
+def test_deep_hierarchy_headings_and_images(tmp_path, fake_embedder,
+                                            feishu_stub_deep):
+    """回归：4 层 wiki 链下文内标题（h5）必须进 heading_path，图片章节锚
+    才能命中（bug：chunker 只认 h1-h4 → 附图恒空）。"""
+    c = _client(tmp_path, fake_embedder)
+    kb = c.post("/api/kb", json={"name": "库"}).json()["id"]
+    c.put("/api/settings/feishu", json={"app_id": "cli_x", "app_secret": "s"})
+
+    r = c.post(f"/api/kb/{kb}/import-feishu", json={"source": "7999999"})
+    assert r.status_code == 200, r.text
+    assert r.json()["total"] == 1
+
+    # 文内章节标题必须出现在 heading_path（h5 级）
+    hits = c.post(f"/api/kb/{kb}/search",
+                  json={"query": "登录 账号密码", "top_k": 5}).json()["blocks"]
+    assert hits
+    assert any("登录驾驶舱" in h["heading_path"] for h in hits), \
+        [h["heading_path"] for h in hits]
+
+    # 问答命中该章节 → 图片必须附出
+    import json as _json
+    citations = []
+    with c.stream("POST", f"/api/kb/{kb}/query",
+                  json={"question": "如何登录驾驶舱", "top_k": 5}) as resp:
+        event = ""
+        for line in resp.iter_lines():
+            if line.startswith("event:"):
+                event = line[6:].strip()
+            elif line.startswith("data:") and event == "citations":
+                citations = _json.loads(line[5:].strip())
+                break
+    with_img = [ci for ci in citations if ci.get("images")]
+    assert with_img, f"深层级文档的插图应随引用附出: {citations}"
+
+
 def test_import_space_end_to_end(tmp_path, fake_embedder, feishu_stub):
     c = _client(tmp_path, fake_embedder)
     kb = c.post("/api/kb", json={"name": "库"}).json()["id"]
