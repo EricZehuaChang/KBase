@@ -13,7 +13,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi import Response as FastAPIResponse
 from fastapi.responses import RedirectResponse
 
-from kbase import mailer
+from kbase import email_templates, mailer
 from kbase.api.routes import RouteDeps
 from kbase.api.schemas import (ChangePasswordBody, ForgotBody, LoginBody,
                                ProfileBody, ResetPasswordBody)
@@ -84,14 +84,10 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps, *,
 
                 def _send():
                     try:
-                        mailer.send_mail(
-                            sf, to_addr, "KBase 密码重置",
-                            f"你（或他人）请求重置 KBase 账号 "
-                            f"{user_name} 的密码。\n\n"
-                            f"请在 30 分钟内打开以下链接设置新密码：\n"
-                            f"{login_url}/?reset_token={token}\n\n"
-                            f"如果这不是你本人的操作，请忽略本邮件，"
-                            f"你的密码不会有任何变化。")
+                        subject, text, html_body = email_templates.password_reset(
+                            user_name, f"{login_url}/?reset_token={token}")
+                        mailer.send_mail(sf, to_addr, subject, text,
+                                         html=html_body)
                     except Exception:
                         logger.exception("密码重置邮件发送失败: %s", to_addr)
 

@@ -88,8 +88,9 @@ def test_forgot_reset_flow(app_on, monkeypatch):
     """忘记密码全流程：发信拿 token → 重置 → 新密码生效/旧失效 →
     token 一次性；未知账号防枚举（同样 200，不发信）。"""
     sent = []
-    monkeypatch.setattr("kbase.mailer.send_mail",
-                        lambda sf, to, subject, body: sent.append((to, body)))
+    monkeypatch.setattr(
+        "kbase.mailer.send_mail",
+        lambda sf, to, subject, body, html=None: sent.append((to, body)))
 
     admin = _login(app_on, "admin", "admin-pw")
     admin.post("/api/users", json={"username": "zhao.liu", "role": "viewer",
