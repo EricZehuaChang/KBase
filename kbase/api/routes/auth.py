@@ -205,7 +205,12 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps, *,
         with sf() as s:
             user = s.query(User).filter_by(username=actor["name"]).first()
             email = user.email if user else None
-        return {"username": actor["name"], "role": actor["role"], "email": email}
+            # 高级界面：editor/admin 恒开；viewer 看个人开关（管理员在用户
+            # 管理里配置）。API Key 身份无用户行，按角色默认。
+            advanced = (actor["role"] in ("admin", "editor")
+                        or bool(user.advanced_ui if user else False))
+        return {"username": actor["name"], "role": actor["role"],
+                "email": email, "advanced_ui": advanced}
 
     @router.put("/auth/profile",
                 dependencies=[deps.require_viewer, deps.audit_mutation])

@@ -53,6 +53,18 @@ async function changeRole(user: UserItem, role: string) {
   }
 }
 
+async function toggleAdvancedUi(user: UserItem, advancedUi: boolean) {
+  try {
+    await updateUser(user.id, { advanced_ui: advancedUi });
+    toast.success(advancedUi ? `已开启高级界面: ${user.username}`
+                             : `已关闭高级界面: ${user.username}`);
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : String(err));
+  } finally {
+    await load();
+  }
+}
+
 async function toggleDisabled(user: UserItem, disabled: boolean) {
   try {
     await updateUser(user.id, { disabled });
@@ -82,11 +94,12 @@ async function toggleDisabled(user: UserItem, disabled: boolean) {
           <TableHead>邮箱</TableHead>
           <TableHead>角色</TableHead>
           <TableHead>状态</TableHead>
+          <TableHead>高级界面</TableHead>
           <TableHead class="w-40">操作</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
-        <TableEmpty v-if="!loading && users.length === 0" :colspan="5">暂无用户</TableEmpty>
+        <TableEmpty v-if="!loading && users.length === 0" :colspan="6">暂无用户</TableEmpty>
         <TableRow v-for="u in users" :key="u.id">
           <TableCell>{{ u.username }}</TableCell>
           <TableCell class="text-[var(--text-3)]">{{ u.email ?? "—" }}</TableCell>
@@ -113,6 +126,16 @@ async function toggleDisabled(user: UserItem, disabled: boolean) {
               />
               <span class="text-sm text-[var(--text-2)]">{{ u.disabled ? "已禁用" : "启用中" }}</span>
             </label>
+          </TableCell>
+          <TableCell>
+            <!-- 模型选择/多库联查菜单可见性：viewer 按人开关；editor/admin
+            恒可见（开关置灰常开），保持"一个判断源"心智 -->
+            <Switch
+              :model-value="u.role !== 'viewer' || u.advanced_ui"
+              :disabled="u.role !== 'viewer'"
+              :title="u.role !== 'viewer' ? '编辑者/管理员恒可见' : '开启后可见模型选择与多库联查'"
+              @update:model-value="(v) => toggleAdvancedUi(u, Boolean(v))"
+            />
           </TableCell>
           <TableCell>
             <Button variant="ghost" size="sm" @click="resetTarget = u">

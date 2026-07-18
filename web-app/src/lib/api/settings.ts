@@ -187,6 +187,7 @@ export interface UserItem {
   email: string | null;
   role: string;
   disabled: boolean;
+  advanced_ui: boolean;   // viewer 高级界面开关（editor/admin 恒视为开）
   created_at: string;
 }
 
@@ -202,6 +203,7 @@ export interface UserUpdateBody {
   disabled?: boolean;
   password?: string;
   email?: string;         // 空串=清除邮箱
+  advanced_ui?: boolean;  // viewer 高级界面开关
 }
 
 export function listUsers(): Promise<UserItem[]> {

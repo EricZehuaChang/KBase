@@ -267,6 +267,7 @@ class UserCreate(BaseModel):
     role: Role
     password: str
     email: str | None = None
+    advanced_ui: bool | None = None   # viewer 高级界面开关（缺省=关）
 
 
 class UserUpdate(BaseModel):
@@ -274,6 +275,7 @@ class UserUpdate(BaseModel):
     disabled: bool | None = None
     password: str | None = None
     email: str | None = None      # 传空串=清除邮箱
+    advanced_ui: bool | None = None   # viewer 高级界面开关
 
 
 class ChangePasswordBody(BaseModel):
@@ -285,6 +287,13 @@ class ChangePasswordBody(BaseModel):
 class ProfileBody(BaseModel):
     """登录用户维护自己的资料（目前只有邮箱——用于忘记密码重置）。"""
     email: str = Field(min_length=3)
+
+
+class ShareLinkCreate(BaseModel):
+    """建免登录分享链接：name 备注用；provider 绑定回答模型（None=系统默认，
+    对标 Dify/FastGPT——模型在建链接侧配置，终端用户无感）。"""
+    name: str = ""
+    provider: str | None = None
 
 
 class ForgotBody(BaseModel):

@@ -43,6 +43,8 @@ _COLUMN_MIGRATIONS = [
     ("document_images", "heading", "TEXT"),
     # 账号邮箱（老库存量用户 NULL）：资料记录+后续邮件找回密码。
     ("users", "email", "TEXT"),
+    # 高级界面开关（viewer 顶栏模型选择/联查菜单可见性），默认关=简化界面
+    ("users", "advanced_ui", "INTEGER DEFAULT 0"),
 ]
 
 _FTS_DDL = (

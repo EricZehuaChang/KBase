@@ -146,10 +146,12 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
     admin_routes.register(router, svc, deps)
     settings_routes.register(router, svc, deps)
     kb_routes.register(router, svc, deps)
-    query_routes.register(router, svc, deps)
+    run_query = query_routes.register(router, svc, deps)
     jobs_routes.register(router, svc, deps)
     evals_routes.register(router, svc, deps)
 
+    from kbase.api.routes import share as share_routes
+    share_routes.register(app, router, svc, deps, run_query=run_query)
     app.include_router(router)
 
     # M6-5 OpenAI 兼容 API：挂在 /v1（不在 /api 前缀下），鉴权与 /api 相同

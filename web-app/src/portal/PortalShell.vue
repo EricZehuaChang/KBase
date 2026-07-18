@@ -10,7 +10,7 @@
 // ②F1 遗留的 #sidebar-slot Teleport 挂载点在这版一并移除——ChatHome 的
 // 会话侧栏已经改成原生子组件（见 ChatHome.vue/SessionSidebar.vue），不再
 // 需要跨组件树注入，PortalShell 不必再为它开一个挂载点。
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { KeyRound, LogOut, Sun, Moon } from "@lucide/vue";
 import ChangePasswordDialog from "@/components/ChangePasswordDialog.vue";
@@ -60,6 +60,11 @@ watch(() => route.path, (path) => {
 const changePwOpen = ref(false);
 const emailPromptOpen = ref(false);
 
+// 高级界面门控（模型选择/多库联查）：editor/admin 恒开，viewer 看个人开关
+// （auth/me 的 advanced_ui 已在后端合并两种来源，前端只认这一个判断源）。
+// me 未加载完（null）按隐藏处理——简化界面用户不会看到菜单闪现又消失。
+const showAdvanced = computed(() => me.value?.advanced_ui === true);
+
 function handleEmailSaved(email: string) {
   // 原地改而不是换新对象：getSession 缓存的就是这个引用，换新对象的话
   // 下次路由变化 watch 重读缓存仍是 email:null，会再弹一次
@@ -90,7 +95,7 @@ function enterWorkbench() {
 </script>
 
 <template>
-  <router-view v-if="route.path === '/login'" />
+  <router-view v-if="route.path === '/login' || route.path.startsWith('/share/')" />
   <div
     v-else
     class="flex h-screen w-full flex-col overflow-hidden bg-[var(--bg)] text-[var(--text)]"
@@ -107,7 +112,7 @@ function enterWorkbench() {
           </SelectContent>
         </Select>
         <!-- M6-2 多库联合问答：勾选主库之外要一起检索的库，只作用于新会话 -->
-        <Popover v-if="kbs.length > 1">
+        <Popover v-if="showAdvanced && kbs.length > 1">
           <PopoverTrigger as-child>
             <button
               type="button"
@@ -138,7 +143,7 @@ function enterWorkbench() {
             </label>
           </PopoverContent>
         </Popover>
-        <Select v-model="provider">
+        <Select v-if="showAdvanced" v-model="provider">
           <SelectTrigger class="w-44"><SelectValue placeholder="选择模型" /></SelectTrigger>
           <SelectContent>
             <SelectGroup>

@@ -17,3 +17,4 @@ export * from "./api/chat";
 export * from "./api/evals";
 export * from "./api/settings";
 export * from "./api/jobs";
+export * from "./api/share";

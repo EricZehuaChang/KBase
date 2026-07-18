@@ -66,6 +66,9 @@ export interface Me {
   role: string;
   // 账号邮箱（忘记密码重置用）；API Key 身份为 null。前端首登据此弹引导补录
   email?: string | null;
+  // 高级界面（模型选择/多库联查菜单可见性）：editor/admin 恒 true；
+  // viewer 由管理员在用户管理里按人开关（默认 false=简化界面）
+  advanced_ui?: boolean;
 }
 
 export function login(username: string, password: string): Promise<Me> {

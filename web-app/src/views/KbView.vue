@@ -5,7 +5,7 @@
 // 避免后台定时器继续对已卸载组件的响应式状态写入。
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { Plus, RotateCw, Settings2, Trash2, Shield } from "@lucide/vue";
+import { Plus, RotateCw, Settings2, Share2, Trash2, Shield } from "@lucide/vue";
 import { toast } from "vue-sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,7 @@ import ReviewDialog from "@/components/ReviewDialog.vue";
 import KbGrantsDialog from "@/components/KbGrantsDialog.vue";
 import PageHeader from "@/components/PageHeader.vue";
 import FeishuImportDialog from "@/components/FeishuImportDialog.vue";
+import ShareDialog from "@/components/ShareDialog.vue";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -41,6 +42,7 @@ const isAdmin = computed(() => canAdminister(currentRole.value ?? ""));
 // ---- 库级权限（M6-3）----
 const grantsKb = ref<Kb | null>(null);
 const grantsOpen = ref(false);
+const shareOpen = ref(false);
 function openGrants(kb: Kb) {
   grantsKb.value = kb;
   grantsOpen.value = true;
@@ -358,6 +360,10 @@ onMounted(loadKbs);
             <RotateCw class="size-3.5" />
             批量重试OCR
           </Button>
+          <Button v-if="canManage" variant="outline" size="sm" @click="shareOpen = true">
+            <Share2 class="size-3.5" />
+            分享
+          </Button>
           <Button v-if="canManage" variant="outline" size="sm" @click="configOpen = true">
             <Settings2 class="size-3.5" />
             知识库配置
@@ -495,4 +501,6 @@ onMounted(loadKbs);
       </DialogFooter>
     </DialogContent>
   </Dialog>
+
+  <ShareDialog v-if="kbId" v-model:open="shareOpen" :kb-id="kbId" />
 </template>

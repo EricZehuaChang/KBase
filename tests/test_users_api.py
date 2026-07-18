@@ -26,7 +26,7 @@ def test_list_users_never_exposes_hash(tmp_path, fake_embedder, monkeypatch):
     usernames = {u["username"] for u in items}
     assert usernames == {"admin", "alice"}
     for u in items:
-        assert set(u.keys()) == {"id", "username", "email", "role", "disabled", "created_at"}
+        assert set(u.keys()) == {"id", "username", "email", "role", "disabled", "advanced_ui", "created_at"}
         assert "password" not in u
         assert "password_hash" not in u
         assert "hash" not in str(u).lower() or "hash" not in u

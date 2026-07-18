@@ -78,6 +78,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         # 从不返回 password_hash——列表/创建/更新的响应体统一走这个投影。
         return {"id": u.id, "username": u.username, "email": u.email,
                 "role": u.role, "disabled": u.disabled,
+                "advanced_ui": bool(u.advanced_ui),
                 "created_at": u.created_at.isoformat()}
 
     @router.get("/users", dependencies=[deps.require_admin])
@@ -94,7 +95,8 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
             user = User(id=str(uuid.uuid4()), username=body.username,
                        email=(body.email or None),
                        password_hash=security.hash_password(body.password),
-                       role=body.role, disabled=False)
+                       role=body.role, disabled=False,
+                       advanced_ui=bool(body.advanced_ui))
             s.add(user)
             s.commit()
             s.refresh(user)
@@ -152,6 +154,8 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
                 user.password_hash = security.hash_password(body.password)
             if body.email is not None:
                 user.email = body.email or None   # 空串=清除邮箱
+            if body.advanced_ui is not None:
+                user.advanced_ui = body.advanced_ui
             s.commit()
             s.refresh(user)
             return _user_out(user)
