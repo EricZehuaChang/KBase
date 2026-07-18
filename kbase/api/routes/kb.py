@@ -20,7 +20,8 @@ from kbase.api.schemas import (ChunkUpdate, DocumentReview, FeishuImportBody,
                                KBConfigBody, KBCreate, KbGrantsBody,
                                RebindEmbedderBody, UrlImportBody)
 from kbase.api.services import Services
-from kbase.models import Chunk, Conversation, Document, KnowledgeBase, Message
+from kbase.models import (Chunk, Conversation, Document, DocumentImage,
+                          KnowledgeBase, Message)
 
 
 _URL_MAX_BYTES = 10 * 1024 * 1024   # URL 导入响应体上限（M6-7）
@@ -127,8 +128,8 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
                 raise HTTPException(404, f"知识库不存在: {kb_id}")
             doc_ids = [d.id for d in s.query(Document).filter_by(kb_id=kb_id).all()]
             conv_ids = [c.id for c in s.query(Conversation).filter_by(kb_id=kb_id).all()]
-        # 级联顺序：向量集合 → 全文索引 → files 目录 → chunks/documents 行
-        # → conversations/messages 行 → kb 行
+        # 级联顺序：向量集合 → 全文索引 → files 目录 → chunks/document_images
+        # /documents 行 → conversations/messages 行 → kb 行
         store.delete_collection(kb_id)
         if keyword_index is not None:
             keyword_index.delete_kb(kb_id)
@@ -136,6 +137,10 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
             shutil.rmtree(cfg.data_dir / "files" / doc_id, ignore_errors=True)
         with sf() as s:
             s.query(Chunk).filter_by(kb_id=kb_id).delete()
+            if doc_ids:
+                s.query(DocumentImage).filter(
+                    DocumentImage.doc_id.in_(doc_ids)).delete(
+                    synchronize_session=False)
             s.query(Document).filter_by(kb_id=kb_id).delete()
             if conv_ids:
                 s.query(Message).filter(Message.conv_id.in_(conv_ids)).delete(
@@ -519,12 +524,14 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
             doc = s.get(Document, doc_id)
             if doc is None or doc.kb_id != kb_id:
                 raise HTTPException(404, f"文档不存在: {doc_id}")
-        # 级联顺序：向量 → 全文索引 → chunk 行 → document 行 → files 目录
+        # 级联顺序：向量 → 全文索引 → chunk/document_images 行 → document 行
+        # → files 目录（document_images 无 FK 级联，漏删会积累孤儿死行）
         store.delete(kb_id, doc_id)
         if keyword_index is not None:
             keyword_index.delete_doc(doc_id)
         with sf() as s:
             s.query(Chunk).filter_by(doc_id=doc_id).delete()
+            s.query(DocumentImage).filter_by(doc_id=doc_id).delete()
             doc = s.get(Document, doc_id)
             if doc is not None:
                 s.delete(doc)
