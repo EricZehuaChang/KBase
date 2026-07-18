@@ -53,8 +53,19 @@ async function ask() {
     });
     if (!resp.ok || !resp.body) throw new Error(`请求失败 (${resp.status})`);
     const gotDone = await parseSSE(resp.body.getReader(), (event, data) => {
-      if (event === "citations") live.citations = JSON.parse(data);
-      else if (event === "token") live.content += data;
+      if (event === "citations") {
+        // 附图直链改写到 share 公开端点：/api/documents/... 需要登录态，
+        // 匿名访客会 401 裂图
+        const cites = JSON.parse(data);
+        for (const c of cites) {
+          for (const img of c.images ?? []) {
+            img.url = img.url.replace(
+              /^\/api\/documents\/([^/]+)\/images\//,
+              `/api/share/${token}/images/$1/`);
+          }
+        }
+        live.citations = cites;
+      } else if (event === "token") live.content += data;
     });
     live.interrupted = !gotDone;
   } catch {
