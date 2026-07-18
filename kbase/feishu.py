@@ -142,6 +142,18 @@ def download_media(token: str, media_token: str,
     return resp.content
 
 
+def download_board_image(token: str, board_token: str) -> bytes:
+    """画板（whiteboard）导出为图片。架构图/流程图在飞书里常见形态就是
+    画板块而不是图片块——不下载它们，导入结果里这些图会整块消失。
+    需要应用身份权限 board:whiteboard:node:read（权限指引里一并开）。"""
+    resp = httpx.get(
+        f"{FEISHU_BASE}/board/v1/whiteboards/{board_token}/download_as_image",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=60.0, follow_redirects=True)
+    resp.raise_for_status()
+    return resp.content
+
+
 def fetch_doc_blocks(token: str, document_id: str) -> list[dict]:
     """docx 全部块（分页取全，平铺列表，树关系在 parent_id/children）。"""
     items: list[dict] = []
@@ -176,9 +188,12 @@ def blocks_to_markdown(blocks: list[dict], base_heading_level: int = 0,
                        images_out: list | None = None) -> str:
     """飞书 docx 块 → Markdown。base_heading_level：文档内标题整体下移的
     级数（wiki 路径占用了前几级标题时传入，保持层级单调）。
-    覆盖：段落/标题1-9/无序/有序/代码/引用/分割线/表格。
-    images_out：传入列表时收集图片块 [{token, heading}]——heading 为图片
-    所在章节标题（caption 级锚，回答命中该章节即附图）；不传则图片跳过。"""
+    覆盖：段落/标题1-9/无序/有序/代码/引用/分割线/表格/图片/画板。
+    images_out：传入列表时收集图片与画板块 [{token, heading, kind?}]——
+    heading 为**标题链**（如"用户管理 > 添加"）而不是叶子标题：产线实测
+    同名叶子（各模块都有"添加/修改/删除"）会让附图跨章节乱配。图片/画板
+    位置同时在正文落"（图：…）"文字标记——否则纯图章节没有文本、产不出
+    chunk，"架构图在哪"这类问题永远检索不到。"""
     by_id = {b.get("block_id"): b for b in blocks}
     page = next((b for b in blocks if b.get("block_type") == 1), None)
     order = (page or {}).get("children", []) or [
@@ -186,14 +201,34 @@ def blocks_to_markdown(blocks: list[dict], base_heading_level: int = 0,
 
     lines: list[str] = []
     ordered_counter = 0
-    current_heading = ""
+    # 标题栈 [(级别, 文本)]：遇 N 级标题弹掉 >=N 的旧项再入栈，链条即当前
+    # 章节的完整路径（只含文档内标题，wiki 祖先在 doc_to_markdown 前缀里）
+    heading_stack: list[tuple[int, str]] = []
+
+    def _chain() -> str:
+        return " > ".join(t for _, t in heading_stack)
+
+    def _figure(media_token: str, kind: str | None = None) -> None:
+        """图片/画板共用：正文落文字标记 + 收集下载任务（heading=标题链）。"""
+        leaf = heading_stack[-1][1] if heading_stack else ""
+        if leaf:
+            lines.append(f"（图：{leaf}）")
+            lines.append("")
+        if images_out is not None and media_token:
+            entry: dict = {"token": media_token, "heading": _chain()}
+            if kind:
+                entry["kind"] = kind
+            images_out.append(entry)
+
     for bid in order:
         b = by_id.get(bid)
         if b is None:
             continue
         btype = b.get("block_type")
         if btype in _HEADING_TYPES:
-            current_heading = _text_of(b, _HEADING_FIELDS[btype])
+            level = _HEADING_TYPES[btype]
+            heading_stack[:] = [h for h in heading_stack if h[0] < level]
+            heading_stack.append((level, _text_of(b, _HEADING_FIELDS[btype])))
         if btype != 13:
             ordered_counter = 0
         if btype == 2:                                   # 段落
@@ -227,11 +262,12 @@ def blocks_to_markdown(blocks: list[dict], base_heading_level: int = 0,
                 lines.append(md_table)
                 lines.append("")
         elif btype == 27:                                # 图片 → 插图体系
-            media_token = (b.get("image") or {}).get("token")
-            if images_out is not None and media_token:
-                images_out.append({"token": media_token,
-                                   "heading": current_heading})
-        # 其余块型（多维表格/画板/附件等）静默跳过——如实不猜内容
+            _figure((b.get("image") or {}).get("token"))
+        elif (b.get("board") or {}).get("token"):        # 画板（架构图常见形态）
+            # 按字段而不是数字类型识别：画板块带 board.token，导出成图走
+            # board download_as_image（与图片同一套章节锚/正文标记）
+            _figure(b["board"]["token"], kind="board")
+        # 其余块型（多维表格/附件等）静默跳过——如实不猜内容
     return "\n".join(lines).strip() + "\n"
 
 

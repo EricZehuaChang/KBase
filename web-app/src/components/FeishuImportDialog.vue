@@ -101,7 +101,7 @@ async function doImport() {
             <li>
               应用「权限管理」<b>一次性开通全部只读权限</b>（应用身份权限需
               管理员审核，一次开全避免反复审批）：wiki / docx / drive /
-              docs / sheets / bitable 六项 readonly，并<b>创建版本发布</b>
+              docs / sheets / bitable / board 七项只读，并<b>创建版本发布</b>
               （只勾选不发布不生效；完整清单见 设置 → 连接器）
             </li>
             <li>
@@ -114,7 +114,7 @@ async function doImport() {
         <p v-else-if="status?.configured" class="text-xs text-[var(--text-3)]">
           使用已配置的飞书应用：{{ status.app_id }}（设置 → 连接器 可更换；若报权限错误可
           <a
-            :href="`https://open.feishu.cn/app/${status.app_id}/auth?q=wiki:wiki:readonly,docx:document:readonly,drive:drive:readonly,docs:doc:readonly,sheets:spreadsheet:readonly,bitable:app:readonly&op_from=openapi&token_type=tenant`"
+            :href="`https://open.feishu.cn/app/${status.app_id}/auth?q=wiki:wiki:readonly,docx:document:readonly,drive:drive:readonly,docs:doc:readonly,sheets:spreadsheet:readonly,bitable:app:readonly,board:whiteboard:node:read&op_from=openapi&token_type=tenant`"
             target="_blank" rel="noopener" class="text-[var(--accent-text)] underline"
           >一键开通权限</a>后发布版本）
         </p>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { renderWithChips, groupByTime, appendConversationPage, originalPreviewKind, inlineMarkdownHtml } from "../chat-utils";
+import { renderWithChips, groupByTime, appendConversationPage, originalPreviewKind, inlineMarkdownHtml, citedIndexSet } from "../chat-utils";
 
 describe("renderWithChips", () => {
   it("将 [n] 角标切分为 chip 片段，其余为文本片段，文本内容完整不丢字符", () => {
@@ -152,5 +152,20 @@ describe("inlineMarkdownHtml（回答气泡行内 Markdown）", () => {
     expect(inlineMarkdownHtml("这是 *强调* 内容")).toContain("<em>强调</em>");
     // 单个星号不误伤
     expect(inlineMarkdownHtml("5 * 3 = 15")).toBe("5 * 3 = 15");
+  });
+});
+
+describe("citedIndexSet（附图区只认正文引用过的角标）", () => {
+  it("收集正文出现的角标编号，去重", () => {
+    const s = citedIndexSet("步骤见 [1]，注意事项 [2]，另见 [1]。");
+    expect([...s].sort()).toEqual([1, 2]);
+  });
+
+  it("正文无角标时为空集（调用方据此回退展示全部引用）", () => {
+    expect(citedIndexSet("没有任何引用标记的回答").size).toBe(0);
+  });
+
+  it("行内代码里的 [n] 不算引用", () => {
+    expect(citedIndexSet("`arr[1]` 是取下标").size).toBe(0);
   });
 });

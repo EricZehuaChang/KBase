@@ -35,6 +35,17 @@ function protectedRanges(text: string): Array<[number, number]> {
  * 不做"角标编号是否存在对应引用"的越界校验——解析器不知道 citations 数组
  * 内容，找不到对应引用是渲染层的事（按 index 查 citations，找不到时展示
  * "引用不存在"兜底），职责分离，纯函数不依赖会话状态更方便单测。 */
+/** 回答正文实际引用到的角标编号集合（1-based，对应 citations 下标+1）。
+ * 附图区据此只展示"回答真的用到了"的引用的插图——top-k 里没被引用的
+ * 边缘命中（往往正是不相关章节）不再往回答里灌图。 */
+export function citedIndexSet(text: string): Set<number> {
+  const out = new Set<number>();
+  for (const seg of renderWithChips(text)) {
+    if (seg.type === "chip") out.add(seg.index);
+  }
+  return out;
+}
+
 export function renderWithChips(text: string): ChipSegment[] {
   const segments: ChipSegment[] = [];
   const guarded = protectedRanges(text);

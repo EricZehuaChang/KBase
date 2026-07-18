@@ -363,8 +363,14 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
             for i, im in enumerate(images):
                 try:
                     from PIL import Image as PILImage
-                    data = feishu.download_media(feishu_token, im["token"],
-                                                 doc_token=im.get("doc_token"))
+                    if im.get("kind") == "board":
+                        # 画板块（架构图/流程图的常见形态）：导出为图片，
+                        # 需应用权限 board:whiteboard:node:read
+                        data = feishu.download_board_image(feishu_token,
+                                                           im["token"])
+                    else:
+                        data = feishu.download_media(feishu_token, im["token"],
+                                                     doc_token=im.get("doc_token"))
                     if len(data) < MIN_BYTES:
                         continue
                     pil = PILImage.open(_io.BytesIO(data))
