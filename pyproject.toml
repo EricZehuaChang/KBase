@@ -12,6 +12,11 @@ dependencies = [
     "chromadb>=0.5",
     "qdrant-client>=1.10",
     "markitdown[docx,pptx,xlsx,pdf]>=0.1",
+    # 文本层 PDF 主解析器（真实标题层级/阅读序/边框表格，见 ingest/pdf_odl）。
+    # 纯包装+内置 JAR、零传递依赖；运行时需 Java 11+，缺失时自动回退
+    # markitdown（部署不带 JRE 只损失 PDF 结构质量，不影响可用性）。
+    # 钉 2.x：2.0 起 Apache-2.0（更早版本是 MPL-2.0，不用）。
+    "opendataloader-pdf>=2.5,<3",
     "langchain-text-splitters>=0.3",
     "openai>=1.40",
     "sse-starlette>=2.1",
