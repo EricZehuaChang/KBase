@@ -12,9 +12,9 @@ FROM python:3.11-slim
 #   与部分 BLAS 后端运行时需要 OpenMP 动态库，slim 基础镜像默认不带。
 # - curl：compose healthcheck 探测 /healthz 用，slim 镜像默认不带。
 # - default-jre-headless：opendataloader-pdf（文本层 PDF 主解析器，见
-#   kbase/ingest/pdf_odl.py）的 JVM 运行时（bookworm=OpenJDK 17 headless，
-#   镜像约 +250MB）。不装也能跑——解析自动回退 markitdown，只是丢结构化
-#   质量；装上即激活，无需任何配置。
+#   kbase/ingest/pdf_odl.py）的 JVM 运行时——随 Debian 基底取默认版本
+#   （trixie=OpenJDK 21 / bookworm=17，均满足 Java 11+，镜像约 +250MB）。
+#   不装也能跑——解析自动回退 markitdown，只是丢结构化质量；装上即激活。
 # standard profile 的 TEI/Qdrant/Postgres 都是独立容器，本镜像不需要为它们
 # 装依赖；OCR（MonkeyOCR）是外部服务，本镜像也不内置任何 CV/OCR 库。
 RUN apt-get update \
