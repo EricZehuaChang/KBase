@@ -1,6 +1,14 @@
 # KBase 私有化知识库系统
 
-KBase 是一套私有化交付的 B 端知识库系统：摄取（markitdown 解析）→ 分块（父子分块+结构分块）→ 索引（向量库）→ 检索 → 生成（带引用溯源），全链路插件化（Embedder / VectorStore / LLMProvider / Chunker 均为可替换插槽），支持容器化私有化部署。当前版本 **v1.0.0（首个产品版本）**：RAG 全链路（含表格能力/多模态插图回答）、模型接入全页面配置化、企业能力（RBAC/库级ACL/SSO/OpenAI兼容API/评测回归/运营看板）、运维三件套齐备。lite 形态（SQLite+Chroma+进程内 bge-m3）适合 POC/小团队，standard 形态（PostgreSQL+Qdrant+TEI）支撑生产十万级文档；完整功能清单与后续计划见 [CHANGELOG.md](CHANGELOG.md)，运维手册见 docs/manual/。
+**KBase 是一套私有化交付的 B 端企业知识库系统**：单租户，Docker Compose 一键部署，lite 档在纯 CPU 服务器即可离线运行（SQLite + Chroma + 进程内 bge-m3），standard 档平滑升级 PostgreSQL + Qdrant + TEI，支撑生产十万级文档。
+
+- **开箱即用的 RAG 全链路**：摄取 → 分块 → 索引 → 检索 → 生成，混合检索（向量 + BM25 关键词）+ 可选重排 + 多轮查询改写，检索策略三级可调（全局默认 → 库级 → 请求级试跑）。回答全程引用溯源——PDF 定位到页码、文档定位到章节、命中表格回表格、命中图文章节自动附插图（图片不进 prompt，零幻觉设计），支持多库联合问答。
+- **深度文档理解**：文本层 PDF / Word / Excel / Markdown / 网页 / 图片扫描件全覆盖；扫描件走 OCR 版面解析，复杂件可选满血视觉模型深度识别（识别结果人工校验后才入库）；表格原子分块 + 跨页断表合并 + 行线性化嵌入，单元格值可被精确检索；飞书知识库整树导入，保留层级嵌套关系，文档内图片与画板（架构图）一并同步。
+- **全链路组件插槽化**：Embedding / 向量库 / LLM / OCR / 分块器 / 增强器均为可替换插件；LLM 多 Provider 页面配置、通道级故障转移；向量模型可按库绑定、换绑自动全库重建。
+- **企业级交付**：三级角色 RBAC + 库级 ACL、SSO/OIDC、账号邮件通知与忘记密码自助重置（品牌邮件模板）、API Key、全量审计日志；运营看板（问答量/拒答/差评清单）、评测集一键回归（hit@k / MRR）、备份恢复、Prometheus 指标、License 管理。
+- **原生 Agent 协作**：对外提供 OpenAI 兼容 API（知识库即模型）与 MCP Server，可被任意 Agent 当工具调用；对内 Agent 编排复杂场景（v2 路线）。
+
+首个客户场景（政策 AI 助手）验证三类应用：财务报销 Q&A（v1 已覆盖）、政策方案生成与定期汇编（v2）。产品为通用知识库系统，不与单一客户场景耦合。完整功能清单与后续计划见 [CHANGELOG.md](CHANGELOG.md)，运维手册见 docs/manual/。
 
 ## 快速开始（lite 模式）
 
