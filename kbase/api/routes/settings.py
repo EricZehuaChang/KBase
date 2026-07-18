@@ -116,10 +116,10 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
                  dependencies=[deps.require_admin, deps.audit_mutation])
     def test_smtp(body: SmtpTestBody):
         """发一封测试邮件验证配置连通（同步等结果，失败给可读原因）。"""
-        from kbase import mailer
+        from kbase import email_templates, mailer
         try:
-            mailer.send_mail(sf, body.to.strip(), "KBase 发件箱测试",
-                             "这是一封来自 KBase 的测试邮件。收到即说明发件箱配置正确。")
+            subject, text, html_body = email_templates.smtp_test()
+            mailer.send_mail(sf, body.to.strip(), subject, text, html=html_body)
         except Exception as e:  # noqa: BLE001 —— SMTP 侧错误转可读信息
             raise HTTPException(502, f"发送失败: {e}") from e
         return {"ok": True}

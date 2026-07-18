@@ -8,6 +8,7 @@ STARTTLS（服务器支持才升级，不支持则明文——内网中继场景
 import logging
 import smtplib
 from email.header import Header
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr
 
@@ -63,13 +64,22 @@ def status(sf) -> dict:
             "has_password": bool(cfg["password"])}
 
 
-def send_mail(sf, to: str, subject: str, body: str) -> None:
-    """发一封纯文本邮件。配置缺失/服务器拒绝直接抛异常（调用方转可读信息）。"""
+def send_mail(sf, to: str, subject: str, body: str,
+              html: str | None = None) -> None:
+    """发一封邮件。body 纯文本必给；html 给了则发 multipart/alternative
+    （客户端优先渲染品牌 HTML 版式，老客户端回落纯文本，见
+    kbase/email_templates.py）。配置缺失/服务器拒绝直接抛异常。"""
     cfg = get_settings(sf)
     if not (cfg["host"] and cfg["user"] and cfg["password"]):
         raise RuntimeError("发件箱未配置（设置 → 系统 → 发件箱）")
     port = int(cfg["port"] or 465)
-    msg = MIMEText(body, "plain", "utf-8")
+    if html is not None:
+        msg = MIMEMultipart("alternative")
+        # alternative 语义：客户端从后往前选能渲染的——plain 在前作兜底
+        msg.attach(MIMEText(body, "plain", "utf-8"))
+        msg.attach(MIMEText(html, "html", "utf-8"))
+    else:
+        msg = MIMEText(body, "plain", "utf-8")
     msg["Subject"] = Header(subject, "utf-8")
     msg["From"] = formataddr((cfg["from_name"] or "KBase",
                               cfg["from_addr"] or cfg["user"]))

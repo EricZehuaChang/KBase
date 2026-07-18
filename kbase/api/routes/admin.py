@@ -102,7 +102,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         # 账号通知邮件：填了邮箱且发件箱已配置 → 后台发送（发信失败只落
         # 日志，不影响建号——邮件是通知增强，不是建号的硬依赖）
         if body.email:
-            from kbase import mailer
+            from kbase import email_templates, mailer
             if mailer.status(sf)["configured"]:
                 login_url = str(request.base_url).rstrip("/")
 
@@ -110,11 +110,9 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
                             password=body.password, url=login_url):
                     import logging as _logging
                     try:
-                        mailer.send_mail(sf, to, "KBase 账号已开通",
-                            f"您的 KBase 知识库账号已创建：\n\n"
-                            f"登录地址：{url}\n用户名：{username}\n"
-                            f"初始密码：{password}\n\n"
-                            f"首次登录后请点击顶栏钥匙图标修改密码。")
+                        subject, text, html_body = \
+                            email_templates.account_created(username, password, url)
+                        mailer.send_mail(sf, to, subject, text, html=html_body)
                     except Exception as e:  # noqa: BLE001
                         _logging.getLogger(__name__).warning(
                             "账号通知邮件发送失败（%s）: %s", to, e)
