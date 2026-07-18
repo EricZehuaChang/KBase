@@ -346,8 +346,12 @@ def test_kb_config_put_get_and_validation(tmp_path, fake_embedder):
 
 
 def test_delete_kb_cascades_everything(tmp_path, fake_embedder):
-    """删除知识库级联清理：向量集合、FTS、chunks/documents 行、
+    """删除知识库级联清理：向量集合、FTS、chunks/documents/document_images 行、
     conversations/messages 行、kb 行本身；二次删除 404。"""
+    import uuid
+
+    from kbase.db import make_session_factory
+    from kbase.models import DocumentImage
     from kbase.plugins.vectorstores.chroma_store import ChromaStore
 
     cfg = tmp_path / "kbase.yaml"
@@ -362,6 +366,14 @@ def test_delete_kb_cascades_everything(tmp_path, fake_embedder):
            files=[("files", ("补贴办法.md", MD.encode("utf-8"), "text/markdown"))])
     docs = c.get(f"/api/kb/{kb_id}/documents").json()
     assert docs and docs[0]["status"] == "ready"
+    doc_id = docs[0]["id"]
+
+    # md 摄取不提取插图，手工插一行模拟文本层 PDF 产出的图片索引
+    sf = make_session_factory(f"sqlite:///{tmp_path / 'data'}/kbase.sqlite")
+    with sf() as s:
+        s.add(DocumentImage(id=str(uuid.uuid4()), doc_id=doc_id, page=1,
+                            filename="p1.png", width=100, height=100))
+        s.commit()
 
     conv = c.post("/api/conversations", json={"kb_id": kb_id}).json()
     q = "补贴办法.md > 补贴办法 > 第一章 申领条件\n连续工作满两年可申领住房补贴。"
@@ -380,17 +392,17 @@ def test_delete_kb_cascades_everything(tmp_path, fake_embedder):
     assert store.search(kb_id, vec, top_k=5) == []
     # fts 空
     from kbase.index.keyword import KeywordIndex
-    from kbase.db import make_session_factory
-    sf = make_session_factory(f"sqlite:///{tmp_path / 'data'}/kbase.sqlite")
     assert KeywordIndex(sf).search(kb_id, "住房补贴", top_k=5) == []
     # documents/chunks 行清空
     assert c.get(f"/api/kb/{kb_id}/documents").json() == []
+    # document_images 行清空（漏删会积累孤儿死行）
+    with sf() as s:
+        assert s.query(DocumentImage).filter_by(doc_id=doc_id).count() == 0
     # conversations 清空
     assert c.get("/api/conversations", params={"kb_id": kb_id}).json()["items"] == []
     # kb 行本身也没了
     assert not any(k["id"] == kb_id for k in c.get("/api/kb").json())
     # files 目录被清理
-    doc_id = docs[0]["id"]
     assert not (tmp_path / "data" / "files" / doc_id).exists()
 
     # 二次删除 404
@@ -400,6 +412,33 @@ def test_delete_kb_cascades_everything(tmp_path, fake_embedder):
 def test_delete_kb_unknown_404(tmp_path, fake_embedder):
     c = _client(tmp_path, fake_embedder)
     assert c.delete("/api/kb/not-exist").status_code == 404
+
+
+def test_delete_document_clears_document_images(tmp_path, fake_embedder):
+    """删除文档级联清理 document_images 行（多模态一期）：图片文件本就随
+    files/{doc_id} 目录删除，行不清则成为永久积累的孤儿死行。"""
+    import uuid
+
+    from kbase.db import make_session_factory
+    from kbase.models import DocumentImage
+
+    c = _client(tmp_path, fake_embedder)
+    kb_id = c.post("/api/kb", json={"name": "库"}).json()["id"]
+    c.post(f"/api/kb/{kb_id}/documents",
+           files=[("files", ("补贴办法.md", MD.encode("utf-8"), "text/markdown"))])
+    doc_id = c.get(f"/api/kb/{kb_id}/documents").json()[0]["id"]
+
+    # md 摄取不提取插图，手工插行模拟文本层 PDF 产出的图片索引
+    sf = make_session_factory(f"sqlite:///{tmp_path / 'data'}/kbase.sqlite")
+    with sf() as s:
+        for page in (1, 2):
+            s.add(DocumentImage(id=str(uuid.uuid4()), doc_id=doc_id, page=page,
+                                filename=f"p{page}.png", width=100, height=100))
+        s.commit()
+
+    assert c.delete(f"/api/kb/{kb_id}/documents/{doc_id}").status_code == 200
+    with sf() as s:
+        assert s.query(DocumentImage).filter_by(doc_id=doc_id).count() == 0
 
 
 def test_threadpool_size_configurable(tmp_path, fake_embedder):
