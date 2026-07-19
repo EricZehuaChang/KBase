@@ -154,7 +154,26 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
     share_routes.register(app, router, svc, deps, run_query=run_query)
     from kbase.api.routes import feishu_bot as feishu_bot_routes
     feishu_bot_routes.register(app, router, svc, deps)
+    from kbase.api.routes import connectors as connectors_routes
+    connector_sync = connectors_routes.register(router, svc, deps)
     app.include_router(router)
+
+    # 连接器定时同步调度器（对标#3）：startup 起 daemon 线程（TestClient
+    # 非 with 用法不触发 startup——既有测试零线程；uvicorn 生产路径正常
+    # 启动）。启动前先复位崩溃残留的 running 状态，否则该连接器永远抢不
+    # 到锁。shutdown 响应式停线程。
+    from kbase.connectors import ConnectorScheduler, reset_stale_running
+    scheduler = ConnectorScheduler(svc.sf, connector_sync)
+    app.state.connector_scheduler = scheduler
+
+    @app.on_event("startup")
+    def _start_connector_scheduler() -> None:
+        reset_stale_running(svc.sf)
+        scheduler.start()
+
+    @app.on_event("shutdown")
+    def _stop_connector_scheduler() -> None:
+        scheduler.stop()
 
     # M6-5 OpenAI 兼容 API：挂在 /v1（不在 /api 前缀下），鉴权与 /api 相同
     # （Bearer API Key / 会话 Cookie），供 OpenAI 生态客户端零改造接入。

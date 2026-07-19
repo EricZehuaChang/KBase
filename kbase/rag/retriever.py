@@ -311,6 +311,22 @@ class Retriever:
                 ))
         return blocks
 
+    def _union_weight(self, kb_id: str) -> float:
+        """多库联查的库级权重（对标#8，阿里云百炼"按库配权重"）：读
+        KB.config 的 union_weight（0.1~10，缺省 1.0=既有行为）。配置损坏
+        按 1.0 处理——权重是排序微调，不值得让联查整体失败。"""
+        import json as _json
+
+        from kbase.models import KnowledgeBase
+        with self._sf() as s:
+            kb = s.get(KnowledgeBase, kb_id)
+        try:
+            w = float(_json.loads(kb.config).get("union_weight", 1.0)) \
+                if kb is not None and kb.config else 1.0
+        except (ValueError, TypeError, AttributeError):
+            return 1.0
+        return min(max(w, 0.1), 10.0)
+
     def retrieve_multi(self, kb_ids: list[str], query: str, top_k: int = 5,
                        strategy=None):
         """M6-2 跨库联合检索（散射-聚合）：对每个库独立跑一次 retrieve()
@@ -320,9 +336,16 @@ class Retriever:
         为什么全局按分数合并可行：重排分（交叉编码器 query-doc 相关度）跨库
         天然可比；未重排时的余弦分在各库用同一 embedder 时也可比（不同
         embedder 的库混排是近似——但那是 KB 级向量模型的少见组合，v1 接受）。
-        每库先取 top_k 个候选块再合并，保证任一库的强命中不会被别库淹没。"""
+        每库先取 top_k 个候选块再合并，保证任一库的强命中不会被别库淹没。
+
+        库级权重（对标#8）：各库分数乘以其 union_weight 后再全局排序——
+        运营侧把权威库调高/杂讯库调低的旋钮；默认全 1.0，行为与 M6-2 不变。"""
         merged: list[ContextBlock] = []
         for kb_id in kb_ids:
-            merged.extend(self.retrieve(kb_id, query, top_k, strategy=strategy))
+            weight = self._union_weight(kb_id)
+            for block in self.retrieve(kb_id, query, top_k, strategy=strategy):
+                if weight != 1.0:
+                    block.score = block.score * weight
+                merged.append(block)
         merged.sort(key=lambda b: b.score, reverse=True)
         return merged[:top_k]
