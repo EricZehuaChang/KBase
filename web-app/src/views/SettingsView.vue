@@ -18,6 +18,7 @@ import UserManagementCard from "@/components/UserManagementCard.vue";
 import ApiKeyCard from "@/components/ApiKeyCard.vue";
 import EmbedderKeysCard from "@/components/EmbedderKeysCard.vue";
 import FeishuCard from "@/components/FeishuCard.vue";
+import FeishuBotCard from "@/components/FeishuBotCard.vue";
 import SmtpCard from "@/components/SmtpCard.vue";
 import LicenseCard from "@/components/LicenseCard.vue";
 import OpsDashboardCard from "@/components/OpsDashboardCard.vue";
@@ -221,8 +222,11 @@ onMounted(async () => {
         </section>
 
         <!-- 连接器（admin） -->
-        <section v-else-if="tab === 'connectors'">
-          <FeishuCard v-if="canAdminister(currentRole ?? '')" />
+        <section v-else-if="tab === 'connectors'" class="flex flex-col gap-4">
+          <template v-if="canAdminister(currentRole ?? '')">
+            <FeishuCard />
+            <FeishuBotCard />
+          </template>
         </section>
 
         <!-- 运营看板 -->
