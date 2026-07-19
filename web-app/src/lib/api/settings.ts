@@ -154,6 +154,27 @@ export function testSmtp(to: string): Promise<{ ok: boolean }> {
   return req("/api/settings/smtp/test", jsonInit({ to }));
 }
 
+// ---- 飞书群机器人（对标 #2：群里 @机器人 问答） ----
+
+export interface FeishuBotStatus {
+  configured: boolean;
+  has_verification_token: boolean;
+  has_encrypt_key: boolean;
+  kb_id: string | null;
+  provider: string | null;
+}
+
+export function getFeishuBot(): Promise<FeishuBotStatus> {
+  return req("/api/settings/feishu-bot");
+}
+
+export function putFeishuBot(body: {
+  verification_token?: string | null; encrypt_key?: string | null;
+  kb_id: string; provider?: string | null;
+}): Promise<FeishuBotStatus> {
+  return req("/api/settings/feishu-bot", jsonInit(body, "PUT"));
+}
+
 // ---- 飞书连接器凭据（页面维护，secret 脱敏） ----
 
 export interface FeishuStatus {

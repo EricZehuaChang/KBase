@@ -60,6 +60,15 @@ class FeishuCredentialsBody(BaseModel):
     app_secret: str = Field(min_length=1)
 
 
+class FeishuBotSettingsBody(BaseModel):
+    """飞书群机器人配置：token/encrypt_key 传 None=保留旧值（只写不回显）；
+    kb_id 必填（机器人回答依据的知识库）；provider 空=系统默认模型。"""
+    verification_token: str | None = None
+    encrypt_key: str | None = None
+    kb_id: str = Field(min_length=1)
+    provider: str | None = None
+
+
 class FeishuImportBody(BaseModel):
     """飞书知识库导入：source 收 wiki 节点链接（导该子树）或 space_id
     （导整个空间）。"""

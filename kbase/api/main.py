@@ -152,6 +152,8 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
 
     from kbase.api.routes import share as share_routes
     share_routes.register(app, router, svc, deps, run_query=run_query)
+    from kbase.api.routes import feishu_bot as feishu_bot_routes
+    feishu_bot_routes.register(app, router, svc, deps)
     app.include_router(router)
 
     # M6-5 OpenAI 兼容 API：挂在 /v1（不在 /api 前缀下），鉴权与 /api 相同
