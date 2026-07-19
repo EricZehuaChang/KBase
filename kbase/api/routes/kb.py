@@ -20,8 +20,8 @@ from kbase.api.schemas import (ChunkUpdate, DocumentReview, FeishuImportBody,
                                KBConfigBody, KBCreate, KbGrantsBody,
                                RebindEmbedderBody, UrlImportBody)
 from kbase.api.services import Services
-from kbase.models import (Chunk, Conversation, Document, DocumentImage,
-                          KnowledgeBase, Message)
+from kbase.models import (Chunk, Connector, ConnectorDoc, Conversation,
+                          Document, DocumentImage, KnowledgeBase, Message)
 
 
 _URL_MAX_BYTES = 10 * 1024 * 1024   # URL 导入响应体上限（M6-7）
@@ -146,6 +146,15 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
                 s.query(Message).filter(Message.conv_id.in_(conv_ids)).delete(
                     synchronize_session=False)
             s.query(Conversation).filter_by(kb_id=kb_id).delete()
+            # 同步连接器随库删除（对标#3）：孤儿连接器会被调度器继续触发、
+            # 对已不存在的库反复同步失败
+            conn_ids = [c.id for c in
+                        s.query(Connector).filter_by(kb_id=kb_id).all()]
+            if conn_ids:
+                s.query(ConnectorDoc).filter(
+                    ConnectorDoc.connector_id.in_(conn_ids)).delete(
+                    synchronize_session=False)
+            s.query(Connector).filter_by(kb_id=kb_id).delete()
             kb = s.get(KnowledgeBase, kb_id)
             if kb is not None:
                 s.delete(kb)
@@ -342,14 +351,10 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
 
     def _ingest_feishu_batch(kb_id: str, staged: list, feishu_token: str) -> None:
         """飞书批次专用 bg：逐篇摄取拿 doc_id 后，下载该篇图片素材落
-        DocumentImage（heading 锚，回答命中章节即附图）。单图失败只损失
-        那张图；重导命中 content_hash 去重时已有插图的文档跳过图片写入。"""
-        import io as _io
+        DocumentImage（逻辑在 feishu.save_doc_images，与连接器同步共用）。"""
         import logging as _logging
 
         from kbase import feishu
-        from kbase.doc_images import MIN_BYTES, MIN_DIMENSION
-        from kbase.models import DocumentImage
         _logger = _logging.getLogger(__name__)
         for path, name, images in staged:
             try:
@@ -357,48 +362,8 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
             except Exception as e:  # noqa: BLE001 —— 批次隔离，失败已由 pipeline 落库
                 _logger.warning("飞书文档 %s 摄取失败: %s", name, e)
                 continue
-            if not images:
-                continue
-            with sf() as s:
-                if (s.query(DocumentImage)
-                        .filter(DocumentImage.doc_id == doc_id).count()):
-                    continue                     # 重导去重：插图已在
-            img_dir = cfg.data_dir / "files" / doc_id / "images"
-            rows = []
-            for i, im in enumerate(images):
-                try:
-                    from PIL import Image as PILImage
-                    if im.get("kind") == "board":
-                        # 画板块（架构图/流程图的常见形态）：导出为图片，
-                        # 需应用权限 board:whiteboard:node:read
-                        data = feishu.download_board_image(feishu_token,
-                                                           im["token"])
-                    else:
-                        data = feishu.download_media(feishu_token, im["token"],
-                                                     doc_token=im.get("doc_token"))
-                    if len(data) < MIN_BYTES:
-                        continue
-                    pil = PILImage.open(_io.BytesIO(data))
-                    width, height = pil.size
-                    if width < MIN_DIMENSION or height < MIN_DIMENSION:
-                        continue
-                    fmt = (pil.format or "PNG").lower()
-                    ext = "jpg" if fmt in ("jpeg", "jpg") else fmt
-                    filename = f"fs{i + 1}.{ext}"
-                    img_dir.mkdir(parents=True, exist_ok=True)
-                    (img_dir / filename).write_bytes(data)
-                    rows.append(DocumentImage(
-                        id=str(uuid.uuid4()), doc_id=doc_id, page=0,
-                        heading=im.get("heading") or None, filename=filename,
-                        width=width, height=height))
-                except Exception as e:  # noqa: BLE001 —— 单图容错
-                    _logger.warning("飞书图片下载失败（doc=%s token=%s）: %s "
-                                    "——若为 403 需应用开通 drive 读权限",
-                                    name, im.get("token"), e)
-            if rows:
-                with sf() as s:
-                    s.add_all(rows)
-                    s.commit()
+            feishu.save_doc_images(sf, cfg.data_dir, feishu_token, doc_id,
+                                   images)
 
     @router.post("/demo-data", dependencies=[deps.require_editor, deps.audit_mutation])
     def load_demo_data(request: Request, bg: BackgroundTasks):
@@ -520,23 +485,11 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
     @router.delete("/kb/{kb_id}/documents/{doc_id}",
                    dependencies=[deps.require_editor, deps.audit_mutation])
     def delete_document(kb_id: str, doc_id: str):
-        with sf() as s:
-            doc = s.get(Document, doc_id)
-            if doc is None or doc.kb_id != kb_id:
-                raise HTTPException(404, f"文档不存在: {doc_id}")
-        # 级联顺序：向量 → 全文索引 → chunk/document_images 行 → document 行
-        # → files 目录（document_images 无 FK 级联，漏删会积累孤儿死行）
-        store.delete(kb_id, doc_id)
-        if keyword_index is not None:
-            keyword_index.delete_doc(doc_id)
-        with sf() as s:
-            s.query(Chunk).filter_by(doc_id=doc_id).delete()
-            s.query(DocumentImage).filter_by(doc_id=doc_id).delete()
-            doc = s.get(Document, doc_id)
-            if doc is not None:
-                s.delete(doc)
-            s.commit()
-        shutil.rmtree(cfg.data_dir / "files" / doc_id, ignore_errors=True)
+        # 级联逻辑在 kbase/doc_delete.py（与连接器同步引擎共用单一事实源）
+        from kbase.doc_delete import delete_document_cascade
+        if not delete_document_cascade(sf, store, keyword_index, cfg.data_dir,
+                                       kb_id, doc_id):
+            raise HTTPException(404, f"文档不存在: {doc_id}")
         return {"ok": True}
 
     @router.post("/documents/{doc_id}/retry",

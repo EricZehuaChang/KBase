@@ -75,6 +75,27 @@ class FeishuImportBody(BaseModel):
     source: str = Field(min_length=1)
 
 
+class ConnectorCreate(BaseModel):
+    """创建同步连接器（对标#3）：type 一期只有 feishu；source 同一次性
+    导入语义（wiki 链接=该子树 / space_id=整空间）；interval_minutes=0
+    表示仅手动同步，上限 30 天。"""
+    type: Literal["feishu"]
+    source: str = Field(min_length=1)
+    name: str = ""
+    interval_minutes: int = Field(default=1440, ge=0, le=43200)
+    prune: bool = True
+
+
+class ConnectorUpdate(BaseModel):
+    """更新连接器运行参数（源不可改——换源=删旧建新，映射指纹全部失效）。"""
+    model_config = {"extra": "forbid"}
+
+    name: str | None = None
+    enabled: bool | None = None
+    interval_minutes: int | None = Field(default=None, ge=0, le=43200)
+    prune: bool | None = None
+
+
 class FeedbackBody(BaseModel):
     """问答反馈（M6-4）：rating 只收 1（赞）/-1（踩），note 可选补充说明。"""
     rating: Literal[1, -1]
@@ -165,6 +186,8 @@ class KBConfigBody(BaseModel):
     enrich: EnrichConfigBody | None = None
     # M6-1.5 KB 级检索策略段（缺省=全局默认）
     retrieval: KBRetrievalBody | None = None
+    # 对标#8 多库联查权重：该库命中分数的乘法因子（1.0=中性）。
+    union_weight: float | None = Field(default=None, ge=0.1, le=10.0)
 
     @model_validator(mode="after")
     def _check_overlap_lt_size(self):

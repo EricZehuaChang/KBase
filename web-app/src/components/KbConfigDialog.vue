@@ -79,6 +79,8 @@ const hybridMode = ref("default");
 const rerankMode = ref("default");
 const rewriteMode = ref("default");     // default | off | conditional | always
 const candidatesText = ref("");         // 空=跟随全局
+// 对标#8 多库联查权重：空=中性 1.0（不写配置键）
+const unionWeightText = ref("");
 
 function triState(v: boolean | null | undefined): string {
   return v == null ? "default" : v ? "on" : "off";
@@ -100,6 +102,7 @@ watch(() => props.open, (isOpen) => {
   rerankMode.value = triState(r?.rerank);
   rewriteMode.value = r?.rewrite ?? "default";
   candidatesText.value = r?.candidates ? String(r.candidates) : "";
+  unionWeightText.value = cfg?.union_weight ? String(cfg.union_weight) : "";
 });
 
 function buildRetrieval(): KbRetrievalConfig | undefined {
@@ -121,11 +124,16 @@ async function save() {
   if (!props.kb) return;
   saving.value = true;
   try {
+    // 联查权重：空/1.0=中性，不写键（配置保持干净）
+    const weight = parseFloat(unionWeightText.value);
+    const unionWeight = !Number.isNaN(weight) && weight !== 1.0
+      ? Math.min(Math.max(weight, 0.1), 10) : undefined;
     await putKbConfig(props.kb.id, {
       chunk_size: chunkSize.value,
       chunk_overlap: chunkOverlap.value,
       enrich: { enabled: enrichEnabled.value },
       retrieval: buildRetrieval(),
+      ...(unionWeight !== undefined ? { union_weight: unionWeight } : {}),
     });
     toast.success("配置已保存");
     emit("update:open", false);
@@ -243,6 +251,15 @@ async function save() {
               <Input
                 v-model="candidatesText" type="number" min="1" max="100"
                 class="w-36" placeholder="默认"
+              />
+            </label>
+            <!-- 对标#8：多库联查时本库分数的乘法因子——权威库调高、
+                 杂讯库调低；仅影响跨库联合问答的排序，单库检索不变 -->
+            <label class="flex items-center justify-between gap-2">
+              <span class="text-sm text-[var(--text-2)]">联查权重（0.1-10，默认 1）</span>
+              <Input
+                v-model="unionWeightText" type="number" min="0.1" max="10" step="0.1"
+                class="w-36" placeholder="1.0"
               />
             </label>
           </div>

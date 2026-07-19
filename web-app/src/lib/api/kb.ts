@@ -22,6 +22,8 @@ export interface KbConfig {
   // admin 可经 rebindEmbedder 换绑（全库向量作废后台重建）。
   embedder?: string;
   retrieval?: KbRetrievalConfig;
+  // 对标#8 多库联查权重：该库命中分数乘法因子（0.1~10，缺省 1.0=中性）
+  union_weight?: number;
 }
 
 export interface Kb {
@@ -243,6 +245,67 @@ export function importFeishu(
 // M6-7 URL 连接器：拉取网页导入知识库（内网 wiki/门户为主用途）
 export function importUrl(kbId: string, url: string): Promise<{ accepted: string[] }> {
   return req(`/api/kb/${kbId}/import-url`, jsonInit({ url }));
+}
+
+// ---- 同步连接器（对标#3）：定时增量同步的活知识库 ----
+
+export interface ConnectorStats {
+  added: number;
+  updated: number;
+  skipped: number;
+  pruned: number;
+  failed: number;
+}
+
+export interface Connector {
+  id: string;
+  kb_id: string;
+  type: "feishu";
+  name: string;
+  config: { source?: string };
+  enabled: boolean;
+  interval_minutes: number;      // 0=仅手动
+  prune: boolean;                // 源侧删除→本地同步删除（镜像语义）
+  last_sync_at: string | null;
+  last_sync_status: "running" | "done" | "done_with_errors" | "failed" | null;
+  last_sync_error: string | null;
+  last_sync_stats: ConnectorStats | null;
+  doc_count: number;
+  created_at: string;
+}
+
+export function listConnectors(kbId: string): Promise<Connector[]> {
+  return req(`/api/kb/${kbId}/connectors`);
+}
+
+// 创建即触发首次同步（后台）；凭据未配置后端 409，调用方引导先配凭据
+export function createConnector(
+  kbId: string,
+  body: { type: "feishu"; source: string; name?: string;
+          interval_minutes?: number; prune?: boolean },
+): Promise<Connector> {
+  return req(`/api/kb/${kbId}/connectors`, jsonInit(body));
+}
+
+export function updateConnector(
+  id: string,
+  body: { name?: string; enabled?: boolean; interval_minutes?: number;
+          prune?: boolean },
+): Promise<Connector> {
+  return req(`/api/connectors/${id}`, jsonInit(body, "PUT"));
+}
+
+// purgeDocs=true 连带删除已同步文档；false（默认）保留为普通文档
+export function deleteConnector(
+  id: string, purgeDocs = false,
+): Promise<{ ok: boolean; purged: boolean }> {
+  return req(`/api/connectors/${id}?purge_docs=${purgeDocs}`,
+             { method: "DELETE" });
+}
+
+// 手动立即同步（后台执行）；正在同步中后端 409
+export function syncConnector(id: string): Promise<{ accepted: boolean }> {
+  return req(`/api/connectors/${id}/sync`, { method: "POST" });
 }
 
 // E POC 演示数据一键装载：幂等——演示库已存在时 created=false 直接返回其 id

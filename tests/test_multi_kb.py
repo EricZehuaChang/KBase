@@ -39,6 +39,9 @@ def test_retrieve_multi_scatter_gather(tmp_path, fake_embedder):
         return pool[kb_id][:top_k]
 
     r.retrieve = fake_retrieve
+    # 权重打桩为中性（对标#8）：本测试只测合并排序；裸 __new__ 构造没有
+    # _sf，走不了真配置读取。权重语义的真库测试见 test_connectors.py。
+    r._union_weight = lambda kb_id: 1.0
     merged = r.retrieve_multi(["kbA", "kbB"], "q", top_k=2)
     # 全局按分数排序取 top2：0.9(kbA) > 0.7(kbB) > 0.4
     assert [b.doc_id for b in merged] == ["dA", "dB"]

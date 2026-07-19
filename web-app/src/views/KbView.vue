@@ -5,7 +5,7 @@
 // 避免后台定时器继续对已卸载组件的响应式状态写入。
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { Plus, RotateCw, Settings2, Share2, Trash2, Shield } from "@lucide/vue";
+import { Plus, RefreshCw, RotateCw, Settings2, Share2, Trash2, Shield } from "@lucide/vue";
 import { toast } from "vue-sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,7 @@ import ReviewDialog from "@/components/ReviewDialog.vue";
 import KbGrantsDialog from "@/components/KbGrantsDialog.vue";
 import PageHeader from "@/components/PageHeader.vue";
 import FeishuImportDialog from "@/components/FeishuImportDialog.vue";
+import ConnectorsDialog from "@/components/ConnectorsDialog.vue";
 import ShareDialog from "@/components/ShareDialog.vue";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -196,6 +197,9 @@ async function handleImportUrl() {
 // ---- 飞书知识库导入（连接器一期）----
 const feishuOpen = ref(false);
 
+// ---- 同步连接器（对标#3）：定时增量同步管理 ----
+const connectorsOpen = ref(false);
+
 // ---- POC 演示数据一键装载（E）----
 const demoLoading = ref(false);
 
@@ -360,6 +364,10 @@ onMounted(loadKbs);
             <RotateCw class="size-3.5" />
             批量重试OCR
           </Button>
+          <Button v-if="canManage" variant="outline" size="sm" @click="connectorsOpen = true">
+            <RefreshCw class="size-3.5" />
+            同步连接器
+          </Button>
           <Button v-if="canManage" variant="outline" size="sm" @click="shareOpen = true">
             <Share2 class="size-3.5" />
             分享
@@ -483,6 +491,7 @@ onMounted(loadKbs);
   <ReviewDialog v-model:open="reviewOpen" :doc="reviewDoc" @approved="loadDocs" />
   <KbGrantsDialog v-model:open="grantsOpen" :kb="grantsKb" />
   <FeishuImportDialog v-model:open="feishuOpen" :kb-id="kbId" @imported="loadDocs" />
+  <ConnectorsDialog v-model:open="connectorsOpen" :kb-id="kbId" @changed="loadDocs" />
 
   <!-- 删除知识库确认 Dialog -->
   <Dialog :open="!!kbDeleteTarget" @update:open="(v) => { if (!v) kbDeleteTarget = null; }">

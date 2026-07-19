@@ -305,7 +305,9 @@ def collect_wiki_docs(token: str, space_id: str,
                       root_path: list[str] | None = None,
                       max_docs: int = 500) -> list[dict]:
     """遍历 wiki 子树，收集可导入的 docx 节点：
-    [{obj_token, title, path: [祖先标题...]}]。max_docs 防御超大空间。"""
+    [{obj_token, title, path: [祖先标题...], edit_time}]。max_docs 防御
+    超大空间。edit_time=节点 obj_edit_time（秒级时间戳字符串，可能缺失
+    为 ""）——连接器增量同步的版本指纹，变了才拉正文（省 API 配额）。"""
     results: list[dict] = []
 
     def walk(parent_token: str | None, path: list[str]) -> None:
@@ -315,12 +317,72 @@ def collect_wiki_docs(token: str, space_id: str,
             title = node.get("title") or "未命名"
             if node.get("obj_type") == "docx" and node.get("obj_token"):
                 results.append({"obj_token": node["obj_token"],
-                                "title": title, "path": path})
+                                "title": title, "path": path,
+                                "edit_time": str(node.get("obj_edit_time")
+                                                 or "")})
             if node.get("has_child"):
                 walk(node.get("node_token"), path + [title])
 
     walk(root_node_token, root_path or [])
     return results
+
+
+def save_doc_images(sf, data_dir, token: str, doc_id: str,
+                    images: list[dict]) -> int:
+    """下载一篇文档收集到的图片/画板素材，落 files/{doc_id}/images/ 并写
+    DocumentImage 行（heading 锚，回答命中章节即附图）。返回入库张数。
+    幂等：该文档已有插图行（重导命中 content_hash 去重）直接跳过；
+    单图失败只损失那张图（403 常见原因=应用缺 drive/board 读权限）。
+    从 kb.py 的飞书批次闭包抽出——一次性导入与连接器同步共用。"""
+    import io as _io
+    import uuid as _uuid
+
+    from kbase.doc_images import MIN_BYTES, MIN_DIMENSION
+    from kbase.models import DocumentImage
+
+    if not images:
+        return 0
+    with sf() as s:
+        if (s.query(DocumentImage)
+                .filter(DocumentImage.doc_id == doc_id).count()):
+            return 0                     # 重导去重：插图已在
+    from pathlib import Path as _Path
+    img_dir = _Path(data_dir) / "files" / doc_id / "images"
+    rows = []
+    for i, im in enumerate(images):
+        try:
+            from PIL import Image as PILImage
+            if im.get("kind") == "board":
+                # 画板块（架构图/流程图的常见形态）：导出为图片，
+                # 需应用权限 board:whiteboard:node:read
+                data = download_board_image(token, im["token"])
+            else:
+                data = download_media(token, im["token"],
+                                      doc_token=im.get("doc_token"))
+            if len(data) < MIN_BYTES:
+                continue
+            pil = PILImage.open(_io.BytesIO(data))
+            width, height = pil.size
+            if width < MIN_DIMENSION or height < MIN_DIMENSION:
+                continue
+            fmt = (pil.format or "PNG").lower()
+            ext = "jpg" if fmt in ("jpeg", "jpg") else fmt
+            filename = f"fs{i + 1}.{ext}"
+            img_dir.mkdir(parents=True, exist_ok=True)
+            (img_dir / filename).write_bytes(data)
+            rows.append(DocumentImage(
+                id=str(_uuid.uuid4()), doc_id=doc_id, page=0,
+                heading=im.get("heading") or None, filename=filename,
+                width=width, height=height))
+        except Exception as e:  # noqa: BLE001 —— 单图容错
+            logger.warning("飞书图片下载失败（doc=%s token=%s）: %s "
+                           "——若为 403 需应用开通 drive 读权限",
+                           doc_id, im.get("token"), e)
+    if rows:
+        with sf() as s:
+            s.add_all(rows)
+            s.commit()
+    return len(rows)
 
 
 def doc_to_markdown(token: str, doc: dict,

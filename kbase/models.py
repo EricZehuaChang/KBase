@@ -236,6 +236,55 @@ class EvalRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class Connector(Base):
+    """同步连接器实例（对标清单#3）：某知识库绑定一个外部数据源，由调度器
+    按 interval_minutes 定时增量同步——把"一次性导入"升级为"持续同步的
+    活知识库"。type 一期只有 "feishu"（飞书 wiki），Notion/Confluence 等
+    后续类型在 kbase/connectors.py 的 _SOURCE_TYPES 注册即可复用全套
+    增量/清单 diff/调度逻辑。
+
+    同步状态直接存本行（last_sync_*）而不复用 jobs 表：jobs 是 kb 级
+    长任务（步骤模型+产物路径），与逐文档 diff 循环不匹配，且定时同步会
+    把 jobs 列表刷屏。前端连接器列表轮询本行即可。"""
+    __tablename__ = "connectors"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    kb_id: Mapped[str] = mapped_column(String(36), index=True)
+    type: Mapped[str] = mapped_column(String(20))             # "feishu"
+    name: Mapped[str] = mapped_column(String(200), default="")
+    config: Mapped[str] = mapped_column(Text)                 # JSON 类型专属（飞书: {"source": url|space_id}）
+    # 停用=调度器跳过；手动"立即同步"不受影响（排查/补数场景仍可用）。
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # 定时间隔（分钟）；0=仅手动同步。默认一天一次——wiki 类源的变更频率
+    # 与 API 配额（整树遍历逐层调用）的平衡点。
+    interval_minutes: Mapped[int] = mapped_column(Integer, default=1440)
+    # 镜像语义：源侧删除的文档本地也删（活知识库承诺——源头删掉的错误
+    # 文档不该留在库里继续污染答案）。可关（本地保留成普通文档）。
+    prune: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # NULL(从未同步) | running | done | done_with_errors | failed
+    last_sync_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    last_sync_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_sync_stats: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON {added,updated,skipped,pruned,failed}
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ConnectorDoc(Base):
+    """连接器→本地文档映射 + 增量指纹。source_key=源侧稳定标识（飞书=
+    obj_token）；fingerprint=源侧版本信号（飞书=obj_edit_time，变了才拉
+    正文）；content_hash=转换后 markdown 的 sha256（与 Document.content_hash
+    同算法）——版本信号变但内容没变（权限类改动碰 edit_time）只刷新
+    fingerprint，不重摄取。"""
+    __tablename__ = "connector_docs"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    connector_id: Mapped[str] = mapped_column(String(36), index=True)
+    source_key: Mapped[str] = mapped_column(String(200), index=True)
+    doc_id: Mapped[str] = mapped_column(String(36), index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), default="")
+    content_hash: Mapped[str] = mapped_column(String(64), default="")
+    title: Mapped[str] = mapped_column(String(500), default="")   # 源侧标题（排障展示）
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class Job(Base):
     __tablename__ = "jobs"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
