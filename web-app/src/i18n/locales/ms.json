@@ -1,0 +1,14 @@
+{
+  "common": {
+    "save": "Simpan",
+    "cancel": "Batal",
+    "delete": "Padam",
+    "confirm": "Sahkan",
+    "close": "Tutup",
+    "edit": "Sunting",
+    "loading": "Memuatkan…"
+  },
+  "lang": {
+    "label": "Bahasa"
+  }
+}

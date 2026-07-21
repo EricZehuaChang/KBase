@@ -15,6 +15,7 @@ import { useRoute, useRouter } from "vue-router";
 import { KeyRound, LogOut, Sun, Moon } from "@lucide/vue";
 import ChangePasswordDialog from "@/components/ChangePasswordDialog.vue";
 import EmailPromptDialog from "@/components/EmailPromptDialog.vue";
+import LanguagePicker from "@/components/LanguagePicker.vue";
 import { getSession, logout, type Me } from "@/lib/api";
 import { roleLabel, roleBadgeClass, canManageContent } from "@/lib/auth-utils";
 import { theme, toggleTheme } from "@/lib/theme";
@@ -166,6 +167,7 @@ function enterWorkbench() {
         >
           进入工作台
         </button>
+        <LanguagePicker />
         <button
           type="button"
           class="rounded-[var(--radius-ctl)] p-2 text-[var(--text-2)] transition-colors hover:bg-[var(--surface-2)]"
