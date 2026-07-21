@@ -61,7 +61,7 @@
     ]
   },
   "admin.html": {
-    "file": "assets/admin-QUdnCo7o.js",
+    "file": "assets/admin-CMx7Jb76.js",
     "name": "admin",
     "src": "admin.html",
     "isEntry": true,
@@ -134,7 +134,7 @@
     ]
   },
   "src/views/SettingsView.vue": {
-    "file": "assets/SettingsView-Q60IrsxE.js",
+    "file": "assets/SettingsView-LUbNfGFE.js",
     "name": "SettingsView",
     "src": "src/views/SettingsView.vue",
     "isDynamicEntry": true,
