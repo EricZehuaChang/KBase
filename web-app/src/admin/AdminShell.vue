@@ -13,6 +13,7 @@ import {
 } from "@lucide/vue";
 import ChangePasswordDialog from "@/components/ChangePasswordDialog.vue";
 import EmailPromptDialog from "@/components/EmailPromptDialog.vue";
+import LanguagePicker from "@/components/LanguagePicker.vue";
 import { theme, toggleTheme } from "@/lib/theme";
 import { getSession, logout, getLicense, currentRole, type Me } from "@/lib/api";
 import { roleLabel, roleBadgeClass, canAdminister } from "@/lib/auth-utils";
@@ -178,6 +179,7 @@ function backToPortal() {
             <span class="font-medium">{{ currentLabel }}</span>
           </div>
           <div class="flex items-center gap-2">
+            <LanguagePicker />
             <button
               type="button"
               class="rounded-[var(--radius-ctl)] p-2 text-[var(--text-2)] transition-colors hover:bg-[var(--surface-2)]"

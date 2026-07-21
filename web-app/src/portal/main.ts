@@ -5,5 +5,8 @@ import "@/styles/main.css";
 import "@/lib/theme";
 import PortalShell from "@/portal/PortalShell.vue";
 import router from "@/portal/router";
+import { i18n, initI18n } from "@/i18n";
 
-createApp(PortalShell).use(router).mount("#app");
+createApp(PortalShell).use(router).use(i18n).mount("#app");
+// 挂载后异步拉 DB 覆盖（不阻塞首屏——基线 messages 已随 bundle 就绪）
+initI18n();
