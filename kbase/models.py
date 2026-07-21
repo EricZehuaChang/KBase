@@ -299,3 +299,17 @@ class Job(Base):
     provider: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class Translation(Base):
+    """i18n 覆盖表(方案 A):只存运营在管理端「多语言」页改过的 UI 文案
+    译文。译文基线在前端 locales/*.json（机翻+校准，随版本走）；这里的行
+    按 (lang, key) 覆盖基线,前端 mergeLocaleMessage 合并(DB 优先)。空表
+    =全用基线;删某行=该 key 回落基线。lang 不做后端白名单——语言清单以
+    前端 languages.ts 为单一事实源,加新语言零改后端。"""
+    __tablename__ = "translations"
+    lang: Mapped[str] = mapped_column(String(10), primary_key=True)   # zh/en/ms/...
+    key: Mapped[str] = mapped_column(String(200), primary_key=True)   # 语义点分 key，如 kb.create
+    value: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_by: Mapped[str | None] = mapped_column(String(100), nullable=True)

@@ -156,6 +156,8 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
     feishu_bot_routes.register(app, router, svc, deps)
     from kbase.api.routes import connectors as connectors_routes
     connector_sync = connectors_routes.register(router, svc, deps)
+    from kbase.api.routes import i18n as i18n_routes
+    i18n_routes.register(app, router, svc, deps)
     app.include_router(router)
 
     # 连接器定时同步调度器（对标#3）：startup 起 daemon 线程（TestClient
