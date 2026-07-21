@@ -10,5 +10,14 @@
   },
   "lang": {
     "label": "语言"
+  },
+  "portal": {
+    "empty": {
+      "title": "有什么可以帮你？",
+      "hint_questions": "试试下面的问题，或直接输入你的问题",
+      "hint_empty": "提出一个问题，开始新的对话",
+      "q_main": "《{title}》的主要内容有哪些？",
+      "q_numbers": "{title}里有哪些具体标准或数字？"
+    }
   }
 }

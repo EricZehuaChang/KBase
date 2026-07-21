@@ -10,5 +10,14 @@
   },
   "lang": {
     "label": "Language"
+  },
+  "portal": {
+    "empty": {
+      "title": "How can I help you?",
+      "hint_questions": "Try one of the questions below, or just type your own",
+      "hint_empty": "Ask a question to start a new conversation",
+      "q_main": "What are the main points of \"{title}\"?",
+      "q_numbers": "What specific standards or figures are in {title}?"
+    }
   }
 }

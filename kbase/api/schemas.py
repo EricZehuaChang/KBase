@@ -96,6 +96,15 @@ class ConnectorUpdate(BaseModel):
     prune: bool | None = None
 
 
+class TranslationPut(BaseModel):
+    """管理端「多语言」编辑:写某语言某 key 的译文覆盖。value 空串=删除
+    覆盖、回落基线(撤销修改用回机翻底)。lang 不做枚举白名单(语言清单
+    以前端 languages.ts 为准,加语言零改后端)。"""
+    lang: str = Field(min_length=1, max_length=10)
+    key: str = Field(min_length=1, max_length=200)
+    value: str
+
+
 class FeedbackBody(BaseModel):
     """问答反馈（M6-4）：rating 只收 1（赞）/-1（踩），note 可选补充说明。"""
     rating: Literal[1, -1]

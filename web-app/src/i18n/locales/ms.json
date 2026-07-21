@@ -10,5 +10,14 @@
   },
   "lang": {
     "label": "Bahasa"
+  },
+  "portal": {
+    "empty": {
+      "title": "Apa yang boleh saya bantu?",
+      "hint_questions": "Cuba soalan di bawah, atau taip soalan anda sendiri",
+      "hint_empty": "Tanya satu soalan untuk memulakan perbualan baharu",
+      "q_main": "Apakah kandungan utama \"{title}\"?",
+      "q_numbers": "Apakah standard atau angka khusus dalam {title}?"
+    }
   }
 }

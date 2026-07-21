@@ -7,9 +7,11 @@
 // chips，只留引导文案（没有内容时给会拒答的假问题更糟）。
 import { onMounted, ref, watch } from "vue";
 import { MessageSquare } from "@lucide/vue";
+import { useI18n } from "vue-i18n";
 import { listDocs } from "@/lib/api";
 import { kbId } from "./topbar-state";
 
+const { t } = useI18n();
 const emit = defineEmits<{ pick: [question: string] }>();
 
 const questions = ref<string[]>([]);
@@ -25,9 +27,10 @@ async function buildQuestions() {
     const docs = (await listDocs(kbId.value)).filter((d) => d.status === "ready");
     // 每库最多 4 条：前 3 条按文档主题问要点，第 4 条留一条对比/汇总式问法
     const picks = docs.slice(0, 3).map(
-      (d) => `《${docTitle(d.filename)}》的主要内容有哪些？`);
+      (d) => t("portal.empty.q_main", { title: docTitle(d.filename) }));
     if (docs.length > 1) {
-      picks.push(`${docTitle(docs[0].filename)}里有哪些具体标准或数字？`);
+      picks.push(t("portal.empty.q_numbers",
+                   { title: docTitle(docs[0].filename) }));
     }
     questions.value = picks;
   } catch {
@@ -43,9 +46,9 @@ watch(kbId, buildQuestions);
   <div class="flex h-full flex-col items-center justify-center gap-6 px-6 text-center">
     <div class="flex flex-col items-center gap-2">
       <MessageSquare class="size-8 text-[var(--text-3)]" />
-      <h2 class="text-lg font-medium text-[var(--text)]">有什么可以帮你？</h2>
+      <h2 class="text-lg font-medium text-[var(--text)]">{{ t("portal.empty.title") }}</h2>
       <p class="text-sm text-[var(--text-3)]">
-        {{ questions.length ? "试试下面的问题，或直接输入你的问题" : "提出一个问题，开始新的对话" }}
+        {{ questions.length ? t("portal.empty.hint_questions") : t("portal.empty.hint_empty") }}
       </p>
     </div>
 
