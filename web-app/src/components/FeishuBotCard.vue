@@ -3,7 +3,7 @@
 // 提问，KBase 检索后卡片回复（答案+引用来源）。配置项=事件回调凭据
 // （verification token 必填 / encrypt key 可选，均只写不回显）+ 绑定
 // 知识库 + 回答模型（对标 FastGPT：模型在管理侧绑定，群成员无感）。
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { toast } from "vue-sonner";
 import { Copy } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,7 @@ import {
   Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  getFeishuBot, putFeishuBot, listKbs, listProviders,
+  getFeishuBot, putFeishuBot, listKbs, listProviders, getFeishuStatus,
   type FeishuBotStatus, type Kb,
 } from "@/lib/api";
 
@@ -26,8 +26,21 @@ const kbId = ref("");
 // Select 不收空串 value，用哨兵表达"系统默认"
 const provider = ref("__default__");
 const busy = ref(false);
+// 一键授权用的 app_id：机器人与连接器复用同一自建应用，直接读飞书凭据
+// 状态（未配凭据时为 null，链接不渲染）
+const appId = ref<string | null>(null);
 
 const eventsUrl = `${window.location.origin}/api/feishu/events`;
+
+// 一键开通机器人权限链接（与文档导入对话框同一姿势）：只带机器人收发
+// 两项 scope；跳转飞书后勾选发布即生效。事件订阅/回调地址仍需手动配
+// （授权链接只能开权限，配不了事件订阅）。
+const authUrl = computed(() =>
+  appId.value
+    ? `https://open.feishu.cn/app/${appId.value}/auth`
+      + `?q=im:message,im:message:send_as_bot`
+      + `&op_from=openapi&token_type=tenant`
+    : null);
 
 async function refresh() {
   try {
@@ -44,8 +57,9 @@ onMounted(async () => {
   try {
     kbs.value = await listKbs();
     providers.value = (await listProviders()).providers;
+    appId.value = (await getFeishuStatus()).app_id;
   } catch {
-    // 下拉清单拉不到不阻塞状态展示
+    // 下拉清单/凭据状态拉不到不阻塞状态展示
   }
 });
 
@@ -102,6 +116,15 @@ async function copyUrl() {
       <code class="rounded bg-black/5 px-1">im:message:send_as_bot</code> 权限，
       事件订阅添加 <code class="rounded bg-black/5 px-1">im.message.receive_v1</code>
       并把下方回调地址填入「请求地址」。
+      <template v-if="authUrl">
+        <a
+          :href="authUrl" target="_blank" rel="noopener"
+          class="text-[var(--accent-text)] underline"
+        >一键开通收发权限</a>后发布版本即生效（事件订阅与回调地址仍需按下方手动配置）。
+      </template>
+      <template v-else>
+        （一键开通权限链接需先在上方「飞书连接器」配置应用凭据后出现）
+      </template>
     </p>
 
     <div class="mb-3 flex items-center gap-1.5">
