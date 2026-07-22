@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 文档表格：文件名/状态 Badge（failed 时 tooltip 展示 error）/行操作
 // （failed、pending_ocr 可重试；删除交由父组件处理二次确认 Dialog）。
+import { useI18n } from "vue-i18n";
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableEmpty,
 } from "@/components/ui/table";
@@ -20,6 +21,15 @@ const emit = defineEmits<{
   chunks: [doc: DocumentItem];
   review: [doc: DocumentItem];
 }>();
+const { t } = useI18n();
+
+// 状态标签本地化：statusBadge 只取配色 class，文案按 doc.status.<code> 查 i18n；
+// 未知状态（后端将来新增）回落原始 code，与 statusBadge 的 fallback 语义一致。
+function statusLabel(status: string): string {
+  const key = `doc.status.${status}`;
+  const translated = t(key);
+  return translated !== key ? translated : status;
+}
 </script>
 
 <template>
@@ -27,20 +37,20 @@ const emit = defineEmits<{
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>文件名</TableHead>
-          <TableHead>状态</TableHead>
-          <TableHead class="w-32">操作</TableHead>
+          <TableHead>{{ t("doc.filename") }}</TableHead>
+          <TableHead>{{ t("doc.status_label") }}</TableHead>
+          <TableHead class="w-32">{{ t("common.actions") }}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         <TableEmpty v-if="!loading && docs.length === 0" :colspan="3">
-          暂无文档，拖拽或选择文件开始上传
+          {{ t("doc.empty") }}
         </TableEmpty>
         <TableRow v-for="doc in docs" :key="doc.id">
           <TableCell class="max-w-xs truncate">{{ doc.filename }}</TableCell>
           <TableCell>
             <div class="flex items-center gap-1.5">
-              <Badge :class="statusBadge(doc.status).class">{{ statusBadge(doc.status).label }}</Badge>
+              <Badge :class="statusBadge(doc.status).class">{{ statusLabel(doc.status) }}</Badge>
               <Tooltip v-if="doc.status === 'failed' && doc.error">
                 <TooltipTrigger as-child>
                   <AlertCircle class="size-3.5 text-[var(--err)]" />
@@ -56,7 +66,7 @@ const emit = defineEmits<{
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label="下载原文件"
+                :aria-label="t('doc.download')"
                 as="a"
                 :href="docOriginalUrl(doc.id)"
               >
@@ -71,14 +81,14 @@ const emit = defineEmits<{
                   @click="emit('review', doc)"
                 >
                   <ClipboardCheck class="size-3.5" />
-                  校验确认
+                  {{ t("doc.review_confirm") }}
                 </Button>
                 <!-- 分块管理（M6-1）：查看/启停/编辑本文档的分块 -->
                 <Button
                   v-if="doc.status === 'ready'"
                   variant="ghost"
                   size="icon-sm"
-                  aria-label="分块管理"
+                  :aria-label="t('doc.chunks')"
                   @click="emit('chunks', doc)"
                 >
                   <Blocks class="size-3.5" />
@@ -87,7 +97,7 @@ const emit = defineEmits<{
                   v-if="canRetryDoc(doc.status)"
                   variant="ghost"
                   size="icon-sm"
-                  aria-label="重试"
+                  :aria-label="t('common.retry')"
                   @click="emit('retry', doc)"
                 >
                   <RotateCw class="size-3.5" />
@@ -95,7 +105,7 @@ const emit = defineEmits<{
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  aria-label="删除"
+                  :aria-label="t('common.delete')"
                   @click="emit('delete', doc)"
                 >
                   <Trash2 class="size-3.5" />
