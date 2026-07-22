@@ -596,6 +596,18 @@
     "expand": "展开全文",
     "no_match": "无匹配结果"
   },
+  "translations": {
+    "title": "多语言",
+    "subtitle": "编辑各语言界面译文，保存即写入覆盖层，当前会话即时生效",
+    "search_ph": "搜索 key 或译文…",
+    "all_domains": "全部分组",
+    "only_missing": "只看缺译",
+    "count": "显示 {shown} / {total} 条",
+    "saved": "译文已保存",
+    "edited": "已改",
+    "missing": "缺",
+    "hint": "留空并保存 = 删除该覆盖，回落到随包基线译文。中文为源语言，通常只改英文/马来文。"
+  },
   "forbidden": {
     "title": "无权限访问管理端",
     "desc": "当前账号没有管理知识库的权限。如需管理权限请联系管理员，或返回使用端继续问答。",
@@ -624,6 +636,7 @@
     "nav_generate": "生成",
     "nav_system": "系统",
     "nav_settings": "设置",
+    "nav_translations": "多语言",
     "back_to_portal": "返回问答",
     "dismiss_banner": "关闭提示"
   },

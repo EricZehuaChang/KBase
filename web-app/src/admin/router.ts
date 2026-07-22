@@ -22,6 +22,7 @@ const router = createRouter({
     { path: "/analysis", name: "admin-analysis", component: () => import("@/views/AnalysisView.vue") },
     { path: "/generate", name: "admin-generate", component: () => import("@/views/GenerateView.vue") },
     { path: "/settings", name: "admin-settings", component: () => import("@/views/SettingsView.vue") },
+    { path: "/translations", name: "admin-translations", component: () => import("@/views/TranslationsView.vue") },
   ],
 });
 
