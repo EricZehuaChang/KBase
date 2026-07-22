@@ -5,6 +5,7 @@
 // 若 KB 已选中则自动执行一次。
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
+import { useI18n } from "vue-i18n";
 import { Search } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +18,7 @@ import { listKbs, listDocs, search, type Kb, type SearchResult } from "@/lib/api
 import { shouldRerunForQuery } from "@/lib/trace-utils";
 
 const route = useRoute();
+const { t } = useI18n();
 
 // 页签：检索试跑（原有）| 评测回归（B）。共用顶部的 KB 选择。
 const tab = ref<"search" | "eval">("search");
@@ -115,7 +117,7 @@ watch(() => route.query.q, async (q) => {
   <div class="flex h-full flex-col">
     <header class="flex h-14 shrink-0 items-center gap-3 border-b border-[var(--border)] px-4">
       <Select v-model="kbId">
-        <SelectTrigger class="w-48"><SelectValue placeholder="选择知识库" /></SelectTrigger>
+        <SelectTrigger class="w-48"><SelectValue :placeholder="t('portal.topbar.select_kb')" /></SelectTrigger>
         <SelectContent>
           <SelectGroup>
             <SelectItem v-for="kb in kbs" :key="kb.id" :value="kb.id">{{ kb.name }}</SelectItem>
@@ -131,7 +133,7 @@ watch(() => route.query.q, async (q) => {
           :class="tab === 'search' ? 'bg-[var(--accent-weak)] text-[var(--accent-text)]' : 'text-[var(--text-2)]'"
           @click="tab = 'search'"
         >
-          检索试跑
+          {{ t("analysis.tab_search") }}
         </button>
         <button
           type="button"
@@ -139,40 +141,40 @@ watch(() => route.query.q, async (q) => {
           :class="tab === 'eval' ? 'bg-[var(--accent-weak)] text-[var(--accent-text)]' : 'text-[var(--text-2)]'"
           @click="tab = 'eval'"
         >
-          评测回归
+          {{ t("analysis.tab_eval") }}
         </button>
       </div>
 
       <template v-if="tab === 'search'">
         <Input
           v-model="query"
-          placeholder="输入查询语句"
+          :placeholder="t('analysis.query_placeholder')"
           class="max-w-md flex-1"
-          aria-label="查询输入框"
+          :aria-label="t('analysis.query_label')"
           @keydown.enter="runSearch"
         />
 
         <!-- 策略试跑覆盖（M6-1.5）：仅影响本次查询，不改库配置 -->
         <Select v-model="keywordOverride">
-          <SelectTrigger class="w-40" aria-label="多路召回覆盖"><SelectValue /></SelectTrigger>
+          <SelectTrigger class="w-40" :aria-label="t('analysis.keyword_override')"><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="default">召回·按库策略</SelectItem>
-            <SelectItem value="on">召回·强制多路</SelectItem>
-            <SelectItem value="off">召回·仅向量</SelectItem>
+            <SelectItem value="default">{{ t("analysis.kw_default") }}</SelectItem>
+            <SelectItem value="on">{{ t("analysis.kw_on") }}</SelectItem>
+            <SelectItem value="off">{{ t("analysis.kw_off") }}</SelectItem>
           </SelectContent>
         </Select>
         <Select v-model="rerankOverride">
-          <SelectTrigger class="w-40" aria-label="重排覆盖"><SelectValue /></SelectTrigger>
+          <SelectTrigger class="w-40" :aria-label="t('analysis.rerank_override')"><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="default">重排·按库策略</SelectItem>
-            <SelectItem value="on">重排·强制开</SelectItem>
-            <SelectItem value="off">重排·强制关</SelectItem>
+            <SelectItem value="default">{{ t("analysis.rr_default") }}</SelectItem>
+            <SelectItem value="on">{{ t("analysis.rr_on") }}</SelectItem>
+            <SelectItem value="off">{{ t("analysis.rr_off") }}</SelectItem>
           </SelectContent>
         </Select>
 
         <Button :disabled="loading || !kbId || !query.trim()" @click="runSearch">
           <Search class="size-3.5" />
-          执行
+          {{ t("analysis.run") }}
         </Button>
       </template>
     </header>
@@ -181,28 +183,28 @@ watch(() => route.query.q, async (q) => {
       <EvalPanel :kb-id="kbId" />
     </div>
     <div v-else class="flex-1 overflow-y-auto p-6">
-      <p v-if="loading" class="text-[var(--text-3)]">检索中…</p>
+      <p v-if="loading" class="text-[var(--text-3)]">{{ t("analysis.searching") }}</p>
 
       <div v-else-if="error" class="rounded-[var(--radius-card)] bg-[var(--err-weak)] p-4 text-[var(--err)]">
-        ⚠️ 检索失败：{{ error }}
+        ⚠️ {{ t("analysis.search_failed") }}：{{ error }}
       </div>
 
       <div v-else-if="searched && !kbHasDocs" class="py-12 text-center text-[var(--text-3)]">
-        该知识库暂无文档，请先前往
+        {{ t("analysis.no_docs_prefix") }}
         <RouterLink :to="{ path: '/', query: { kb: kbId } }" class="text-[var(--accent-text)] underline">
-          知识库管理页
+          {{ t("analysis.kb_manage_link") }}
         </RouterLink>
-        导入文档
+        {{ t("analysis.no_docs_suffix") }}
       </div>
 
       <div v-else-if="isEmpty" class="py-12 text-center text-[var(--text-3)]">
-        选择知识库并输入查询语句，查看检索过程
+        {{ t("analysis.empty_hint") }}
       </div>
 
       <template v-else-if="result">
         <RetrievalTrace v-if="result.trace" :trace="result.trace" />
 
-        <h2 class="mt-8 mb-3 text-sm font-medium text-[var(--text-2)]">最终结果 blocks</h2>
+        <h2 class="mt-8 mb-3 text-sm font-medium text-[var(--text-2)]">{{ t("analysis.final_blocks") }}</h2>
         <div class="flex flex-col gap-3">
           <article
             v-for="(block, i) in result.blocks"
@@ -225,10 +227,10 @@ watch(() => route.query.q, async (q) => {
               class="mt-1 text-xs text-[var(--accent-text)] hover:underline"
               @click="toggleExpand(i)"
             >
-              {{ expanded.has(i) ? "收起" : "展开全文" }}
+              {{ expanded.has(i) ? t("analysis.collapse") : t("analysis.expand") }}
             </button>
           </article>
-          <p v-if="!result.blocks.length" class="text-sm text-[var(--text-3)]">无匹配结果</p>
+          <p v-if="!result.blocks.length" class="text-sm text-[var(--text-3)]">{{ t("analysis.no_match") }}</p>
         </div>
       </template>
     </div>

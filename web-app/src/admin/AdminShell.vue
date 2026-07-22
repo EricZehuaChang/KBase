@@ -7,6 +7,7 @@
 // 无共享 router 实例）。/login、/forbidden 不套导航壳。
 import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { useI18n } from "vue-i18n";
 import {
   Folder, ScanSearch, FileText, Settings, Sun, Moon, LogOut, ArrowLeft,
   Database, KeyRound,
@@ -16,29 +17,30 @@ import EmailPromptDialog from "@/components/EmailPromptDialog.vue";
 import LanguagePicker from "@/components/LanguagePicker.vue";
 import { theme, toggleTheme } from "@/lib/theme";
 import { getSession, logout, getLicense, currentRole, type Me } from "@/lib/api";
-import { roleLabel, roleBadgeClass, canAdminister } from "@/lib/auth-utils";
+import { roleBadgeClass, canAdminister } from "@/lib/auth-utils";
 import { licenseBannerInfo } from "@/lib/settings-utils";
 import { Toaster } from "@/components/ui/sonner";
 
 const route = useRoute();
 const router = useRouter();
+const { t } = useI18n();
 
-// 分组导航（Vben/Soybean 风）：内容 | 分析 | 系统
+// 分组导航（Vben/Soybean 风）：内容 | 分析 | 系统。label 存 i18n key，渲染 t()。
 const NAV_GROUPS = [
   {
-    label: "内容",
-    items: [{ path: "/", label: "知识库", icon: Folder }],
+    label: "admin.nav_content",
+    items: [{ path: "/", label: "admin.nav_kb", icon: Folder }],
   },
   {
-    label: "分析",
+    label: "admin.nav_analysis",
     items: [
-      { path: "/analysis", label: "检索分析", icon: ScanSearch },
-      { path: "/generate", label: "生成", icon: FileText },
+      { path: "/analysis", label: "admin.nav_retrieval", icon: ScanSearch },
+      { path: "/generate", label: "admin.nav_generate", icon: FileText },
     ],
   },
   {
-    label: "系统",
-    items: [{ path: "/settings", label: "设置", icon: Settings }],
+    label: "admin.nav_system",
+    items: [{ path: "/settings", label: "admin.nav_settings", icon: Settings }],
   },
 ] as const;
 
@@ -55,7 +57,7 @@ function isActive(path: string): boolean {
   return path === "/" ? route.path === "/" : route.path.startsWith(path);
 }
 
-// 顶栏面包屑：当前激活导航项的标签
+// 顶栏面包屑：当前激活导航项的标签（i18n key，渲染时 t()）
 const currentLabel = computed(() => {
   for (const g of NAV_GROUPS) {
     for (const item of g.items) {
@@ -75,6 +77,15 @@ onMounted(async () => {
       && !sessionStorage.getItem("kbase_email_prompt_dismissed")) {
     emailPromptOpen.value = true;
   }
+});
+
+// 角色标签本地化：common.role.<role>，未知角色回落原始码（同 PortalShell）
+const roleText = computed(() => {
+  const role = me.value?.role;
+  if (!role) return "";
+  const key = `common.role.${role}`;
+  const translated = t(key);
+  return translated !== key ? translated : role;
 });
 
 function handleEmailSaved(email: string) {
@@ -121,7 +132,7 @@ function backToPortal() {
           </span>
           <span class="flex flex-col leading-tight">
             <span class="text-[15px] font-semibold tracking-tight">KBase</span>
-            <span class="text-[11px] text-[var(--text-3)]">管理工作台</span>
+            <span class="text-[11px] text-[var(--text-3)]">{{ t("admin.workbench") }}</span>
           </span>
         </div>
 
@@ -129,7 +140,7 @@ function backToPortal() {
         <nav class="flex-1 overflow-y-auto p-2">
           <div v-for="group in navGroups" :key="group.label" class="mb-2">
             <div class="px-3 pb-1 pt-2 text-[11px] font-medium tracking-wide text-[var(--text-3)]">
-              {{ group.label }}
+              {{ t(group.label) }}
             </div>
             <router-link
               v-for="item in group.items"
@@ -151,7 +162,7 @@ function backToPortal() {
                   class="absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-[var(--accent)]"
                 />
                 <component :is="item.icon" class="size-4" />
-                <span>{{ item.label }}</span>
+                <span>{{ t(item.label) }}</span>
               </button>
             </router-link>
           </div>
@@ -165,7 +176,7 @@ function backToPortal() {
             @click="backToPortal"
           >
             <ArrowLeft class="size-4" />
-            返回问答
+            {{ t("admin.back_to_portal") }}
           </button>
         </div>
       </aside>
@@ -174,16 +185,16 @@ function backToPortal() {
         <!-- 顶栏：面包屑 + 主题切换 + 用户区（Soybean 风） -->
         <header class="flex h-14 shrink-0 items-center justify-between border-b border-[var(--border)] bg-[var(--surface)] px-5">
           <div class="flex items-center gap-1.5 text-sm">
-            <span class="text-[var(--text-3)]">管理工作台</span>
+            <span class="text-[var(--text-3)]">{{ t("admin.workbench") }}</span>
             <span v-if="currentLabel" class="text-[var(--text-3)]">/</span>
-            <span class="font-medium">{{ currentLabel }}</span>
+            <span class="font-medium">{{ currentLabel ? t(currentLabel) : "" }}</span>
           </div>
           <div class="flex items-center gap-2">
             <LanguagePicker />
             <button
               type="button"
               class="rounded-[var(--radius-ctl)] p-2 text-[var(--text-2)] transition-colors hover:bg-[var(--surface-2)]"
-              :title="theme === 'dark' ? '切换到浅色模式' : '切换到深色模式'"
+              :title="t(theme === 'dark' ? 'portal.topbar.to_light' : 'portal.topbar.to_dark')"
               @click="toggleTheme"
             >
               <component :is="theme === 'dark' ? Sun : Moon" class="size-4" />
@@ -192,19 +203,19 @@ function backToPortal() {
               <button
                 type="button"
                 class="rounded-[var(--radius-ctl)] p-2 text-[var(--text-2)] transition-colors hover:bg-[var(--surface-2)]"
-                title="修改密码"
+                :title="t('portal.topbar.change_pw')"
                 @click="changePwOpen = true"
               >
                 <KeyRound class="size-4" />
               </button>
               <span class="text-sm">{{ me.username }}</span>
               <span class="rounded-full px-1.5 py-0.5 text-xs" :class="roleBadgeClass(me.role)">
-                {{ roleLabel(me.role) }}
+                {{ roleText }}
               </span>
               <button
                 type="button"
                 class="rounded-[var(--radius-ctl)] p-2 text-[var(--text-2)] transition-colors hover:bg-[var(--surface-2)]"
-                title="登出"
+                :title="t('portal.topbar.logout')"
                 @click="handleLogout"
               >
                 <LogOut class="size-4" />
@@ -225,7 +236,7 @@ function backToPortal() {
           <button
             type="button"
             class="shrink-0 rounded-[var(--radius-ctl)] px-1.5 py-0.5 hover:bg-black/5"
-            aria-label="关闭提示"
+            :aria-label="t('admin.dismiss_banner')"
             @click="bannerDismissed = true"
           >
             ×
