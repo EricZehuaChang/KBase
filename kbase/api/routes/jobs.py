@@ -40,10 +40,11 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
     @router.post("/jobs", dependencies=[deps.require_editor, deps.audit_mutation])
     def create_job_endpoint(body: JobCreate, bg: BackgroundTasks):
         if body.type not in ("proposal", "digest"):
-            raise HTTPException(422, f"未知的 job type: {body.type}")
+            raise AppError("error.unknown_job_type", "未知的 job type: {type}", status=422, type=body.type)
         if body.type == "proposal":
             if "topic" not in body.params or "outline" not in body.params:
-                raise HTTPException(422, "proposal job 缺少必需参数：topic/outline")
+                raise AppError("error.proposal_missing_params",
+                               "proposal job 缺少必需参数：topic/outline", status=422)
         with sf() as s:
             kb = s.get(KnowledgeBase, body.kb_id)
             if kb is None:
@@ -82,21 +83,21 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
     def jobs_detail(job_id: str):
         job = get_job(sf, job_id)
         if job is None:
-            raise HTTPException(404, f"job 不存在: {job_id}")
+            raise AppError("error.job_not_found", "job 不存在: {id}", status=404, id=job_id)
         return job
 
     @router.get("/jobs/{job_id}/artifact", dependencies=[deps.require_viewer])
     def jobs_artifact(job_id: str, format: str = "md"):
         job = get_job(sf, job_id)
         if job is None:
-            raise HTTPException(404, f"job 不存在: {job_id}")
+            raise AppError("error.job_not_found", "job 不存在: {id}", status=404, id=job_id)
         if job["status"] not in ("done", "done_with_errors"):
-            raise HTTPException(409, f"job 尚未完成: status={job['status']}")
+            raise AppError("error.job_not_done", "job 尚未完成: status={state}", status=409, state=job['status'])
         if not job["artifact_path"]:
-            raise HTTPException(404, "产物不存在")
+            raise AppError("error.artifact_not_found", "产物不存在", status=404)
         md_path = Path(job["artifact_path"])
         if not md_path.exists():
-            raise HTTPException(404, "产物文件不存在")
+            raise AppError("error.artifact_file_not_found", "产物文件不存在", status=404)
 
         if format == "md":
             return FileResponse(md_path, media_type="text/markdown",

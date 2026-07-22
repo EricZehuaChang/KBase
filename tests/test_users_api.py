@@ -103,7 +103,7 @@ def test_cannot_disable_last_enabled_admin(tmp_path, fake_embedder, monkeypatch)
     admin_id = next(u["id"] for u in users if u["username"] == "admin")
     r = c.put(f"/api/users/{admin_id}", json={"disabled": True})
     assert r.status_code == 422
-    assert "不能禁用" in r.json()["detail"] or "最后一个管理员" in r.json()["detail"]
+    assert r.json()["detail"]["code"] == "error.last_admin"
 
 
 def test_cannot_demote_last_enabled_admin(tmp_path, fake_embedder, monkeypatch):
@@ -112,7 +112,7 @@ def test_cannot_demote_last_enabled_admin(tmp_path, fake_embedder, monkeypatch):
     admin_id = next(u["id"] for u in users if u["username"] == "admin")
     r = c.put(f"/api/users/{admin_id}", json={"role": "editor"})
     assert r.status_code == 422
-    assert "最后一个管理员" in r.json()["detail"]
+    assert r.json()["detail"]["code"] == "error.last_admin"
 
 
 def test_can_disable_admin_when_another_admin_remains(tmp_path, fake_embedder, monkeypatch):

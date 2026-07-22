@@ -18,6 +18,7 @@ from kbase.api.schemas import (ActiveProviderBody, EmbedderKeyBody,
                                ProviderCreate, ProviderUpdate,
                                SmtpSettingsBody, SmtpTestBody)
 from kbase.api.services import Services
+from kbase.errors import AppError
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
                  dependencies=[deps.require_admin, deps.audit_mutation])
     def settings_create_provider(body: ProviderCreate):
         if providers_store.get_provider_dict(sf, body.name) is not None:
-            raise HTTPException(409, f"provider 已存在: {body.name}")
+            raise AppError("error.provider_exists", "provider 已存在: {name}", status=409, name=body.name)
         providers_store.create_provider(sf, body.model_dump())
         return {"ok": True}
 
@@ -52,7 +53,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         found = providers_store.update_provider(
             sf, name, body.model_dump(exclude_unset=True))
         if not found:
-            raise HTTPException(404, f"provider 不存在: {name}")
+            raise AppError("error.provider_not_found", "provider 不存在: {name}", status=404, name=name)
         svc.invalidate_llm_cache(name)
         return {"ok": True}
 
@@ -60,10 +61,11 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
                    dependencies=[deps.require_admin, deps.audit_mutation])
     def settings_delete_provider(name: str):
         if providers_store.get_active(sf) == name:
-            raise HTTPException(409, "默认 provider 不可删除，请先切换默认")
+            raise AppError("error.default_provider_undeletable",
+                           "默认 provider 不可删除，请先切换默认", status=409)
         found = providers_store.delete_provider(sf, name)
         if not found:
-            raise HTTPException(404, f"provider 不存在: {name}")
+            raise AppError("error.provider_not_found", "provider 不存在: {name}", status=404, name=name)
         svc.invalidate_llm_cache(name)
         return {"ok": True}
 
@@ -81,7 +83,8 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         from kbase import embedder_keys
         known = {o.id for o in svc.cfg.embedders if o.plugin == "openai-embed"}
         if option_id not in known:
-            raise HTTPException(404, f"向量模型选项不存在或无密钥概念: {option_id}")
+            raise AppError("error.embedder_option_not_found",
+                           "向量模型选项不存在或无密钥概念: {id}", status=404, id=option_id)
         embedder_keys.set_key(sf, option_id, body.api_key)
         svc.embedder_pool.invalidate(option_id)   # 下次使用按新密钥重建
         return {"ok": True}
@@ -91,7 +94,8 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
     def delete_embedder_key(option_id: str):
         from kbase import embedder_keys
         if not embedder_keys.delete_key(sf, option_id):
-            raise HTTPException(404, f"该选项未配置页面密钥: {option_id}")
+            raise AppError("error.embedder_no_page_key",
+                           "该选项未配置页面密钥: {id}", status=404, id=option_id)
         svc.embedder_pool.invalidate(option_id)   # 回落到 api_key_env
         return {"ok": True}
 
@@ -143,14 +147,14 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
     def delete_feishu_credentials():
         from kbase import feishu
         if not feishu.delete_credentials(sf):
-            raise HTTPException(404, "未配置飞书凭据")
+            raise AppError("error.feishu_creds_missing_short", "未配置飞书凭据", status=404)
         return {"ok": True}
 
     @router.put("/settings/active-provider",
                 dependencies=[deps.require_admin, deps.audit_mutation])
     def settings_set_active_provider(body: ActiveProviderBody):
         if providers_store.get_provider_dict(sf, body.name) is None:
-            raise HTTPException(404, f"provider 不存在: {body.name}")
+            raise AppError("error.provider_not_found", "provider 不存在: {name}", status=404, name=body.name)
         providers_store.set_active(sf, body.name)
         return {"ok": True}
 
@@ -163,7 +167,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         if body.provider_name:
             p = providers_store.get_provider_dict(sf, body.provider_name)
             if p is None:
-                raise HTTPException(404, f"provider 不存在: {body.provider_name}")
+                raise AppError("error.provider_not_found", "provider 不存在: {name}", status=404, name=body.provider_name)
             key = p.get("api_key") or (os.environ.get(p["api_key_env"])
                                        if p["api_key_env"] else None)
             if not key:
@@ -171,7 +175,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
                     422, f"provider {body.provider_name} 未配置可用密钥，无法拉取模型列表")
             return p["base_url"], key
         if not body.base_url.strip():
-            raise HTTPException(422, "缺少 base_url")
+            raise AppError("error.missing_base_url", "缺少 base_url", status=422)
         key = body.api_key or (os.environ.get(body.api_key_env)
                                if body.api_key_env else None)
         if not key:
@@ -222,7 +226,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
     @router.post("/settings/providers/{name}/test", dependencies=[deps.require_admin])
     async def settings_test_provider(name: str):
         if providers_store.get_provider_dict(sf, name) is None:
-            raise HTTPException(404, f"provider 不存在: {name}")
+            raise AppError("error.provider_not_found", "provider 不存在: {name}", status=404, name=name)
         try:
             llm = svc.get_llm(name)
             start = time.perf_counter()

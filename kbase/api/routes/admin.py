@@ -1,7 +1,7 @@
 """管理域路由：用户管理、API Key、审计查询、许可证状态（spec §3/§5，G3）。"""
 import uuid
 
-from fastapi import BackgroundTasks, HTTPException, Query, Request
+from fastapi import BackgroundTasks, Query, Request
 
 from kbase import qa_stats
 from kbase.api.routes import RouteDeps
@@ -9,6 +9,7 @@ from kbase.api.schemas import ApiKeyCreate, UserCreate, UserUpdate
 from kbase.api.services import Services
 from kbase.audit import list_audit
 from kbase.auth import security
+from kbase.errors import AppError
 from kbase.license import check_license
 from kbase.models import ApiKey, User
 
@@ -69,7 +70,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         with sf() as s:
             row = s.get(ApiKey, key_id)
             if row is None:
-                raise HTTPException(404, f"API Key 不存在: {key_id}")
+                raise AppError("error.apikey_not_found", "API Key 不存在: {id}", status=404, id=key_id)
             row.revoked = True
             s.commit()
         return {"ok": True}
@@ -91,7 +92,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
     def create_user(body: UserCreate, request: Request, bg: BackgroundTasks):
         with sf() as s:
             if s.query(User).filter_by(username=body.username).first() is not None:
-                raise HTTPException(409, f"用户名已存在: {body.username}")
+                raise AppError("error.username_exists", "用户名已存在: {name}", status=409, name=body.username)
             user = User(id=str(uuid.uuid4()), username=body.username,
                        email=(body.email or None),
                        password_hash=security.hash_password(body.password),
@@ -126,7 +127,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         with sf() as s:
             user = s.get(User, user_id)
             if user is None:
-                raise HTTPException(404, f"用户不存在: {user_id}")
+                raise AppError("error.user_not_found", "用户不存在: {id}", status=404, id=user_id)
 
             # 不变量：不能让"启用中的 admin"数量降到 0——无论是禁用最后一个
             # 启用 admin，还是把最后一个启用 admin 降级成非 admin。用变更后
@@ -144,7 +145,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
                            User.disabled == False)  # noqa: E712
                     .count())
                 if other_enabled_admins == 0:
-                    raise HTTPException(422, "不能禁用/降级最后一个管理员")
+                    raise AppError("error.last_admin", "不能禁用/降级最后一个管理员", status=422)
 
             if body.role is not None:
                 user.role = body.role
