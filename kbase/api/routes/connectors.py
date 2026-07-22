@@ -4,7 +4,7 @@
 import json
 import uuid
 
-from fastapi import BackgroundTasks, HTTPException
+from fastapi import BackgroundTasks
 
 from kbase import connectors as conn_mod
 from kbase import feishu
@@ -64,7 +64,8 @@ def register(router, svc: Services, deps: RouteDeps):
         if body.type == "feishu":
             app_id, app_secret = feishu.get_credentials(sf)
             if not (app_id and app_secret):
-                raise HTTPException(409, "未配置飞书应用凭据（app_id/app_secret）")
+                raise AppError("error.feishu_creds_missing",
+                               "未配置飞书应用凭据（app_id/app_secret）", status=409)
         row = Connector(id=str(uuid.uuid4()), kb_id=kb_id, type=body.type,
                         name=body.name.strip(),
                         config=json.dumps({"source": body.source.strip()},
@@ -121,7 +122,7 @@ def register(router, svc: Services, deps: RouteDeps):
             if row is None:
                 raise AppError("error.connector_not_found", "连接器不存在: {id}", status=404, id=connector_id)
             if row.last_sync_status == "running":
-                raise HTTPException(409, "该连接器正在同步中")
+                raise AppError("error.connector_syncing", "该连接器正在同步中", status=409)
         bg.add_task(_sync, connector_id)
         return {"accepted": True}
 

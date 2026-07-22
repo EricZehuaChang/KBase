@@ -13,13 +13,14 @@ import secrets
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse
 
 from kbase.api.routes import RouteDeps
 from kbase.api.schemas import QueryBody, ShareLinkCreate
 from kbase.api.services import Services
 from kbase.audit import write_audit
+from kbase.errors import AppError
 from kbase.models import Document, KnowledgeBase, ShareLink
 
 
@@ -34,7 +35,7 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps,
     def create_share_link(kb_id: str, body: ShareLinkCreate, request: Request):
         with sf() as s:
             if s.get(KnowledgeBase, kb_id) is None:
-                raise HTTPException(404, f"知识库不存在: {kb_id}")
+                raise AppError("error.kb_not_found", "知识库不存在: {id}", status=404, id=kb_id)
         actor = getattr(request.state, "actor", None)
         row = ShareLink(id=str(uuid.uuid4()), kb_id=kb_id,
                         token=secrets.token_urlsafe(24),
@@ -62,7 +63,7 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps,
         with sf() as s:
             row = s.get(ShareLink, link_id)
             if row is None:
-                raise HTTPException(404, f"分享链接不存在: {link_id}")
+                raise AppError("error.share_link_not_found", "分享链接不存在: {id}", status=404, id=link_id)
             row.revoked = True     # 软删：审计可查，公开端点立即拒绝
             s.commit()
         return {"ok": True}
@@ -74,9 +75,9 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps,
             row = s.query(ShareLink).filter_by(token=token,
                                                revoked=False).first()
             if row is None:
-                raise HTTPException(404, "分享链接不存在或已失效")
+                raise AppError("error.share_link_invalid", "分享链接不存在或已失效", status=404)
             if s.get(KnowledgeBase, row.kb_id) is None:
-                raise HTTPException(404, "分享链接不存在或已失效")
+                raise AppError("error.share_link_invalid", "分享链接不存在或已失效", status=404)
             s.expunge(row)
         return row
 
@@ -97,13 +98,13 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps,
         with sf() as s:
             doc = s.get(Document, doc_id)
             if doc is None or doc.kb_id != link.kb_id:
-                raise HTTPException(404, "图片不存在")
+                raise AppError("error.image_not_found", "图片不存在", status=404)
         safe = Path(filename).name
         if safe != filename or not safe:
-            raise HTTPException(404, "图片不存在")
+            raise AppError("error.image_not_found", "图片不存在", status=404)
         img_path = svc.cfg.data_dir / "files" / doc_id / "images" / safe
         if not img_path.is_file():
-            raise HTTPException(404, "图片不存在")
+            raise AppError("error.image_not_found", "图片不存在", status=404)
         media_type = mimetypes.guess_type(safe)[0] or "application/octet-stream"
         return FileResponse(str(img_path), media_type=media_type)
 

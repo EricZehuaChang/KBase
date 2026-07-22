@@ -119,12 +119,13 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps, *,
                     s.commit()
                 write_audit(sf, actor="unknown", action="password_reset_failed",
                             detail="invalid_or_expired_token", ip=ip)
-                raise HTTPException(400, "重置链接无效或已过期，请重新发起忘记密码")
+                raise AppError("error.reset_invalid",
+                               "重置链接无效或已过期，请重新发起忘记密码", status=400)
             user = s.query(User).filter_by(username=data["username"]).first()
             if user is None or user.disabled:
                 s.delete(row)
                 s.commit()
-                raise HTTPException(400, "账号不存在或已被禁用")
+                raise AppError("error.account_not_found", "账号不存在或已被禁用", status=400)
             user.password_hash = security.hash_password(body.new_password)
             s.delete(row)
             s.commit()
@@ -149,7 +150,7 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps, *,
     @app.get("/api/auth/sso/login")
     def sso_login(request: Request):
         if not sso.enabled:
-            raise HTTPException(404, "SSO 未启用")
+            raise AppError("error.sso_disabled", "SSO 未启用", status=404)
         state = oidc.make_state(secret)
         return RedirectResponse(
             oidc.build_authorize_url(sso, _sso_redirect_uri(request), state))
@@ -157,9 +158,10 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps, *,
     @app.get("/api/auth/sso/callback")
     def sso_callback(request: Request, code: str = "", state: str = ""):
         if not sso.enabled:
-            raise HTTPException(404, "SSO 未启用")
+            raise AppError("error.sso_disabled", "SSO 未启用", status=404)
         if not code or not oidc.verify_state(state, secret):
-            raise HTTPException(400, "SSO 回调参数无效（state 校验失败或缺 code）")
+            raise AppError("error.sso_invalid_callback",
+                           "SSO 回调参数无效（state 校验失败或缺 code）", status=400)
         client = request.client
         ip = client.host if client is not None else None
         try:
@@ -170,7 +172,7 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps, *,
             raise HTTPException(502, f"SSO 换取用户信息失败: {e}") from e
         username = oidc.resolve_username(userinfo)
         if not username:
-            raise HTTPException(502, "IdP userinfo 缺少可用的用户名字段")
+            raise AppError("error.sso_no_username", "IdP userinfo 缺少可用的用户名字段", status=502)
         with sf() as s:
             user = s.query(User).filter_by(username=username).first()
             if user is None:
@@ -184,7 +186,7 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps, *,
             if user.disabled:
                 write_audit(sf, actor=username, action="login_failed",
                             detail="sso_disabled_user", ip=ip)
-                raise HTTPException(401, "账号已被禁用")
+                raise AppError("error.account_disabled", "账号已被禁用", status=401)
             token = security.create_session_token(user.username, user.role,
                                                   secret=secret)
         write_audit(sf, actor=username, action="login_success",
@@ -222,7 +224,7 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps, *,
         with sf() as s:
             user = s.query(User).filter_by(username=actor["name"]).first()
             if user is None:
-                raise HTTPException(403, "当前身份不支持维护资料")
+                raise AppError("error.no_profile", "当前身份不支持维护资料", status=403)
             user.email = body.email.strip()
             s.commit()
         return {"ok": True}
@@ -236,7 +238,8 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps, *,
         with sf() as s:
             user = s.query(User).filter_by(username=actor["name"]).first()
             if user is None:
-                raise HTTPException(403, "当前身份不支持修改密码（API Key 无账号密码）")
+                raise AppError("error.no_change_pw",
+                               "当前身份不支持修改密码（API Key 无账号密码）", status=403)
             if not security.verify_password(body.old_password, user.password_hash):
                 raise AppError("error.old_password_wrong", "旧密码不正确", status=401)
             user.password_hash = security.hash_password(body.new_password)

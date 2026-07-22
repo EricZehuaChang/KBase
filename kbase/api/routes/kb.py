@@ -38,7 +38,7 @@ def _fetch_url(url: str) -> tuple[bytes, str]:
 
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
-        raise HTTPException(422, f"仅支持 http/https 地址: {url}")
+        raise AppError("error.only_http", "仅支持 http/https 地址: {url}", status=422, url=url)
     try:
         resp = httpx.get(url, timeout=20.0, follow_redirects=True)
         resp.raise_for_status()
@@ -46,7 +46,7 @@ def _fetch_url(url: str) -> tuple[bytes, str]:
         raise HTTPException(502, f"URL 拉取失败: {e}") from e
     ctype = resp.headers.get("content-type", "").split(";")[0].strip().lower()
     if ctype and not any(ctype.startswith(t) for t in _URL_TEXT_TYPES):
-        raise HTTPException(422, f"不支持的内容类型 {ctype}（只收网页/文本）")
+        raise AppError("error.unsupported_content", "不支持的内容类型 {type}（只收网页/文本）", status=422, type=ctype)
     content = resp.content[:_URL_MAX_BYTES]
     # 文件名：host + path 末段做 slug，落 .html/.md 后缀给 markitdown 认
     tail = Path(parsed.path).name or "index"
@@ -183,7 +183,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
                 422, f"未知的向量模型: {body.embedder}，可选: {sorted(svc.embedder_ids)}")
         current = kb_embedder_id(sf, kb_id) or "default"
         if body.embedder == current:
-            raise HTTPException(409, f"该库已绑定 {current}，无需换绑")
+            raise AppError("error.kb_already_bound", "该库已绑定 {current}，无需换绑", status=409, current=current)
         try:
             new_embedder = svc.embedder_pool.get(body.embedder)
         except (RuntimeError, ValueError, KeyError) as e:
@@ -250,7 +250,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         视觉模型深度识别（仅图片格式生效，识别后停 pending_review 等人工
         校验）。非适用文件类型自动回落 auto 管道。批量上传共用同一模式。"""
         if parse_mode not in ("auto", "ocr", "vlm"):
-            raise HTTPException(422, f"未知的 parse_mode: {parse_mode}")
+            raise AppError("error.unknown_parse_mode", "未知的 parse_mode: {mode}", status=422, mode=parse_mode)
         upload_dir = cfg.data_dir / "uploads"
         upload_dir.mkdir(parents=True, exist_ok=True)
         accepted = []
@@ -297,7 +297,8 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
                 raise AppError("error.kb_not_found", "知识库不存在: {id}", status=404, id=kb_id)
         app_id, app_secret = feishu.get_credentials(sf)
         if not (app_id and app_secret):
-            raise HTTPException(409, "未配置飞书应用凭据（app_id/app_secret）")
+            raise AppError("error.feishu_creds_missing",
+                           "未配置飞书应用凭据（app_id/app_secret）", status=409)
 
         source = body.source.strip()
         try:
@@ -306,7 +307,8 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
                 # wiki 节点链接：/wiki/<node_token> → 定位空间与子树根
                 seg = [p for p in urlparse(source).path.split("/") if p]
                 if "wiki" not in seg:
-                    raise HTTPException(422, "不是飞书 wiki 链接（路径需含 /wiki/）")
+                    raise AppError("error.not_wiki_link",
+                                   "不是飞书 wiki 链接（路径需含 /wiki/）", status=422)
                 node_token = seg[seg.index("wiki") + 1]
                 node = feishu.resolve_node(token, node_token)
                 space_id = str(node.get("space_id"))
@@ -329,7 +331,8 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
                         resource=f"kb_id={kb_id}", detail=str(e)[:400])
             raise HTTPException(502, f"飞书接口调用失败: {e}") from e
         if not docs:
-            raise HTTPException(404, "该范围内没有可导入的文档（仅支持新版文档 docx）")
+            raise AppError("error.no_importable_docs",
+                           "该范围内没有可导入的文档（仅支持新版文档 docx）", status=404)
 
         upload_dir = cfg.data_dir / "uploads"
         upload_dir.mkdir(parents=True, exist_ok=True)
@@ -444,7 +447,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
             raise AppError("error.doc_not_found", "文档不存在: {id}", status=404, id=doc_id)
         content_path = cfg.data_dir / "files" / doc_id / "content.md"
         if not content_path.exists():
-            raise HTTPException(404, f"文档全文不存在: {doc_id}")
+            raise AppError("error.doc_fulltext_not_found", "文档全文不存在: {id}", status=404, id=doc_id)
         return {"doc_id": doc.id, "filename": doc.filename,
                 "markdown": content_path.read_text(encoding="utf-8")}
 
@@ -473,7 +476,8 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         if doc is None:
             raise AppError("error.doc_not_found", "文档不存在: {id}", status=404, id=doc_id)
         if not doc.source_path or not Path(doc.source_path).exists():
-            raise HTTPException(404, "原始文件已不存在（历史数据未保留原件或已被清理）")
+            raise AppError("error.original_file_gone",
+                           "原始文件已不存在（历史数据未保留原件或已被清理）", status=404)
         media_type = (mimetypes.guess_type(doc.filename)[0]
                       or "application/octet-stream")
         if disposition == "inline" and _inline_allowed(media_type):
@@ -514,10 +518,10 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         filename 强制取纯文件名（Path().name），杜绝 ../ 路径穿越。"""
         safe = Path(filename).name
         if safe != filename or not safe:
-            raise HTTPException(404, "图片不存在")
+            raise AppError("error.image_not_found", "图片不存在", status=404)
         img_path = cfg.data_dir / "files" / doc_id / "images" / safe
         if not img_path.is_file():
-            raise HTTPException(404, "图片不存在")
+            raise AppError("error.image_not_found", "图片不存在", status=404)
         media_type = mimetypes.guess_type(safe)[0] or "application/octet-stream"
         return FileResponse(str(img_path), media_type=media_type)
 
@@ -541,7 +545,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
             sf, store, keyword_index, svc.embedder_for_kb, chunk_id,
             enabled=body.enabled, text=body.text)
         if result is None:
-            raise HTTPException(404, f"分块不存在: {chunk_id}")
+            raise AppError("error.chunk_not_found", "分块不存在: {id}", status=404, id=chunk_id)
         return result
 
     def _retry_ocr_batch(doc_ids: list[str]) -> None:

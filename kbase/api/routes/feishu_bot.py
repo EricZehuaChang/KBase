@@ -16,6 +16,7 @@ from kbase.api.routes import RouteDeps
 from kbase.api.schemas import FeishuBotSettingsBody
 from kbase.api.services import Services
 from kbase.audit import write_audit
+from kbase.errors import AppError
 from kbase.models import KnowledgeBase
 from kbase.rag.generator import Generator
 
@@ -36,7 +37,7 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps) -> None:
     def put_bot_settings(body: FeishuBotSettingsBody):
         with sf() as s:
             if s.get(KnowledgeBase, body.kb_id) is None:
-                raise HTTPException(422, f"知识库不存在: {body.kb_id}")
+                raise AppError("error.kb_not_found", "知识库不存在: {id}", status=422, id=body.kb_id)
         feishu_bot.set_settings(sf, verification_token=body.verification_token,
                                 encrypt_key=body.encrypt_key,
                                 kb_id=body.kb_id, provider=body.provider)

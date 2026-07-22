@@ -169,7 +169,7 @@ def register(router, svc: Services, deps: RouteDeps):
         actor = request.state.actor
         title = body.title.strip()
         if not title:
-            raise HTTPException(422, "会话标题不能为空")
+            raise AppError("error.conv_title_empty", "会话标题不能为空", status=422)
         result = conv_store.rename_conversation(sf, conv_id, title,
                                                 user_id=actor.get("user_id"))
         if result is None:
