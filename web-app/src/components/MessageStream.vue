@@ -7,6 +7,7 @@
 // 需要细看的人。悬浮操作条：复制、重新提问（把这条回答对应的提问回填进
 // 输入框，交给父组件决定是否清空重发）。
 import { ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { Copy, ExternalLink, Image as ImageIcon, RotateCcw, ThumbsDown, ThumbsUp } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,8 @@ const emit = defineEmits<{
   // M6-4 反馈：父组件负责把 local id 解析成服务端消息 id 后提交
   feedback: [messageId: string, rating: 1 | -1];
 }>();
+
+const { t } = useI18n();
 
 // 本地已选反馈态（messageId → rating）：即时高亮，不等服务端回包；
 // 会话切换时组件随消息列表重建，无需持久化。
@@ -97,9 +100,9 @@ async function copyMessage(content: string) {
       document.execCommand("copy");
       document.body.removeChild(ta);
     }
-    toast.success("已复制到剪贴板");
+    toast.success(t("msg.copied"));
   } catch {
-    toast.error("复制失败，请手动选择文本");
+    toast.error(t("msg.copy_failed"));
   }
 }
 
@@ -109,7 +112,7 @@ function reask(index: number) {
 </script>
 
 <template>
-  <ol class="flex flex-col gap-6" aria-label="对话消息列表">
+  <ol class="flex flex-col gap-6" :aria-label="t('msg.list_label')">
     <li
       v-for="(message, index) in messages"
       :key="message.id"
@@ -125,7 +128,7 @@ function reask(index: number) {
 
       <div v-else class="group/msg w-full max-w-[80ch]">
         <div v-if="message.streaming && !message.content" class="text-[var(--text-3)]">
-          思考中…
+          {{ t("msg.thinking") }}
         </div>
         <div v-else class="whitespace-pre-wrap text-[var(--text)]">
           <template v-for="(seg, si) in segmentsOf(message.content)" :key="si">
@@ -138,7 +141,7 @@ function reask(index: number) {
                   <button
                     type="button"
                     class="inline-flex size-4 items-center justify-center rounded-full bg-[var(--accent-weak)] text-[10px] font-medium text-[var(--accent-text)] hover:bg-[var(--accent)] hover:text-[var(--surface)]"
-                    :aria-label="`查看引用 ${seg.index}`"
+                    :aria-label="t('msg.view_citation', { n: seg.index })"
                   >
                     {{ seg.index }}
                   </button>
@@ -157,11 +160,11 @@ function reask(index: number) {
                       class="mt-2"
                       @click="emit('openCitation', seg.index, message.id)"
                     >
-                      查看原文
+                      {{ t("msg.view_source") }}
                     </Button>
                   </template>
                   <p v-else class="text-xs text-[var(--text-3)]">
-                    引用 [{{ seg.index }}] 不存在（可能是历史消息或模型编号有误）
+                    {{ t("msg.citation_missing", { n: seg.index }) }}
                   </p>
                 </PopoverContent>
               </Popover>
@@ -174,7 +177,7 @@ function reask(index: number) {
         <div v-if="!message.streaming && imagesOf(message).length" class="mt-3">
           <div class="mb-1.5 flex items-center gap-1.5 text-xs text-[var(--text-3)]">
             <ImageIcon class="size-3.5" />
-            引用插图 · {{ imagesOf(message).length }} 张（点击放大）
+            {{ t("msg.cited_images", { count: imagesOf(message).length }) }}
           </div>
           <div class="flex flex-wrap gap-2">
             <button
@@ -182,7 +185,7 @@ function reask(index: number) {
               :key="img.url"
               type="button"
               class="group/img relative block overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-md"
-              :aria-label="`放大查看 ${img.docName} 第${img.page}页插图`"
+              :aria-label="t('msg.zoom_image', { doc: img.docName, page: img.page })"
               @click="lightbox = img"
             >
               <img
@@ -194,7 +197,7 @@ function reask(index: number) {
               <span
                 class="absolute inset-x-0 bottom-0 truncate bg-black/55 px-2 py-1 text-left text-[11px] text-white opacity-0 transition-opacity group-hover/img:opacity-100"
               >
-                {{ img.docName }}{{ img.page ? ` · 第${img.page}页` : "" }}
+                {{ img.docName }}{{ img.page ? ` · ${t('msg.page', { page: img.page })}` : "" }}
               </span>
             </button>
           </div>
@@ -205,9 +208,9 @@ function reask(index: number) {
           class="mt-2 flex items-center gap-3 text-sm text-[var(--text-3)]"
         >
           <span v-if="message.citations.length" class="rounded-full bg-[var(--surface-2)] px-2 py-0.5">
-            {{ message.citations.length }} 条引用
+            {{ t("msg.citations_count", { count: message.citations.length }) }}
           </span>
-          <span v-if="message.stopped" class="text-[var(--warn)]">已停止</span>
+          <span v-if="message.stopped" class="text-[var(--warn)]">{{ t("msg.stopped") }}</span>
           <!-- hover 才"看见"的操作条：常驻会让消息区显得拥挤，且这两个动作都
           不是高频操作。用 opacity 而不是 hidden/flex（display 切换）保留布局
           与可达性——键盘 Tab 聚焦到按钮、触屏点击、自动化测试的坐标点击都
@@ -215,11 +218,11 @@ function reask(index: number) {
           <span class="flex items-center gap-3 opacity-0 focus-within:opacity-100 group-hover/msg:opacity-100">
             <Button variant="ghost" size="sm" @click="copyMessage(message.content)">
               <Copy class="size-3.5" />
-              复制
+              {{ t("msg.copy") }}
             </Button>
             <Button variant="ghost" size="sm" @click="reask(index)">
               <RotateCcw class="size-3.5" />
-              重新提问
+              {{ t("msg.reask") }}
             </Button>
           </span>
           <!-- M6-4 反馈：与 hover 操作条分离——未选时随 hover 出现，
@@ -232,7 +235,7 @@ function reask(index: number) {
               type="button"
               class="rounded p-1 hover:text-[var(--ok)]"
               :class="localFeedback[message.id] === 1 ? 'text-[var(--ok)]' : ''"
-              aria-label="点赞该回答"
+              :aria-label="t('msg.thumbs_up')"
               @click="sendFeedback(message.id, 1)"
             >
               <ThumbsUp class="size-3.5" />
@@ -241,7 +244,7 @@ function reask(index: number) {
               type="button"
               class="rounded p-1 hover:text-[var(--err)]"
               :class="localFeedback[message.id] === -1 ? 'text-[var(--err)]' : ''"
-              aria-label="点踩该回答"
+              :aria-label="t('msg.thumbs_down')"
               @click="sendFeedback(message.id, -1)"
             >
               <ThumbsDown class="size-3.5" />
@@ -257,7 +260,7 @@ function reask(index: number) {
     <DialogContent class="max-w-3xl">
       <div class="flex items-center justify-between gap-3 pr-6 text-sm">
         <span class="truncate font-medium">
-          {{ lightbox?.docName }}{{ lightbox?.page ? ` · 第${lightbox.page}页插图` : "" }}
+          {{ lightbox?.docName }}{{ lightbox?.page ? ` · ${t('msg.page_image', { page: lightbox.page })}` : "" }}
         </span>
         <a
           v-if="lightbox"
@@ -267,7 +270,7 @@ function reask(index: number) {
           class="flex shrink-0 items-center gap-1 text-xs text-[var(--accent-text)] hover:underline"
         >
           <ExternalLink class="size-3.5" />
-          新标签页打开原图
+          {{ t("msg.open_original") }}
         </a>
       </div>
       <img
