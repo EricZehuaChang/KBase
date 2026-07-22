@@ -148,6 +148,44 @@
     "disabled": "未启用",
     "new_entry": "新进"
   },
+  "review": {
+    "approved": "已确认入库，开始向量化",
+    "title": "校验识别结果：{name}",
+    "desc": "对照左侧原图核对右侧识别文本（可直接修改），确认后才会向量化入库",
+    "loading": "加载识别结果…",
+    "later": "稍后处理",
+    "approve": "确认入库"
+  },
+  "grants": {
+    "saved_public": "已设为公开（所有人可访问）",
+    "saved_limited": "已限定 {count} 名用户可访问",
+    "title": "访问权限：{name}",
+    "desc": "不勾选任何人=公开（所有登录用户可见）；勾选后仅所选用户、建库人与管理员可访问",
+    "current_public": "当前：公开",
+    "current_limited": "当前：限定 {count} 名用户",
+    "no_users": "暂无其他用户，请先在用户管理创建"
+  },
+  "proposal": {
+    "topic": "主题",
+    "topic_placeholder": "例如：某师市人才引进住房保障实施方案",
+    "requirements": "要求",
+    "req_placeholder": "补充撰写要求，如需依据的政策、篇幅、侧重点等",
+    "provider_default": "默认（active）",
+    "generating": "生成中…",
+    "gen_outline": "生成大纲",
+    "prev": "上一步",
+    "start": "开始生成"
+  },
+  "outline": {
+    "section_title": "章节标题",
+    "brief_placeholder": "要点简述",
+    "brief_label": "章节要点简述",
+    "move_up": "上移",
+    "move_down": "下移",
+    "delete_section": "删除该节",
+    "empty": "暂无章节，点击下方按钮添加",
+    "add_section": "添加章节"
+  },
   "settings": {
     "subtitle": "模型 Provider、用户与密钥、许可证与系统状态",
     "add_provider": "添加 Provider",

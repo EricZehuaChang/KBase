@@ -2,11 +2,13 @@
 // 大纲编辑器：节列表行内编辑 title/brief，增删移位走纯函数
 // （addSection/removeSection/moveSection，见 generate-utils.ts）——组件本身
 // 只负责渲染与 v-model 数组替换，不持有编辑逻辑分支。
+import { useI18n } from "vue-i18n";
 import { ChevronUp, ChevronDown, Trash2, Plus } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import { addSection, removeSection, moveSection, type OutlineSection } from "@/lib/generate-utils";
 
 const sections = defineModel<OutlineSection[]>({ required: true });
+const { t } = useI18n();
 
 function updateTitle(i: number, title: string) {
   const next = [...sections.value];
@@ -34,15 +36,15 @@ function updateBrief(i: number, brief: string) {
           <input
             :value="section.title"
             type="text"
-            placeholder="章节标题"
-            aria-label="章节标题"
+            :placeholder="t('outline.section_title')"
+            :aria-label="t('outline.section_title')"
             class="h-8 w-full rounded-[var(--radius-ctl)] border border-[var(--border)] bg-transparent px-2 text-sm font-medium outline-none focus-visible:border-[var(--accent)]"
             @input="updateTitle(i, ($event.target as HTMLInputElement).value)"
           >
           <textarea
             :value="section.brief"
-            placeholder="要点简述"
-            aria-label="章节要点简述"
+            :placeholder="t('outline.brief_placeholder')"
+            :aria-label="t('outline.brief_label')"
             rows="2"
             class="w-full resize-none rounded-[var(--radius-ctl)] border border-[var(--border)] bg-transparent px-2 py-1.5 text-sm text-[var(--text-2)] outline-none focus-visible:border-[var(--accent)]"
             @input="updateBrief(i, ($event.target as HTMLTextAreaElement).value)"
@@ -51,19 +53,19 @@ function updateBrief(i: number, brief: string) {
         <div class="flex flex-col gap-0.5">
           <Button
             variant="ghost" size="icon-sm" :disabled="i === 0"
-            aria-label="上移" @click="sections = moveSection(sections, i, 'up')"
+            :aria-label="t('outline.move_up')" @click="sections = moveSection(sections, i, 'up')"
           >
             <ChevronUp class="size-3.5" />
           </Button>
           <Button
             variant="ghost" size="icon-sm" :disabled="i === sections.length - 1"
-            aria-label="下移" @click="sections = moveSection(sections, i, 'down')"
+            :aria-label="t('outline.move_down')" @click="sections = moveSection(sections, i, 'down')"
           >
             <ChevronDown class="size-3.5" />
           </Button>
           <Button
             variant="ghost" size="icon-sm"
-            aria-label="删除该节" @click="sections = removeSection(sections, i)"
+            :aria-label="t('outline.delete_section')" @click="sections = removeSection(sections, i)"
           >
             <Trash2 class="size-3.5" />
           </Button>
@@ -72,12 +74,12 @@ function updateBrief(i: number, brief: string) {
     </article>
 
     <p v-if="!sections.length" class="py-6 text-center text-sm text-[var(--text-3)]">
-      暂无章节，点击下方按钮添加
+      {{ t("outline.empty") }}
     </p>
 
     <Button variant="outline" size="sm" class="self-start" @click="sections = addSection(sections)">
       <Plus class="size-3.5" />
-      添加章节
+      {{ t("outline.add_section") }}
     </Button>
   </div>
 </template>
