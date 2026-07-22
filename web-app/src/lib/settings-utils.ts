@@ -12,7 +12,7 @@ export interface ProviderTestState {
  * 供 Dialog 表单在 textarea 下方内联展示。 */
 export type ParamsValidation =
   | { ok: true; value: Record<string, unknown> }
-  | { ok: false; error: string };
+  | { ok: false; errorKey: string; errorParams?: Record<string, unknown> };
 
 /** 校验 params 文本框内容：空字符串视为 {}（允许不填）；非法 JSON 或 JSON
  * 顶层不是对象（如数组/字符串/数字）均报错——params 语义上必须是键值对。 */
@@ -23,10 +23,11 @@ export function validateParamsJson(text: string): ParamsValidation {
   try {
     parsed = JSON.parse(trimmed);
   } catch (err) {
-    return { ok: false, error: `JSON 格式错误：${err instanceof Error ? err.message : String(err)}` };
+    return { ok: false, errorKey: "provider.params_json_error",
+             errorParams: { msg: err instanceof Error ? err.message : String(err) } };
   }
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return { ok: false, error: "params 必须是 JSON 对象（如 {\"temperature\":0.7}）" };
+    return { ok: false, errorKey: "provider.params_not_object" };
   }
   return { ok: true, value: parsed as Record<string, unknown> };
 }
@@ -102,11 +103,13 @@ export function buildProviderBody(
   return body;
 }
 
-/** 卡片"密钥"行文案：直配 > 环境变量 > 未配置。 */
-export function keySourceLabel(p: { has_api_key: boolean; api_key_hint: string | null; api_key_env: string }): string {
-  if (p.has_api_key) return `已配置 ${p.api_key_hint ?? "****"}`;
-  if (p.api_key_env) return `环境变量 ${p.api_key_env}`;
-  return "未配置";
+/** 卡片"密钥"行文案：直配 > 环境变量 > 未配置。返回 i18n key + 参数，组件
+ * t() 渲染（纯函数不绑 t，保持可测；key 见 provider.key_*）。 */
+export interface KeySourceInfo { key: string; params?: Record<string, unknown>; }
+export function keySource(p: { has_api_key: boolean; api_key_hint: string | null; api_key_env: string }): KeySourceInfo {
+  if (p.has_api_key) return { key: "provider.key_configured", params: { hint: p.api_key_hint ?? "****" } };
+  if (p.api_key_env) return { key: "provider.key_env", params: { env: p.api_key_env } };
+  return { key: "provider.key_none" };
 }
 
 /** params 对象 → 卡片摘要文本（如 "temperature=0.7, top_p=0.9"）；空对象返回
@@ -145,7 +148,8 @@ export interface LicenseLike {
 
 export interface LicenseBannerInfo {
   tone: "info" | "warn";
-  message: string;
+  messageKey: string;
+  messageParams?: Record<string, unknown>;
 }
 
 /** 许可证到期前提醒窗口（天）：valid 但临近到期时提前亮横幅（E）。 */
@@ -164,19 +168,21 @@ export function licenseBannerInfo(license: LicenseLike,
     if (Number.isNaN(daysLeft) || daysLeft > LICENSE_EXPIRY_WARN_DAYS) return null;
     return {
       tone: "warn",
-      message: `许可证将于 ${license.expires} 到期（剩余 ${Math.max(daysLeft, 0)} 天），请提前联系供应商续期`,
+      messageKey: "license.banner_expiring",
+      messageParams: { date: license.expires, days: Math.max(daysLeft, 0) },
     };
   }
   if (license.status === "trial") {
-    return { tone: "info", message: "当前为试用模式，功能不受限，建议尽快导入正式许可证" };
+    return { tone: "info", messageKey: "license.banner_trial" };
   }
   if (license.status === "expired") {
     return {
       tone: "warn",
-      message: `许可证已过期（${license.expires ?? "未知日期"}），请联系管理员更新`,
+      messageKey: "license.banner_expired",
+      messageParams: { date: license.expires ?? "" },
     };
   }
-  return { tone: "warn", message: "许可证无效，请检查 license.json 是否被篡改或损坏" };
+  return { tone: "warn", messageKey: "license.banner_invalid" };
 }
 
 // ---- 用户管理（M4-1 G6）----

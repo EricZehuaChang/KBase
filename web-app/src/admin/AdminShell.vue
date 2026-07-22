@@ -232,7 +232,7 @@ function backToPortal() {
             ? 'bg-[var(--warn-weak)] text-[var(--warn)]'
             : 'bg-[var(--accent-weak)] text-[var(--accent-text)]'"
         >
-          <span>{{ bannerInfo.message }}</span>
+          <span>{{ t(bannerInfo.messageKey, bannerInfo.messageParams ?? {}) }}</span>
           <button
             type="button"
             class="shrink-0 rounded-[var(--radius-ctl)] px-1.5 py-0.5 hover:bg-black/5"
