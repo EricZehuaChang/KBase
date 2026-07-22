@@ -3,12 +3,15 @@
 // （openai-embed）的 API Key 页面维护。DB 覆盖 > 环境变量；保存/清除后
 // 服务端丢弃缓存实例，下次摄取/检索按新密钥重建。原文永不回显（脱敏尾4位）。
 import { onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   listEmbedderKeys, putEmbedderKey, deleteEmbedderKey, type EmbedderKeyItem,
 } from "@/lib/api";
+
+const { t } = useI18n();
 
 const items = ref<EmbedderKeyItem[]>([]);
 const editingId = ref<string | null>(null);
@@ -35,7 +38,7 @@ async function save(id: string) {
   busy.value = true;
   try {
     await putEmbedderKey(id, keyInput.value.trim());
-    toast.success("密钥已保存，下次向量化/检索即生效");
+    toast.success(t("embedder.saved"));
     editingId.value = null;
     await refresh();
   } catch (err) {
@@ -49,7 +52,7 @@ async function clearKey(id: string) {
   busy.value = true;
   try {
     await deleteEmbedderKey(id);
-    toast.success("已清除页面密钥，回落到环境变量");
+    toast.success(t("embedder.cleared"));
     await refresh();
   } catch (err) {
     toast.error(err instanceof Error ? err.message : String(err));
@@ -61,12 +64,12 @@ async function clearKey(id: string) {
 
 <template>
   <article class="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-4">
-    <div class="mb-1 font-medium">向量模型密钥</div>
+    <div class="mb-1 font-medium">{{ t("embedder.title") }}</div>
     <p class="mb-3 text-xs text-[var(--text-3)]">
-      云端向量模型（openai-embed）的 API Key，页面配置优先于环境变量；保存后下次向量化即生效
+      {{ t("embedder.desc") }}
     </p>
     <p v-if="!items.length" class="text-sm text-[var(--text-3)]">
-      配置文件 embedders 清单中暂无云端向量模型选项
+      {{ t("embedder.no_options") }}
     </p>
     <div
       v-for="item in items"
@@ -82,7 +85,7 @@ async function clearKey(id: string) {
             ? 'bg-[var(--ok-weak)] text-[var(--ok)]'
             : 'bg-[var(--surface-2)] text-[var(--text-3)]'"
         >
-          {{ item.has_db_key ? `页面密钥 ${item.key_hint}` : `环境变量 ${item.api_key_env}` }}
+          {{ item.has_db_key ? t("embedder.db_key", { hint: item.key_hint }) : t("embedder.env_key", { env: item.api_key_env }) }}
         </Badge>
       </div>
 
@@ -90,17 +93,17 @@ async function clearKey(id: string) {
         <input
           v-model="keyInput"
           type="password"
-          placeholder="粘贴 API Key（只写入，不回显）"
+          :placeholder="t('embedder.key_placeholder')"
           class="flex-1 rounded-[var(--radius-ctl)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-sm outline-none focus:border-[var(--accent)]"
-          aria-label="向量模型 API Key"
+          :aria-label="t('embedder.key_label')"
           @keydown.enter="save(item.id)"
         />
-        <Button size="sm" :disabled="busy || !keyInput.trim()" @click="save(item.id)">保存</Button>
-        <Button size="sm" variant="outline" @click="editingId = null">取消</Button>
+        <Button size="sm" :disabled="busy || !keyInput.trim()" @click="save(item.id)">{{ t("common.save") }}</Button>
+        <Button size="sm" variant="outline" @click="editingId = null">{{ t("common.cancel") }}</Button>
       </div>
       <div v-else class="mt-2 flex items-center gap-2">
         <Button size="sm" variant="outline" @click="startEdit(item.id)">
-          {{ item.has_db_key ? "更新密钥" : "设置密钥" }}
+          {{ item.has_db_key ? t("embedder.update_key") : t("embedder.set_key") }}
         </Button>
         <Button
           v-if="item.has_db_key"
@@ -109,7 +112,7 @@ async function clearKey(id: string) {
           :disabled="busy"
           @click="clearKey(item.id)"
         >
-          清除（回落环境变量）
+          {{ t("embedder.clear_key") }}
         </Button>
       </div>
     </div>
