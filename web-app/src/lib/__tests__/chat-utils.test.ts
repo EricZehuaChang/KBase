@@ -75,7 +75,7 @@ describe("groupByTime", () => {
       { id: "c", updated_at: "2026-06-01T08:00:00Z" }, // 更早
     ];
     const groups = groupByTime(items, now);
-    expect(groups.map((g) => g.label)).toEqual(["今天", "7天内", "更早"]);
+    expect(groups.map((g) => g.label)).toEqual(["today", "week", "earlier"]);
     expect(groups[0].items).toEqual([items[0]]);
     expect(groups[1].items).toEqual([items[1]]);
     expect(groups[2].items).toEqual([items[2]]);
@@ -84,7 +84,7 @@ describe("groupByTime", () => {
   it("缺失分组时不产出空组", () => {
     const groups = groupByTime([{ id: "a", updated_at: "2026-07-05T08:00:00Z" }], now);
     expect(groups).toEqual([
-      { label: "今天", items: [{ id: "a", updated_at: "2026-07-05T08:00:00Z" }] },
+      { label: "today", items: [{ id: "a", updated_at: "2026-07-05T08:00:00Z" }] },
     ]);
   });
 });

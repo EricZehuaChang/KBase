@@ -4,6 +4,7 @@
     "cancel": "Cancel",
     "delete": "Delete",
     "confirm": "Confirm",
+    "confirm_delete": "Confirm delete",
     "close": "Close",
     "edit": "Edit",
     "loading": "Loading…"
@@ -18,6 +19,26 @@
       "hint_empty": "Ask a question to start a new conversation",
       "q_main": "What are the main points of \"{title}\"?",
       "q_numbers": "What specific standards or figures are in {title}?"
+    },
+    "session": {
+      "new": "New chat",
+      "new_btn": "New chat",
+      "empty": "No conversations yet",
+      "load_more": "Load more",
+      "expand": "Expand sidebar",
+      "collapse": "Collapse sidebar",
+      "list": "Conversation list",
+      "title_input": "Conversation title",
+      "confirm_rename": "Confirm rename",
+      "cancel_rename": "Cancel rename",
+      "rename": "Rename conversation",
+      "delete": "Delete conversation",
+      "delete_confirm": "This will delete \"{title}\" and all its messages. This cannot be undone."
+    },
+    "timegroup": {
+      "today": "Today",
+      "week": "Last 7 days",
+      "earlier": "Earlier"
     }
   }
 }

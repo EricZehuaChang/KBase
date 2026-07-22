@@ -83,7 +83,9 @@ export function appendConversationPage<T>(
 }
 
 /** 会话分组标签。 */
-export type TimeGroup = "今天" | "7天内" | "更早";
+// i18n:时间分组用稳定枚举 key(渲染在 SessionSidebar 经
+// portal.timegroup.<key> 翻译),不再用中文字面量当值。
+export type TimeGroup = "today" | "week" | "earlier";
 
 export interface Groupable {
   updated_at?: string;
@@ -110,9 +112,9 @@ export function groupByTime<T extends Groupable>(
   }
 
   const groups: { label: TimeGroup; items: T[] }[] = [];
-  if (today.length) groups.push({ label: "今天", items: today });
-  if (recent.length) groups.push({ label: "7天内", items: recent });
-  if (older.length) groups.push({ label: "更早", items: older });
+  if (today.length) groups.push({ label: "today", items: today });
+  if (recent.length) groups.push({ label: "week", items: recent });
+  if (older.length) groups.push({ label: "earlier", items: older });
   return groups;
 }
 

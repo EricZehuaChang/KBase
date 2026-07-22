@@ -9,12 +9,15 @@
 // 的父组件，侧栏自己只负责展示折叠后的窄条 + 提供展开按钮。
 import { computed, nextTick, ref } from "vue";
 import { Plus, Pencil, Trash2, PanelLeftClose, PanelLeftOpen, Check, X } from "@lucide/vue";
+import { useI18n } from "vue-i18n";
 import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
 import type { Conversation } from "@/lib/api";
 import type { TimeGroup } from "@/lib/chat-utils";
+
+const { t } = useI18n();
 
 const props = defineProps<{
   groups: { label: TimeGroup; items: Conversation[] }[];
@@ -44,7 +47,7 @@ function setInputRef(id: string, el: unknown) {
 
 async function startRename(conv: Conversation) {
   editingId.value = conv.id;
-  editingValue.value = conv.title ?? "新会话";
+  editingValue.value = conv.title ?? t("portal.session.new");
   await nextTick();
   inputRefs.get(conv.id)?.focus();
   inputRefs.get(conv.id)?.select();
@@ -89,7 +92,7 @@ const isEmpty = computed(() => props.groups.every((g) => g.items.length === 0));
     <button
       type="button"
       class="rounded-[var(--radius-ctl)] p-2 text-[var(--text-2)] transition-colors hover:bg-[var(--surface-2)]"
-      aria-label="展开会话侧栏"
+      :aria-label="t('portal.session.expand')"
       @click="emit('update:collapsed', false)"
     >
       <PanelLeftOpen class="size-4" />
@@ -99,17 +102,17 @@ const isEmpty = computed(() => props.groups.every((g) => g.items.length === 0));
   <aside
     v-else
     class="flex w-[220px] shrink-0 flex-col overflow-hidden border-r border-[var(--border)] bg-[var(--surface)]"
-    aria-label="会话列表"
+    :aria-label="t('portal.session.list')"
   >
     <div class="flex items-center gap-1 px-2 pt-2">
       <Button variant="outline" size="sm" class="flex-1 justify-start" @click="emit('new')">
         <Plus class="size-3.5" />
-        新建会话
+        {{ t("portal.session.new_btn") }}
       </Button>
       <button
         type="button"
         class="shrink-0 rounded-[var(--radius-ctl)] p-1.5 text-[var(--text-2)] transition-colors hover:bg-[var(--surface-2)]"
-        aria-label="折叠会话侧栏"
+        :aria-label="t('portal.session.collapse')"
         @click="emit('update:collapsed', true)"
       >
         <PanelLeftClose class="size-4" />
@@ -118,12 +121,12 @@ const isEmpty = computed(() => props.groups.every((g) => g.items.length === 0));
 
     <div class="flex-1 overflow-y-auto px-2 py-2">
       <p v-if="isEmpty" class="px-2 py-4 text-center text-xs text-[var(--text-3)]">
-        暂无会话
+        {{ t("portal.session.empty") }}
       </p>
 
       <div v-for="group in groups" :key="group.label" class="mb-2">
         <div v-if="group.items.length" class="px-2 py-1 text-xs font-medium text-[var(--text-3)]">
-          {{ group.label }}
+          {{ t(`portal.timegroup.${group.label}`) }}
         </div>
         <div
           v-for="conv in group.items"
@@ -139,7 +142,7 @@ const isEmpty = computed(() => props.groups.every((g) => g.items.length === 0));
               v-model="editingValue"
               type="text"
               class="min-w-0 flex-1 rounded-sm border border-[var(--accent)] bg-[var(--bg)] px-1 py-0.5 text-sm text-[var(--text)] outline-none"
-              aria-label="会话标题"
+              :aria-label="t('portal.session.title_input')"
               maxlength="200"
               @keydown.enter="commitRename(conv)"
               @keydown.escape="cancelRename"
@@ -148,7 +151,7 @@ const isEmpty = computed(() => props.groups.every((g) => g.items.length === 0));
             <button
               type="button"
               class="shrink-0 rounded-sm p-1 text-[var(--text-2)] hover:bg-[var(--surface-2)]"
-              aria-label="确认重命名"
+              :aria-label="t('portal.session.confirm_rename')"
               @mousedown.prevent="commitRename(conv)"
             >
               <Check class="size-3.5" />
@@ -156,7 +159,7 @@ const isEmpty = computed(() => props.groups.every((g) => g.items.length === 0));
             <button
               type="button"
               class="shrink-0 rounded-sm p-1 text-[var(--text-2)] hover:bg-[var(--surface-2)]"
-              aria-label="取消重命名"
+              :aria-label="t('portal.session.cancel_rename')"
               @mousedown.prevent="cancelRename"
             >
               <X class="size-3.5" />
@@ -168,7 +171,7 @@ const isEmpty = computed(() => props.groups.every((g) => g.items.length === 0));
               class="min-w-0 flex-1 truncate text-left text-sm"
               @click="emit('select', conv)"
             >
-              {{ conv.title || "新会话" }}
+              {{ conv.title || t("portal.session.new") }}
             </button>
             <!-- hover 才"看见"的操作按钮：用 opacity 而不是 hidden/block（display
             切换）——display:none 的元素没有布局盒、会被整体摘出无障碍树，键盘
@@ -179,7 +182,7 @@ const isEmpty = computed(() => props.groups.every((g) => g.items.length === 0));
             <button
               type="button"
               class="shrink-0 rounded-sm p-1 text-[var(--text-3)] opacity-0 hover:bg-[var(--surface-2)] focus-visible:opacity-100 group-hover/item:opacity-100"
-              aria-label="重命名会话"
+              :aria-label="t('portal.session.rename')"
               @click.stop="startRename(conv)"
             >
               <Pencil class="size-3.5" />
@@ -187,7 +190,7 @@ const isEmpty = computed(() => props.groups.every((g) => g.items.length === 0));
             <button
               type="button"
               class="shrink-0 rounded-sm p-1 text-[var(--text-3)] opacity-0 hover:bg-[var(--err)] hover:text-[var(--surface)] focus-visible:opacity-100 group-hover/item:opacity-100"
-              aria-label="删除会话"
+              :aria-label="t('portal.session.delete')"
               @click.stop="requestDelete(conv)"
             >
               <Trash2 class="size-3.5" />
@@ -203,7 +206,7 @@ const isEmpty = computed(() => props.groups.every((g) => g.items.length === 0));
         class="w-full justify-start text-[var(--text-3)]"
         @click="emit('loadMore')"
       >
-        加载更多
+        {{ t("portal.session.load_more") }}
       </Button>
     </div>
   </aside>
@@ -212,14 +215,14 @@ const isEmpty = computed(() => props.groups.every((g) => g.items.length === 0));
   <Dialog :open="!!deleteTarget" @update:open="(v) => { if (!v) deleteTarget = null; }">
     <DialogContent>
       <DialogHeader>
-        <DialogTitle>删除会话</DialogTitle>
+        <DialogTitle>{{ t("portal.session.delete") }}</DialogTitle>
         <DialogDescription>
-          将删除「{{ deleteTarget?.title || "新会话" }}」及其全部消息，不可恢复。
+          {{ t("portal.session.delete_confirm", { title: deleteTarget?.title || t("portal.session.new") }) }}
         </DialogDescription>
       </DialogHeader>
       <DialogFooter>
-        <Button variant="outline" @click="deleteTarget = null">取消</Button>
-        <Button variant="destructive" @click="confirmDelete">确认删除</Button>
+        <Button variant="outline" @click="deleteTarget = null">{{ t("common.cancel") }}</Button>
+        <Button variant="destructive" @click="confirmDelete">{{ t("common.confirm_delete") }}</Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>
