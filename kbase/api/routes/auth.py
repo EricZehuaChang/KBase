@@ -20,6 +20,7 @@ from kbase.api.schemas import (ChangePasswordBody, ForgotBody, LoginBody,
 from kbase.api.services import Services
 from kbase.audit import write_audit
 from kbase.auth import oidc, security
+from kbase.errors import AppError
 from kbase.models import AppSetting, User
 
 logger = logging.getLogger(__name__)
@@ -43,7 +44,8 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps, *,
         if (user is None or user.disabled
                 or not security.verify_password(body.password, user.password_hash)):
             write_audit(sf, actor=body.username, action="login_failed", ip=ip)
-            raise HTTPException(401, "用户名或密码错误，或账号已被禁用")
+            raise AppError("error.invalid_credentials",
+                           "用户名或密码错误，或账号已被禁用", status=401)
         token = security.create_session_token(user.username, user.role, secret=secret)
         response.set_cookie(
             "kbase_session", token, httponly=True, samesite="lax",
@@ -236,7 +238,7 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps, *,
             if user is None:
                 raise HTTPException(403, "当前身份不支持修改密码（API Key 无账号密码）")
             if not security.verify_password(body.old_password, user.password_hash):
-                raise HTTPException(401, "旧密码不正确")
+                raise AppError("error.old_password_wrong", "旧密码不正确", status=401)
             user.password_hash = security.hash_password(body.new_password)
             s.commit()
         return {"ok": True}

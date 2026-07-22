@@ -3,6 +3,8 @@
 // 会话缓存与 401 拦截互相调用，必须同模块（拆开会形成 http↔auth 循环依赖）。
 import { ref } from "vue";
 
+import { i18n } from "@/i18n";
+
 // 401 拦截钩子：router 守卫在启动时注册一个回调（跳转 /login），本模块不
 // 直接 import router——避免 api ↔ router 循环依赖。未注册时（如单测）
 // 拦截器仅清缓存、不做跳转。登录接口本身的 401（用户名/密码错）不走这条
@@ -37,11 +39,22 @@ export async function req<T>(path: string, init?: RequestInit,
       handleUnauthorized();
     }
     const text = await res.text();
-    let detail: string | undefined;
+    let raw: unknown;
     try {
-      detail = JSON.parse(text)?.detail;
+      raw = JSON.parse(text)?.detail;
     } catch {
       // 非 JSON 响应体，原样用 text 兜底
+    }
+    let detail: string | undefined;
+    if (raw && typeof raw === "object" && "code" in raw) {
+      // 结构化业务错误（后端 AppError，detail={code,params,message}）：按 code
+      // 查 i18n（error.*）用当前语言渲染；查不到 key 时用 message（中文原文）
+      // 兜底——渐进迁移，未 key 化的端点仍返回旧字符串走下面的分支。
+      const err = raw as { code: string; params?: Record<string, unknown>; message?: string };
+      const translated = i18n.global.t(err.code, err.params ?? {});
+      detail = translated !== err.code ? translated : (err.message || err.code);
+    } else if (typeof raw === "string") {
+      detail = raw;
     }
     // 兜底状态码文案：网关错误（如 502）响应体可能为空，空字符串消息的 Error
     // 在调用方 v-if 判断中是假值，会让错误态"消失"，统一在这里保证消息非空。

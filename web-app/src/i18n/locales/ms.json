@@ -7,10 +7,26 @@
     "confirm_delete": "Sahkan padam",
     "close": "Tutup",
     "edit": "Sunting",
-    "loading": "Memuatkan…"
+    "loading": "Memuatkan…",
+    "role": {
+      "admin": "Pentadbir",
+      "editor": "Penyunting",
+      "viewer": "Pemerhati"
+    }
   },
   "lang": {
     "label": "Bahasa"
+  },
+  "error": {
+    "kb_not_found": "Pangkalan pengetahuan tidak wujud: {id}",
+    "doc_not_found": "Dokumen tidak wujud: {id}",
+    "conv_not_found": "Sesi tidak wujud: {id}",
+    "message_not_found": "Mesej tidak wujud: {id}",
+    "eval_set_not_found": "Set penilaian tidak wujud: {id}",
+    "eval_run_not_found": "Rekod regresi tidak wujud: {id}",
+    "connector_not_found": "Penyambung tidak wujud: {id}",
+    "invalid_credentials": "Nama pengguna atau kata laluan salah, atau akaun telah dilumpuhkan",
+    "old_password_wrong": "Kata laluan lama tidak betul"
   },
   "portal": {
     "empty": {
@@ -39,6 +55,27 @@
       "today": "Hari ini",
       "week": "7 hari lepas",
       "earlier": "Lebih awal"
+    },
+    "chat": {
+      "feedback_thanks": "Terima kasih atas maklum balas",
+      "feedback_recorded": "Telah direkodkan, kami akan memperbaiki jawapan untuk soalan ini",
+      "input_placeholder": "Masukkan soalan, tanya pangkalan pengetahuan…",
+      "input_label": "Kotak input soalan",
+      "stop": "Berhenti",
+      "send": "Hantar",
+      "hint": "Enter hantar · Shift+Enter baris baru · Jawapan berdasarkan bahan pangkalan pengetahuan dengan rujukan, sila rujuk teks asal"
+    },
+    "topbar": {
+      "select_kb": "Pilih pangkalan pengetahuan",
+      "select_model": "Pilih model",
+      "joint_n": "Gabungan {n} pangkalan",
+      "joint_add": "+ Semakan bersama",
+      "joint_hint": "Sesi baharu akan mencari pangkalan yang ditandakan serentak (soal jawab merentas pangkalan)",
+      "workbench": "Masuk ke meja kerja",
+      "to_light": "Tukar ke mod terang",
+      "to_dark": "Tukar ke mod gelap",
+      "change_pw": "Tukar kata laluan",
+      "logout": "Log keluar"
     }
   }
 }
