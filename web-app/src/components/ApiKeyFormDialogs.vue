@@ -3,6 +3,7 @@
 // （>200 行拆分约定）。用 v-model 双向绑定父组件的 createOpen/revokeTarget，
 // 成功后 emit changed 让父组件重新拉取列表。
 import { reactive, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { Copy } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,8 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
 import { createApiKey, revokeApiKey, type ApiKeyItem } from "@/lib/api";
+
+const { t } = useI18n();
 
 const ROLES = ["admin", "editor", "viewer"] as const;
 
@@ -54,9 +57,9 @@ async function copyKey() {
   if (!createdFullKey.value) return;
   try {
     await navigator.clipboard.writeText(createdFullKey.value);
-    toast.success("已复制到剪贴板");
+    toast.success(t("msg.copied"));
   } catch {
-    toast.error("复制失败，请手动选中复制");
+    toast.error(t("apikey.copy_failed"));
   }
 }
 
@@ -73,7 +76,7 @@ async function confirmRevoke() {
   revoking.value = true;
   try {
     await revokeApiKey(props.revokeTarget.id);
-    toast.success(`已吊销: ${props.revokeTarget.name}`);
+    toast.success(t("apikey.revoked_toast", { name: props.revokeTarget.name }));
     emit("update:revokeTarget", null);
     emit("changed");
   } catch (err) {
@@ -90,44 +93,44 @@ async function confirmRevoke() {
     <DialogContent>
       <template v-if="!createdFullKey">
         <DialogHeader>
-          <DialogTitle>新建 API Key</DialogTitle>
-          <DialogDescription>设置名称与角色，完整 key 仅在创建后展示一次</DialogDescription>
+          <DialogTitle>{{ t("apikey.create_title") }}</DialogTitle>
+          <DialogDescription>{{ t("apikey.create_desc") }}</DialogDescription>
         </DialogHeader>
         <div class="flex flex-col gap-3">
           <label class="flex flex-col gap-1">
-            <span class="text-sm text-[var(--text-2)]">名称</span>
-            <Input v-model="newKey.name" placeholder="如 mcp-server" />
+            <span class="text-sm text-[var(--text-2)]">{{ t("common.name") }}</span>
+            <Input v-model="newKey.name" :placeholder="t('apikey.name_ph')" />
           </label>
           <label class="flex flex-col gap-1">
-            <span class="text-sm text-[var(--text-2)]">角色</span>
+            <span class="text-sm text-[var(--text-2)]">{{ t("common.role_col") }}</span>
             <Select v-model="newKey.role">
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectGroup>
-                  <SelectItem v-for="r in ROLES" :key="r" :value="r">{{ r }}</SelectItem>
+                  <SelectItem v-for="r in ROLES" :key="r" :value="r">{{ t(`common.role.${r}`) }}</SelectItem>
                 </SelectGroup>
               </SelectContent>
             </Select>
           </label>
         </div>
         <DialogFooter>
-          <Button variant="outline" @click="closeCreateDialog">取消</Button>
-          <Button :disabled="creating || !newKey.name.trim()" @click="submitCreate">创建</Button>
+          <Button variant="outline" @click="closeCreateDialog">{{ t("common.cancel") }}</Button>
+          <Button :disabled="creating || !newKey.name.trim()" @click="submitCreate">{{ t("common.create") }}</Button>
         </DialogFooter>
       </template>
       <template v-else>
         <DialogHeader>
-          <DialogTitle>请立即保存此 Key</DialogTitle>
-          <DialogDescription>关闭本弹窗后将无法再次查看完整 key</DialogDescription>
+          <DialogTitle>{{ t("apikey.save_now") }}</DialogTitle>
+          <DialogDescription>{{ t("apikey.save_now_desc") }}</DialogDescription>
         </DialogHeader>
         <div class="flex items-center gap-2 rounded-[var(--radius-ctl)] border border-[var(--border)] bg-[var(--surface-2)] p-3">
           <code class="flex-1 truncate font-mono text-sm">{{ createdFullKey }}</code>
-          <Button variant="ghost" size="icon-sm" aria-label="复制" @click="copyKey">
+          <Button variant="ghost" size="icon-sm" :aria-label="t('msg.copy')" @click="copyKey">
             <Copy class="size-3.5" />
           </Button>
         </div>
         <DialogFooter>
-          <Button @click="closeCreateDialog">我已保存，关闭</Button>
+          <Button @click="closeCreateDialog">{{ t("apikey.saved_close") }}</Button>
         </DialogFooter>
       </template>
     </DialogContent>
@@ -137,14 +140,14 @@ async function confirmRevoke() {
   <Dialog :open="!!revokeTarget" @update:open="(v) => { if (!v) emit('update:revokeTarget', null); }">
     <DialogContent>
       <DialogHeader>
-        <DialogTitle>吊销 API Key</DialogTitle>
+        <DialogTitle>{{ t("apikey.revoke_title") }}</DialogTitle>
         <DialogDescription>
-          确认吊销「{{ revokeTarget?.name }}」？吊销后使用该 key 的请求将立即被拒绝，此操作不可撤销。
+          {{ t("apikey.revoke_confirm", { name: revokeTarget?.name }) }}
         </DialogDescription>
       </DialogHeader>
       <DialogFooter>
-        <Button variant="outline" @click="emit('update:revokeTarget', null)">取消</Button>
-        <Button variant="destructive" :disabled="revoking" @click="confirmRevoke">确认吊销</Button>
+        <Button variant="outline" @click="emit('update:revokeTarget', null)">{{ t("common.cancel") }}</Button>
+        <Button variant="destructive" :disabled="revoking" @click="confirmRevoke">{{ t("apikey.confirm_revoke") }}</Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>
