@@ -3,6 +3,7 @@
 // （停用=从检索索引摘除，可恢复）、编辑文本（叶子重嵌入+重索引，父块仅
 // 落库）。分页 50/页；操作即时生效并回写行内状态。
 import { ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { Pencil, Search } from "@lucide/vue";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +19,7 @@ import {
 
 const props = defineProps<{ open: boolean; doc: DocumentItem | null }>();
 const emit = defineEmits<{ "update:open": [value: boolean] }>();
+const { t } = useI18n();
 
 const PAGE_SIZE = 50;
 const items = ref<ChunkItem[]>([]);
@@ -66,7 +68,7 @@ async function toggleEnabled(chunk: ChunkItem, enabled: boolean) {
   try {
     const updated = await updateChunk(chunk.id, { enabled });
     Object.assign(chunk, updated);
-    toast.success(enabled ? "已启用（重新加入检索）" : "已停用（不再被检索）");
+    toast.success(enabled ? t("chunk.enabled_toast") : t("chunk.disabled_toast"));
   } catch (err) {
     toast.error(err instanceof Error ? err.message : String(err));
   } finally {
@@ -86,7 +88,7 @@ async function saveEdit() {
     const updated = await updateChunk(editTarget.value.id, { text: editText.value });
     const row = items.value.find((i) => i.id === updated.id);
     if (row) Object.assign(row, updated);
-    toast.success(editTarget.value.is_leaf ? "已保存并重新向量化" : "已保存（父块不参与检索索引）");
+    toast.success(editTarget.value.is_leaf ? t("chunk.saved_leaf") : t("chunk.saved_parent"));
     editTarget.value = null;
   } catch (err) {
     toast.error(err instanceof Error ? err.message : String(err));
@@ -112,24 +114,24 @@ function nextPage() {
   <Dialog :open="open" @update:open="(v) => emit('update:open', v)">
     <DialogContent class="max-h-[90vh] max-w-3xl overflow-hidden">
       <DialogHeader>
-        <DialogTitle>分块管理：{{ doc?.filename }}</DialogTitle>
+        <DialogTitle>{{ t("chunk.title", { name: doc?.filename }) }}</DialogTitle>
         <DialogDescription>
-          共 {{ total }} 块。停用的块不再被检索；编辑叶子块会按本库向量模型重新向量化。
+          {{ t("chunk.desc", { total }) }}
         </DialogDescription>
       </DialogHeader>
 
       <div class="flex items-center gap-2">
-        <Input v-model="q" placeholder="按文本内容过滤…" @keydown.enter="searchChunks" />
+        <Input v-model="q" :placeholder="t('chunk.filter_ph')" @keydown.enter="searchChunks" />
         <Button variant="outline" size="sm" @click="searchChunks">
           <Search class="size-3.5" />
-          过滤
+          {{ t("chunk.filter") }}
         </Button>
       </div>
 
       <div class="max-h-[52vh] overflow-y-auto">
-        <p v-if="loading" class="py-6 text-center text-sm text-[var(--text-3)]">加载中…</p>
+        <p v-if="loading" class="py-6 text-center text-sm text-[var(--text-3)]">{{ t("common.loading") }}</p>
         <p v-else-if="items.length === 0" class="py-6 text-center text-sm text-[var(--text-3)]">
-          没有匹配的分块
+          {{ t("chunk.no_match") }}
         </p>
         <div
           v-for="chunk in items"
@@ -142,19 +144,19 @@ function nextPage() {
             <Badge :class="chunk.is_leaf
               ? 'bg-[var(--accent-weak)] text-[var(--accent-text)]'
               : 'bg-[var(--surface-2)] text-[var(--text-2)]'">
-              {{ chunk.is_leaf ? "叶子" : "父块" }}
+              {{ chunk.is_leaf ? t("chunk.leaf") : t("chunk.parent") }}
             </Badge>
             <span class="truncate text-xs text-[var(--text-3)]">{{ chunk.heading_path }}</span>
-            <span v-if="chunk.page" class="text-xs text-[var(--text-3)]">· 第{{ chunk.page }}页</span>
-            <span class="text-xs text-[var(--text-3)]">· {{ chunk.chars }} 字</span>
+            <span v-if="chunk.page" class="text-xs text-[var(--text-3)]">· {{ t("msg.page", { page: chunk.page }) }}</span>
+            <span class="text-xs text-[var(--text-3)]">· {{ t("chunk.chars", { count: chunk.chars }) }}</span>
             <div class="ml-auto flex items-center gap-2">
-              <Button variant="ghost" size="icon-sm" aria-label="编辑分块" @click="openEdit(chunk)">
+              <Button variant="ghost" size="icon-sm" :aria-label="t('chunk.edit')" @click="openEdit(chunk)">
                 <Pencil class="size-3.5" />
               </Button>
               <Switch
                 :model-value="chunk.enabled"
                 :disabled="busyIds.has(chunk.id)"
-                :aria-label="chunk.enabled ? '停用分块' : '启用分块'"
+                :aria-label="chunk.enabled ? t('chunk.disable') : t('chunk.enable')"
                 @update:model-value="(v: boolean) => toggleEnabled(chunk, v)"
               />
             </div>
@@ -169,9 +171,9 @@ function nextPage() {
         <span class="mr-auto text-xs text-[var(--text-3)]">
           {{ total === 0 ? 0 : offset + 1 }}-{{ Math.min(offset + PAGE_SIZE, total) }} / {{ total }}
         </span>
-        <Button variant="outline" size="sm" :disabled="offset === 0" @click="prevPage">上一页</Button>
+        <Button variant="outline" size="sm" :disabled="offset === 0" @click="prevPage">{{ t("chunk.prev_page") }}</Button>
         <Button variant="outline" size="sm" :disabled="offset + PAGE_SIZE >= total" @click="nextPage">
-          下一页
+          {{ t("chunk.next_page") }}
         </Button>
       </DialogFooter>
     </DialogContent>
@@ -181,11 +183,9 @@ function nextPage() {
   <Dialog :open="!!editTarget" @update:open="(v) => { if (!v) editTarget = null; }">
     <DialogContent class="max-w-2xl">
       <DialogHeader>
-        <DialogTitle>编辑分块</DialogTitle>
+        <DialogTitle>{{ t("chunk.edit_title") }}</DialogTitle>
         <DialogDescription>
-          {{ editTarget?.is_leaf
-            ? "保存后将按本库向量模型重新向量化并更新关键词索引"
-            : "父块仅作为回答上下文，保存后在下次被引用时生效" }}
+          {{ editTarget?.is_leaf ? t("chunk.edit_desc_leaf") : t("chunk.edit_desc_parent") }}
         </DialogDescription>
       </DialogHeader>
       <textarea
@@ -194,8 +194,8 @@ function nextPage() {
         class="rounded-[var(--radius-ctl)] border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
       />
       <DialogFooter>
-        <Button variant="outline" @click="editTarget = null">取消</Button>
-        <Button :disabled="savingEdit || !editText.trim()" @click="saveEdit">保存</Button>
+        <Button variant="outline" @click="editTarget = null">{{ t("common.cancel") }}</Button>
+        <Button :disabled="savingEdit || !editText.trim()" @click="saveEdit">{{ t("common.save") }}</Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>

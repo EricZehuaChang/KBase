@@ -233,7 +233,18 @@
     "empty": "暂无 API Key",
     "revoked": "已吊销",
     "valid": "有效",
-    "revoke": "吊销"
+    "revoke": "吊销",
+    "copy_failed": "复制失败，请手动选中复制",
+    "revoked_toast": "已吊销: {name}",
+    "create_title": "新建 API Key",
+    "create_desc": "设置名称与角色，完整 key 仅在创建后展示一次",
+    "name_ph": "如 mcp-server",
+    "save_now": "请立即保存此 Key",
+    "save_now_desc": "关闭本弹窗后将无法再次查看完整 key",
+    "saved_close": "我已保存，关闭",
+    "revoke_title": "吊销 API Key",
+    "revoke_confirm": "确认吊销「{name}」？吊销后使用该 key 的请求将立即被拒绝，此操作不可撤销。",
+    "confirm_revoke": "确认吊销"
   },
   "license": {
     "title": "许可证状态",
@@ -289,6 +300,28 @@
     "unknown_time": "未知",
     "params_field": "params（JSON，可留空）",
     "add_btn": "添加"
+  },
+  "chunk": {
+    "enabled_toast": "已启用（重新加入检索）",
+    "disabled_toast": "已停用（不再被检索）",
+    "saved_leaf": "已保存并重新向量化",
+    "saved_parent": "已保存（父块不参与检索索引）",
+    "title": "分块管理：{name}",
+    "desc": "共 {total} 块。停用的块不再被检索；编辑叶子块会按本库向量模型重新向量化。",
+    "filter_ph": "按文本内容过滤…",
+    "filter": "过滤",
+    "no_match": "没有匹配的分块",
+    "leaf": "叶子",
+    "parent": "父块",
+    "chars": "{count} 字",
+    "edit": "编辑分块",
+    "disable": "停用分块",
+    "enable": "启用分块",
+    "prev_page": "上一页",
+    "next_page": "下一页",
+    "edit_title": "编辑分块",
+    "edit_desc_leaf": "保存后将按本库向量模型重新向量化并更新关键词索引",
+    "edit_desc_parent": "父块仅作为回答上下文，保存后在下次被引用时生效"
   },
   "review": {
     "approved": "已确认入库，开始向量化",
