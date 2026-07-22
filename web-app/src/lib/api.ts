@@ -18,3 +18,4 @@ export * from "./api/evals";
 export * from "./api/settings";
 export * from "./api/jobs";
 export * from "./api/share";
+export * from "./api/i18n";

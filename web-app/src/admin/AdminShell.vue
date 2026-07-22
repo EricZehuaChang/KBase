@@ -10,7 +10,7 @@ import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import {
   Folder, ScanSearch, FileText, Settings, Sun, Moon, LogOut, ArrowLeft,
-  Database, KeyRound,
+  Database, KeyRound, Languages,
 } from "@lucide/vue";
 import ChangePasswordDialog from "@/components/ChangePasswordDialog.vue";
 import EmailPromptDialog from "@/components/EmailPromptDialog.vue";
@@ -40,7 +40,10 @@ const NAV_GROUPS = [
   },
   {
     label: "admin.nav_system",
-    items: [{ path: "/settings", label: "admin.nav_settings", icon: Settings }],
+    items: [
+      { path: "/settings", label: "admin.nav_settings", icon: Settings },
+      { path: "/translations", label: "admin.nav_translations", icon: Languages },
+    ],
   },
 ] as const;
 
