@@ -5,6 +5,7 @@
 // 避免后台定时器继续对已卸载组件的响应式状态写入。
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { useI18n } from "vue-i18n";
 import { Plus, RefreshCw, RotateCw, Settings2, Share2, Trash2, Shield } from "@lucide/vue";
 import { toast } from "vue-sonner";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,8 @@ import {
 import { hasPendingOcr } from "@/lib/kb-utils";
 import { canManageContent, canAdminister } from "@/lib/auth-utils";
 import { useKbDocs } from "@/composables/useKbDocs";
+
+const { t } = useI18n();
 
 // viewer 隐藏上传/删除/新建库按钮（后端已用 require_editor 强制校验，这里
 // 只是防呆，不替代后端）。
@@ -87,7 +90,7 @@ const embedders = ref<EmbeddersCatalog | null>(null);
 
 function embedderLabel(info: { id: string; plugin: string; model: string | null }): string {
   const modelPart = info.model ?? info.plugin;
-  return info.id === "default" ? `默认 · ${modelPart}` : `${info.id} · ${modelPart}`;
+  return info.id === "default" ? `${t("kb.embedder_default")} · ${modelPart}` : `${info.id} · ${modelPart}`;
 }
 
 async function openCreateDialog() {
@@ -129,7 +132,7 @@ async function confirmDeleteKb() {
   deletingKb.value = true;
   try {
     await deleteKb(kbDeleteTarget.value.id);
-    toast.success(`已删除知识库: ${kbDeleteTarget.value.name}`);
+    toast.success(t("kb.deleted", { name: kbDeleteTarget.value.name }));
     if (kbId.value === kbDeleteTarget.value.id) backToGrid();
   } catch (err) {
     toast.error(err instanceof Error ? err.message : String(err));
@@ -164,8 +167,8 @@ async function handleFilesSelected(files: File[]) {
   try {
     await uploadDocsWithProgress(kbId.value, form, parseMode.value,
       (p) => { uploadPercent.value = p; });
-    toast.success(`已提交 ${files.length} 个文件`
-      + (parseMode.value === "vlm" ? "（深度识别，完成后需校验确认）" : ""));
+    toast.success(t("kb.submitted", { count: files.length })
+      + (parseMode.value === "vlm" ? t("kb.submitted_vlm") : ""));
   } catch (err) {
     toast.error(err instanceof Error ? err.message : String(err));
   } finally {
@@ -184,7 +187,7 @@ async function handleImportUrl() {
   importing.value = true;
   try {
     const r = await importUrl(kbId.value, url);
-    toast.success(`已导入网页: ${r.accepted[0]}`);
+    toast.success(t("kb.url_imported", { url: r.accepted[0] }));
     importUrlText.value = "";
   } catch (err) {
     toast.error(err instanceof Error ? err.message : String(err));
@@ -207,9 +210,7 @@ async function loadDemo() {
   demoLoading.value = true;
   try {
     const result = await loadDemoData();
-    toast.success(result.created
-      ? "演示数据已装载（制度库+案例库，含表格与插图样例），解析中"
-      : "演示知识库已存在，直接打开");
+    toast.success(result.created ? t("kb.demo_loaded") : t("kb.demo_exists"));
     await loadKbs();
     openKb(result.id);
   } catch (err) {
@@ -232,7 +233,7 @@ function openReview(doc: DocumentItem) {
 async function handleRetry(doc: DocumentItem) {
   try {
     await retryDoc(doc.id);
-    toast.success(`已重试: ${doc.filename}`);
+    toast.success(t("kb.retried", { name: doc.filename }));
   } catch (err) {
     toast.error(err instanceof Error ? err.message : String(err));
   } finally {
@@ -255,7 +256,7 @@ async function confirmDelete() {
   if (!deleteTarget.value || !kbId.value) return;
   try {
     await deleteDoc(kbId.value, deleteTarget.value.id);
-    toast.success(`已删除: ${deleteTarget.value.filename}`);
+    toast.success(t("kb.doc_deleted", { name: deleteTarget.value.filename }));
   } catch (err) {
     toast.error(err instanceof Error ? err.message : String(err));
   } finally {
@@ -268,7 +269,7 @@ async function handleBatchRetryOcr() {
   if (!kbId.value) return;
   try {
     const r = await retryOcr(kbId.value);
-    toast.success(`已批量重试 OCR：${r.retrying.length} 个文档`);
+    toast.success(t("kb.batch_ocr", { count: r.retrying.length }));
   } catch (err) {
     toast.error(err instanceof Error ? err.message : String(err));
   } finally {
@@ -287,7 +288,7 @@ onMounted(loadKbs);
   <div class="p-6">
     <!-- 卡片网格 -->
     <template v-if="!kbId">
-      <PageHeader title="知识库" subtitle="管理企业知识库、文档导入与访问权限" />
+      <PageHeader :title="t('kb.title')" :subtitle="t('kb.subtitle')" />
       <div class="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
         <div
           v-for="kb in kbs"
@@ -304,7 +305,7 @@ onMounted(loadKbs);
               v-if="isAdmin"
               type="button"
               class="rounded-[var(--radius-ctl)] p-1 text-[var(--text-3)] hover:bg-[var(--accent-weak)] hover:text-[var(--accent-text)]"
-              aria-label="访问权限"
+              :aria-label="t('kb.grants')"
               @click.stop="openGrants(kb)"
             >
               <Shield class="size-3.5" />
@@ -313,14 +314,14 @@ onMounted(loadKbs);
               v-if="canManage"
               type="button"
               class="rounded-[var(--radius-ctl)] p-1 text-[var(--text-3)] hover:bg-[var(--err-weak)] hover:text-[var(--err)]"
-              aria-label="删除知识库"
+              :aria-label="t('kb.delete_kb')"
               @click.stop="kbDeleteTarget = kb"
             >
               <Trash2 class="size-3.5" />
             </button>
           </div>
           <div class="truncate pr-12 font-medium">{{ kb.name }}</div>
-          <div class="mt-1 text-sm text-[var(--text-3)]">{{ kb.doc_count ?? 0 }} 篇文档</div>
+          <div class="mt-1 text-sm text-[var(--text-3)]">{{ t("kb.doc_count", { count: kb.doc_count ?? 0 }) }}</div>
         </div>
 
         <button
@@ -330,17 +331,17 @@ onMounted(loadKbs);
           @click="openCreateDialog"
         >
           <Plus class="size-5" />
-          <span class="text-sm">新建知识库</span>
+          <span class="text-sm">{{ t("kb.create") }}</span>
         </button>
       </div>
 
       <!-- POC 演示数据（E）：还没有任何库时提供一键装载，秒出可演示效果 -->
       <div v-if="canManage && !kbs.length" class="mt-6 text-center">
         <Button variant="outline" :disabled="demoLoading" @click="loadDemo">
-          {{ demoLoading ? "装载中…" : "一键装载演示数据" }}
+          {{ demoLoading ? t("kb.loading_demo") : t("kb.load_demo") }}
         </Button>
         <p class="mt-2 text-xs text-[var(--text-3)]">
-          创建两个演示库（制度库含表格与插图 docx、案例库供多库联查），即刻可问答
+          {{ t("kb.demo_hint") }}
         </p>
       </div>
     </template>
@@ -350,7 +351,7 @@ onMounted(loadKbs);
       <div class="mb-4 flex items-center justify-between">
         <div>
           <button type="button" class="text-sm text-[var(--text-3)] hover:text-[var(--text)]" @click="backToGrid">
-            ← 返回知识库列表
+            ← {{ t("kb.back_to_list") }}
           </button>
           <h1 class="text-xl font-semibold tracking-tight">{{ currentKb?.name ?? kbId }}</h1>
         </div>
@@ -362,32 +363,32 @@ onMounted(loadKbs);
             @click="handleBatchRetryOcr"
           >
             <RotateCw class="size-3.5" />
-            批量重试OCR
+            {{ t("kb.batch_retry_ocr") }}
           </Button>
           <Button v-if="canManage" variant="outline" size="sm" @click="connectorsOpen = true">
             <RefreshCw class="size-3.5" />
-            同步连接器
+            {{ t("kb.sync_connectors") }}
           </Button>
           <Button v-if="canManage" variant="outline" size="sm" @click="shareOpen = true">
             <Share2 class="size-3.5" />
-            分享
+            {{ t("kb.share") }}
           </Button>
           <Button v-if="canManage" variant="outline" size="sm" @click="configOpen = true">
             <Settings2 class="size-3.5" />
-            知识库配置
+            {{ t("kb.config") }}
           </Button>
         </div>
       </div>
 
       <!-- 解析模式（F）：复杂图（概念图/时序图/PPT截图）选深度识别 -->
       <div v-if="canManage" class="mb-2 flex items-center gap-2">
-        <span class="text-sm text-[var(--text-2)]">解析方式</span>
+        <span class="text-sm text-[var(--text-2)]">{{ t("kb.parse_mode") }}</span>
         <Select v-model="parseMode">
           <SelectTrigger class="w-64"><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="auto">自动（文档/扫描件通用管道）</SelectItem>
-            <SelectItem value="ocr">表格增强（PDF 强制结构化解析，断表合并）</SelectItem>
-            <SelectItem value="vlm">满血模型深度识别（复杂图，需人工校验）</SelectItem>
+            <SelectItem value="auto">{{ t("kb.parse_auto") }}</SelectItem>
+            <SelectItem value="ocr">{{ t("kb.parse_ocr") }}</SelectItem>
+            <SelectItem value="vlm">{{ t("kb.parse_vlm") }}</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -398,23 +399,23 @@ onMounted(loadKbs);
         <input
           v-model="importUrlText"
           type="url"
-          placeholder="或粘贴网页地址导入（http/https，内网 wiki 亦可）"
+          :placeholder="t('kb.url_placeholder')"
           class="flex-1 rounded-[var(--radius-ctl)] border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
-          aria-label="导入网页地址"
+          :aria-label="t('kb.url_label')"
           @keydown.enter="handleImportUrl"
         />
         <Button variant="outline" size="sm" :disabled="importing || !importUrlText.trim()" @click="handleImportUrl">
-          {{ importing ? "导入中…" : "导入网页" }}
+          {{ importing ? t("kb.importing") : t("kb.import_url") }}
         </Button>
         <Button variant="outline" size="sm" @click="feishuOpen = true">
-          从飞书导入
+          {{ t("kb.import_feishu") }}
         </Button>
       </div>
 
       <!-- E 上传进度条：仅传输阶段显示；解析/向量化进度看文档状态列 -->
       <div v-if="uploadPercent !== null" class="mb-4">
         <div class="mb-1 flex justify-between text-xs text-[var(--text-3)]">
-          <span>正在上传…</span>
+          <span>{{ t("kb.uploading") }}</span>
           <span>{{ uploadPercent }}%</span>
         </div>
         <div class="h-1.5 overflow-hidden rounded-full bg-[var(--surface-2)]">
@@ -441,15 +442,15 @@ onMounted(loadKbs);
   <Dialog v-model:open="createOpen">
     <DialogContent>
       <DialogHeader>
-        <DialogTitle>新建知识库</DialogTitle>
-        <DialogDescription>输入知识库名称并选择向量模型</DialogDescription>
+        <DialogTitle>{{ t("kb.create") }}</DialogTitle>
+        <DialogDescription>{{ t("kb.create_desc") }}</DialogDescription>
       </DialogHeader>
       <div class="flex flex-col gap-3">
-        <Input v-model="newKbName" placeholder="知识库名称" @keydown.enter="submitCreate" />
+        <Input v-model="newKbName" :placeholder="t('kb.name_placeholder')" @keydown.enter="submitCreate" />
         <!-- 向量模型绑定（M5-2）：建库后不可改（不同模型向量空间不可比，
              换模型=全库重建），清单只有默认一项时不渲染，保持极简体验 -->
         <label v-if="embedders && embedders.options.length > 0" class="flex flex-col gap-1">
-          <span class="text-sm text-[var(--text-2)]">向量模型（建库后不可更改）</span>
+          <span class="text-sm text-[var(--text-2)]">{{ t("kb.embedder_label") }}</span>
           <Select v-model="newKbEmbedder">
             <SelectTrigger class="w-full">
               <SelectValue />
@@ -464,8 +465,8 @@ onMounted(loadKbs);
         </label>
       </div>
       <DialogFooter>
-        <Button variant="outline" @click="createOpen = false">取消</Button>
-        <Button :disabled="creating || !newKbName.trim()" @click="submitCreate">创建</Button>
+        <Button variant="outline" @click="createOpen = false">{{ t("common.cancel") }}</Button>
+        <Button :disabled="creating || !newKbName.trim()" @click="submitCreate">{{ t("kb.create_btn") }}</Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>
@@ -474,14 +475,14 @@ onMounted(loadKbs);
   <Dialog :open="!!deleteTarget" @update:open="(v) => { if (!v) deleteTarget = null; }">
     <DialogContent>
       <DialogHeader>
-        <DialogTitle>删除文档</DialogTitle>
+        <DialogTitle>{{ t("kb.delete_doc_title") }}</DialogTitle>
         <DialogDescription>
-          确认删除「{{ deleteTarget?.filename }}」？此操作不可撤销。
+          {{ t("kb.delete_doc_confirm", { name: deleteTarget?.filename }) }}
         </DialogDescription>
       </DialogHeader>
       <DialogFooter>
-        <Button variant="outline" @click="deleteTarget = null">取消</Button>
-        <Button variant="destructive" @click="confirmDelete">确认删除</Button>
+        <Button variant="outline" @click="deleteTarget = null">{{ t("common.cancel") }}</Button>
+        <Button variant="destructive" @click="confirmDelete">{{ t("common.confirm_delete") }}</Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>
@@ -497,16 +498,14 @@ onMounted(loadKbs);
   <Dialog :open="!!kbDeleteTarget" @update:open="(v) => { if (!v) kbDeleteTarget = null; }">
     <DialogContent>
       <DialogHeader>
-        <DialogTitle>删除知识库</DialogTitle>
+        <DialogTitle>{{ t("kb.delete_kb") }}</DialogTitle>
         <DialogDescription>
-          将删除「{{ kbDeleteTarget?.name }}」及其
-          {{ kbDeleteTarget?.doc_count ?? 0 }}
-          篇文档与相关会话，不可恢复。
+          {{ t("kb.delete_kb_confirm", { name: kbDeleteTarget?.name, count: kbDeleteTarget?.doc_count ?? 0 }) }}
         </DialogDescription>
       </DialogHeader>
       <DialogFooter>
-        <Button variant="outline" @click="kbDeleteTarget = null">取消</Button>
-        <Button variant="destructive" :disabled="deletingKb" @click="confirmDeleteKb">确认删除</Button>
+        <Button variant="outline" @click="kbDeleteTarget = null">{{ t("common.cancel") }}</Button>
+        <Button variant="destructive" :disabled="deletingKb" @click="confirmDeleteKb">{{ t("common.confirm_delete") }}</Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>

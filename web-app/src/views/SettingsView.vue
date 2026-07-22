@@ -5,6 +5,7 @@
 // Provider 区块自身的编排（测试状态按 provider 名集中持有 testStates）。
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { Boxes, Cpu, Gauge, Link2, Plus, Settings, Users } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
@@ -31,17 +32,20 @@ import { healthDot, type ProviderTestState } from "@/lib/settings-utils";
 import { canAdminister } from "@/lib/auth-utils";
 import { theme, setTheme } from "@/lib/theme";
 
+const { t } = useI18n();
+
 // ---- 分栏导航：五组，选中态走 URL ?tab=（刷新/分享保位） ----
 const route = useRoute();
 const router = useRouter();
 
+// label/desc 存 i18n key，渲染时 t()。
 const SECTIONS = [
-  { id: "providers", label: "模型服务", icon: Cpu, desc: "LLM Provider 与模型目录" },
-  { id: "embedders", label: "向量模型", icon: Boxes, desc: "云端向量模型密钥" },
-  { id: "access", label: "用户与权限", icon: Users, desc: "账号、角色与 API Key" },
-  { id: "connectors", label: "连接器", icon: Link2, desc: "飞书知识库等外部数据源" },
-  { id: "ops", label: "运营看板", icon: Gauge, desc: "问答量、拒答与反馈" },
-  { id: "system", label: "系统", icon: Settings, desc: "状态、许可证与外观" },
+  { id: "providers", label: "settings.sec.providers_label", icon: Cpu, desc: "settings.sec.providers_desc" },
+  { id: "embedders", label: "settings.sec.embedders_label", icon: Boxes, desc: "settings.sec.embedders_desc" },
+  { id: "access", label: "settings.sec.access_label", icon: Users, desc: "settings.sec.access_desc" },
+  { id: "connectors", label: "settings.sec.connectors_label", icon: Link2, desc: "settings.sec.connectors_desc" },
+  { id: "ops", label: "settings.sec.ops_label", icon: Gauge, desc: "settings.sec.ops_desc" },
+  { id: "system", label: "settings.sec.system_label", icon: Settings, desc: "settings.sec.system_desc" },
 ] as const;
 type SectionId = (typeof SECTIONS)[number]["id"];
 
@@ -79,7 +83,7 @@ async function handleTest(name: string) {
     const r = await testProvider(name);
     testStates[name] = r.ok
       ? { status: "ok", latencyMs: r.latency_ms }
-      : { status: "fail", error: r.error ?? "未知错误" };
+      : { status: "fail", error: r.error ?? t("settings.unknown_error") };
   } catch (err) {
     testStates[name] = { status: "fail", error: err instanceof Error ? err.message : String(err) };
   }
@@ -88,7 +92,7 @@ async function handleTest(name: string) {
 async function handleSetActive(name: string) {
   try {
     await setActiveProvider(name);
-    toast.success(`已设为默认: ${name}`);
+    toast.success(t("settings.set_active", { name }));
     await loadProviders();
   } catch (err) {
     toast.error(err instanceof Error ? err.message : String(err));
@@ -102,7 +106,7 @@ async function confirmDelete() {
   const name = deleteTarget.value.name;
   try {
     await deleteProvider(name);
-    toast.success(`已删除: ${name}`);
+    toast.success(t("settings.deleted", { name }));
   } catch (err) {
     toast.error(err instanceof Error ? err.message : String(err));
   } finally {
@@ -149,11 +153,11 @@ onMounted(async () => {
 
 <template>
   <div class="p-6">
-    <PageHeader title="设置" subtitle="模型 Provider、用户与密钥、许可证与系统状态">
+    <PageHeader :title="t('admin.nav_settings')" :subtitle="t('settings.subtitle')">
       <template #actions>
         <Button v-if="tab === 'providers'" size="sm" @click="openCreateDialog">
           <Plus class="size-3.5" />
-          添加 Provider
+          {{ t("settings.add_provider") }}
         </Button>
       </template>
     </PageHeader>
@@ -178,20 +182,20 @@ onMounted(async () => {
               class="absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-[var(--accent)]"
             />
             <component :is="s.icon" class="size-4" />
-            {{ s.label }}
+            {{ t(s.label) }}
           </button>
         </nav>
       </aside>
 
       <!-- 右侧内容区：只渲染选中组 -->
       <div class="min-w-0 flex-1">
-        <p class="mb-4 text-sm text-[var(--text-3)]">{{ currentSection.desc }}</p>
+        <p class="mb-4 text-sm text-[var(--text-3)]">{{ t(currentSection.desc) }}</p>
 
         <!-- 模型服务 -->
         <section v-if="tab === 'providers'">
-          <p v-if="loading" class="text-sm text-[var(--text-3)]">加载中…</p>
+          <p v-if="loading" class="text-sm text-[var(--text-3)]">{{ t("common.loading") }}</p>
           <p v-else-if="!providers.length" class="text-sm text-[var(--text-3)]">
-            暂无 provider，请先添加一个
+            {{ t("settings.no_providers") }}
           </p>
           <div v-else class="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
             <ProviderCard
@@ -237,9 +241,9 @@ onMounted(async () => {
         <!-- 系统：状态 + 许可证 + 外观 -->
         <section v-else-if="tab === 'system'" class="flex flex-col gap-6">
           <div>
-            <h2 class="mb-3 text-sm font-medium text-[var(--text-2)]">系统状态</h2>
+            <h2 class="mb-3 text-sm font-medium text-[var(--text-2)]">{{ t("settings.system_status") }}</h2>
             <div v-if="healthError" class="rounded-[var(--radius-card)] bg-[var(--err-weak)] p-4 text-sm text-[var(--err)]">
-              ⚠️ 健康检查失败：{{ healthError }}
+              ⚠️ {{ t("settings.health_failed") }}：{{ healthError }}
             </div>
             <div
               v-else-if="health"
@@ -259,7 +263,7 @@ onMounted(async () => {
           <LicenseCard v-if="canAdminister(currentRole ?? '')" />
 
           <div>
-            <h2 class="mb-3 text-sm font-medium text-[var(--text-2)]">外观</h2>
+            <h2 class="mb-3 text-sm font-medium text-[var(--text-2)]">{{ t("settings.appearance") }}</h2>
             <div class="inline-flex rounded-[var(--radius-ctl)] border border-[var(--border)] bg-[var(--surface)] p-0.5">
               <button
                 type="button"
@@ -267,7 +271,7 @@ onMounted(async () => {
                 :class="theme === 'light' ? 'bg-[var(--accent-weak)] text-[var(--accent-text)]' : 'text-[var(--text-2)]'"
                 @click="setTheme('light')"
               >
-                亮
+                {{ t("settings.theme_light") }}
               </button>
               <button
                 type="button"
@@ -275,7 +279,7 @@ onMounted(async () => {
                 :class="theme === 'dark' ? 'bg-[var(--accent-weak)] text-[var(--accent-text)]' : 'text-[var(--text-2)]'"
                 @click="setTheme('dark')"
               >
-                暗
+                {{ t("settings.theme_dark") }}
               </button>
             </div>
           </div>
@@ -290,14 +294,14 @@ onMounted(async () => {
   <Dialog :open="!!deleteTarget" @update:open="(v) => { if (!v) deleteTarget = null; }">
     <DialogContent>
       <DialogHeader>
-        <DialogTitle>删除 Provider</DialogTitle>
+        <DialogTitle>{{ t("settings.delete_provider") }}</DialogTitle>
         <DialogDescription>
-          确认删除「{{ deleteTarget?.name }}」？此操作不可撤销。
+          {{ t("settings.delete_provider_confirm", { name: deleteTarget?.name }) }}
         </DialogDescription>
       </DialogHeader>
       <DialogFooter>
-        <Button variant="outline" @click="deleteTarget = null">取消</Button>
-        <Button variant="destructive" @click="confirmDelete">确认删除</Button>
+        <Button variant="outline" @click="deleteTarget = null">{{ t("common.cancel") }}</Button>
+        <Button variant="destructive" @click="confirmDelete">{{ t("common.confirm_delete") }}</Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>
