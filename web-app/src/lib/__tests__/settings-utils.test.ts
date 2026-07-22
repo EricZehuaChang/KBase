@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   validateParamsJson, paramsSummary, healthDot, licenseBannerInfo, isLastEnabledAdmin,
-  buildProviderBody, keySourceLabel, PROVIDER_PRESETS,
+  buildProviderBody, keySource, PROVIDER_PRESETS,
 } from "../settings-utils";
 
 describe("buildProviderBody（M5-2 密钥字段规则）", () => {
@@ -40,18 +40,18 @@ describe("buildProviderBody（M5-2 密钥字段规则）", () => {
   });
 });
 
-describe("keySourceLabel", () => {
+describe("keySource（返回 i18n key + 参数）", () => {
   it("直配密钥优先展示", () => {
-    expect(keySourceLabel({ has_api_key: true, api_key_hint: "****abcd", api_key_env: "K" }))
-      .toBe("已配置 ****abcd");
+    expect(keySource({ has_api_key: true, api_key_hint: "****abcd", api_key_env: "K" }))
+      .toEqual({ key: "provider.key_configured", params: { hint: "****abcd" } });
   });
   it("无直配时展示环境变量名", () => {
-    expect(keySourceLabel({ has_api_key: false, api_key_hint: null, api_key_env: "MY_KEY" }))
-      .toBe("环境变量 MY_KEY");
+    expect(keySource({ has_api_key: false, api_key_hint: null, api_key_env: "MY_KEY" }))
+      .toEqual({ key: "provider.key_env", params: { env: "MY_KEY" } });
   });
   it("两者皆无=未配置", () => {
-    expect(keySourceLabel({ has_api_key: false, api_key_hint: null, api_key_env: "" }))
-      .toBe("未配置");
+    expect(keySource({ has_api_key: false, api_key_hint: null, api_key_env: "" }))
+      .toEqual({ key: "provider.key_none" });
   });
 });
 
@@ -80,10 +80,13 @@ describe("validateParamsJson", () => {
     });
   });
 
-  it("非法 JSON 报错并附带原始错误信息", () => {
+  it("非法 JSON 报错（i18n key + 原因参数）", () => {
     const r = validateParamsJson("{temperature:0.7}");
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toContain("JSON 格式错误");
+    if (!r.ok) {
+      expect(r.errorKey).toBe("provider.params_json_error");
+      expect(r.errorParams?.msg).toBeTruthy();
+    }
   });
 
   it("JSON 顶层非对象（数组/字符串/数字）报错", () => {
@@ -143,8 +146,8 @@ describe("licenseBannerInfo", () => {
     const info = licenseBannerInfo(
       { status: "valid", expires: "2026-08-01" }, new Date("2026-07-15"));
     expect(info?.tone).toBe("warn");
-    expect(info?.message).toContain("2026-08-01");
-    expect(info?.message).toContain("剩余 17 天");
+    expect(info?.messageKey).toBe("license.banner_expiring");
+    expect(info?.messageParams).toEqual({ date: "2026-08-01", days: 17 });
   });
 
   it("valid 但 expires 非法不提醒（过期由后端 expired 态兜底）", () => {
@@ -156,19 +159,20 @@ describe("licenseBannerInfo", () => {
     const info = licenseBannerInfo({ status: "trial" });
     expect(info).not.toBeNull();
     expect(info?.tone).toBe("info");
-    expect(info?.message).toContain("试用");
+    expect(info?.messageKey).toBe("license.banner_trial");
   });
 
   it("expired 状态展示警告色横幅并带到期日", () => {
     const info = licenseBannerInfo({ status: "expired", org: "acme", expires: "2026-01-01" });
     expect(info?.tone).toBe("warn");
-    expect(info?.message).toContain("2026-01-01");
+    expect(info?.messageKey).toBe("license.banner_expired");
+    expect(info?.messageParams).toEqual({ date: "2026-01-01" });
   });
 
   it("invalid 状态展示警告色横幅", () => {
     const info = licenseBannerInfo({ status: "invalid" });
     expect(info?.tone).toBe("warn");
-    expect(info?.message).toContain("无效");
+    expect(info?.messageKey).toBe("license.banner_invalid");
   });
 });
 

@@ -12,6 +12,7 @@
 // datalist 下拉可选+仍可自由输入——同样适用于企业内部自有 OpenAI 兼容
 // 平台（自定义 base_url 即可）。
 import { computed, reactive, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { CheckCircle2, RefreshCw, Loader2 } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,7 @@ const emit = defineEmits<{
   "update:open": [value: boolean];
   saved: [mode: "create" | "edit", name: string];
 }>();
+const { t } = useI18n();
 
 const form = reactive({
   name: "",
@@ -70,7 +72,7 @@ async function loadCatalogs() {
 async function fetchModels() {
   const baseUrl = form.base_url.trim();
   if (!baseUrl) {
-    modelsError.value = "请先填写 base_url";
+    modelsError.value = t("provider.need_base_url");
     return;
   }
   fetchingModels.value = true;
@@ -84,7 +86,7 @@ async function fetchModels() {
     const catalog = await refreshModelCatalog(body);
     catalogs.value.set(catalog.base_url, catalog);
     catalogs.value = new Map(catalogs.value);   // 触发响应式更新
-    toast.success(`已获取 ${catalog.models.length} 个模型`);
+    toast.success(t("provider.models_fetched", { count: catalog.models.length }));
   } catch (err) {
     modelsError.value = err instanceof Error ? err.message : String(err);
   } finally {
@@ -124,15 +126,15 @@ function applyPreset(key: unknown) {
 
 const keyPlaceholder = computed(() => {
   if (props.provider?.has_api_key) {
-    return `已配置 ${props.provider.api_key_hint ?? "****"}，留空不修改`;
+    return t("provider.key_ph_configured", { hint: props.provider.api_key_hint ?? "****" });
   }
-  return "sk-...（可留空，改用环境变量）";
+  return t("provider.key_ph_new");
 });
 
 function validateParams(): Record<string, unknown> | null {
   const r = validateParamsJson(form.paramsText);
   if (!r.ok) {
-    paramsError.value = r.error;
+    paramsError.value = t(r.errorKey, r.errorParams ?? {});
     return null;
   }
   paramsError.value = null;
@@ -147,7 +149,7 @@ async function submit() {
   if (!editing && !form.name.trim()) return;
   // 密钥来源二选一（后端同样校验）：创建时两个都空直接拦
   if (!editing && !form.api_key.trim() && !form.api_key_env.trim()) {
-    toast.error("请填写 API Key 或密钥环境变量名（二选一）");
+    toast.error(t("provider.need_key"));
     return;
   }
 
@@ -158,10 +160,10 @@ async function submit() {
     const name = editing ? props.provider!.name : form.name.trim();
     if (editing) {
       await updateProvider(name, body);
-      toast.success(`已更新: ${name}`);
+      toast.success(t("provider.updated", { name }));
     } else {
       await createProvider({ name, ...body } as Parameters<typeof createProvider>[0]);
-      toast.success(`已添加: ${name}`);
+      toast.success(t("provider.added", { name }));
     }
     emit("update:open", false);
     emit("saved", editing ? "edit" : "create", name);
@@ -177,17 +179,17 @@ async function submit() {
   <Dialog :open="open" @update:open="(v) => emit('update:open', v)">
     <DialogContent>
       <DialogHeader>
-        <DialogTitle>{{ provider ? `编辑 Provider：${provider.name}` : "添加 Provider" }}</DialogTitle>
+        <DialogTitle>{{ provider ? t("provider.edit_title", { name: provider.name }) : t("provider.add_title") }}</DialogTitle>
         <DialogDescription>
-          API Key 可直接填写（保存在服务端），或填环境变量名由服务端从环境读取。
+          {{ t("provider.form_desc") }}
         </DialogDescription>
       </DialogHeader>
       <div class="flex flex-col gap-3">
         <label v-if="!provider" class="flex flex-col gap-1">
-          <span class="text-sm text-[var(--text-2)]">厂商预设</span>
+          <span class="text-sm text-[var(--text-2)]">{{ t("provider.preset") }}</span>
           <Select v-model="presetKey" @update:model-value="applyPreset">
             <SelectTrigger class="w-full">
-              <SelectValue placeholder="选择主流厂商自动填写，或手动自定义" />
+              <SelectValue :placeholder="t('provider.preset_ph')" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem v-for="p in PROVIDER_PRESETS" :key="p.key" :value="p.key">
@@ -198,22 +200,22 @@ async function submit() {
         </label>
         <label class="flex flex-col gap-1">
           <span class="text-sm text-[var(--text-2)]">name</span>
-          <Input v-model="form.name" :disabled="!!provider" placeholder="provider 唯一标识，如 openai" />
+          <Input v-model="form.name" :disabled="!!provider" :placeholder="t('provider.name_ph')" />
         </label>
         <label class="flex flex-col gap-1">
           <span class="text-sm text-[var(--text-2)]">base_url</span>
           <Input v-model="form.base_url" placeholder="https://api.example.com/v1" />
         </label>
         <label class="flex flex-col gap-1">
-          <span class="text-sm text-[var(--text-2)]">API Key（直接填写，存服务端）</span>
+          <span class="text-sm text-[var(--text-2)]">{{ t("provider.api_key") }}</span>
           <Input v-model="form.api_key" type="password" autocomplete="off" :placeholder="keyPlaceholder" />
           <label v-if="provider?.has_api_key" class="flex items-center gap-2 text-xs text-[var(--text-3)]">
             <input v-model="clearKey" type="checkbox" class="accent-[var(--accent)]" />
-            清除已保存的 Key（改用下方环境变量）
+            {{ t("provider.clear_key") }}
           </label>
         </label>
         <label class="flex flex-col gap-1">
-          <span class="text-sm text-[var(--text-2)]">api_key_env（环境变量名，可选）</span>
+          <span class="text-sm text-[var(--text-2)]">{{ t("provider.api_key_env") }}</span>
           <Input v-model="form.api_key_env" placeholder="OPENAI_API_KEY" />
         </label>
         <label class="flex flex-col gap-1">
@@ -229,19 +231,17 @@ async function submit() {
             >
               <Loader2 v-if="fetchingModels" class="size-3.5 animate-spin" />
               <RefreshCw v-else class="size-3.5" />
-              获取模型列表
+              {{ t("provider.fetch_models") }}
             </Button>
           </div>
           <!-- datalist：有清单时下拉可选，同时永远支持自由输入（自定义模型名） -->
-          <Input v-model="form.model" list="provider-model-options" placeholder="点上方按钮获取列表，或直接输入模型名" />
+          <Input v-model="form.model" list="provider-model-options" :placeholder="t('provider.model_ph')" />
           <datalist id="provider-model-options">
             <option v-for="m in currentCatalog?.models ?? []" :key="m" :value="m" />
           </datalist>
           <span v-if="modelsError" class="text-xs text-[var(--err)]">{{ modelsError }}</span>
           <span v-else-if="currentCatalog" class="text-xs text-[var(--text-3)]">
-            {{ currentCatalog.models.length }} 个模型
-            · 更新于 {{ currentCatalog.fetched_at?.slice(0, 16).replace("T", " ") ?? "未知" }}
-            {{ currentCatalog.stale ? "（已过期，将自动刷新）" : "" }}
+            {{ t("provider.catalog_info", { count: currentCatalog.models.length, time: currentCatalog.fetched_at?.slice(0, 16).replace("T", " ") ?? t("provider.unknown_time") }) }}{{ currentCatalog.stale ? t("provider.catalog_stale") : "" }}
           </span>
         </label>
         <label class="flex flex-col gap-1">
@@ -249,7 +249,7 @@ async function submit() {
           <Input v-model.number="form.max_concurrency" type="number" min="1" />
         </label>
         <label class="flex flex-col gap-1">
-          <span class="text-sm text-[var(--text-2)]">params（JSON，可留空）</span>
+          <span class="text-sm text-[var(--text-2)]">{{ t("provider.params_field") }}</span>
           <textarea
             v-model="form.paramsText"
             rows="4"
@@ -261,10 +261,10 @@ async function submit() {
         </label>
       </div>
       <DialogFooter>
-        <Button variant="outline" @click="emit('update:open', false)">取消</Button>
+        <Button variant="outline" @click="emit('update:open', false)">{{ t("common.cancel") }}</Button>
         <Button :disabled="saving" @click="submit">
           <CheckCircle2 class="size-3.5" />
-          {{ provider ? "保存" : "添加" }}
+          {{ provider ? t("common.save") : t("provider.add_btn") }}
         </Button>
       </DialogFooter>
     </DialogContent>
