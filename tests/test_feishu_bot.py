@@ -76,8 +76,13 @@ def test_url_verification_plain_and_token_check(client):
     ).status_code == 403
 
 
-def test_unconfigured_rejects(client):
-    assert client.post("/api/feishu/events", json={"type": "url_verification"}
+def test_unconfigured_still_answers_handshake(client):
+    # 未配置也要能完成握手（飞书验证回调地址在填 token 之前），只有真实业务事件才要求已配置
+    r = client.post("/api/feishu/events",
+                    json={"type": "url_verification", "challenge": "c-1"})
+    assert r.status_code == 200 and r.json() == {"challenge": "c-1"}
+    assert client.post("/api/feishu/events",
+                       json={"header": {"event_type": "im.message.receive_v1"}}
                        ).status_code == 403
 
 

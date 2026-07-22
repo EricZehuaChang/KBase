@@ -76,8 +76,6 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps) -> None:
     @app.post("/api/feishu/events")
     async def feishu_events(request: Request, bg: BackgroundTasks):
         cfg_bot = feishu_bot.get_settings(sf)
-        if not cfg_bot["verification_token"]:
-            raise HTTPException(403, "飞书机器人未配置")
         raw = await request.body()
         try:
             payload = json.loads(raw.decode("utf-8"))
@@ -101,12 +99,20 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps) -> None:
             except Exception as e:  # noqa: BLE001
                 raise HTTPException(400, "事件解密失败，请核对 Encrypt Key") from e
 
-        # 握手：原样回 challenge（明文模式核对 token）
+        # 握手：url_verification 无条件回 challenge——飞书"配置回调地址"时发，
+        # 此刻 KBase 可能还没配飞书机器人（先验证地址、后填 token 是常见顺序，
+        # 之前在此之前就 403"未配置"会让验证永远过不去）。配了 token 才校验来源，
+        # 没配则直接回：明文握手回 challenge 无副作用，安全由后续真实事件的
+        # token/签名校验保证。
         if payload.get("type") == "url_verification":
-            if payload.get("token") != cfg_bot["verification_token"]:
+            vt = cfg_bot["verification_token"]
+            if vt and payload.get("token") != vt:
                 raise HTTPException(403, "verification token 不匹配")
             return {"challenge": payload.get("challenge", "")}
 
+        # 真实业务事件才要求已配置（未配置的机器人不处理消息）
+        if not cfg_bot["verification_token"]:
+            raise HTTPException(403, "飞书机器人未配置")
         header = payload.get("header") or {}
         if header.get("token") != cfg_bot["verification_token"]:
             raise HTTPException(403, "verification token 不匹配")
