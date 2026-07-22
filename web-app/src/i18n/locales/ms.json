@@ -4,6 +4,7 @@
     "cancel": "Batal",
     "delete": "Padam",
     "confirm": "Sahkan",
+    "confirm_delete": "Sahkan padam",
     "close": "Tutup",
     "edit": "Sunting",
     "loading": "Memuatkan…"
@@ -18,6 +19,26 @@
       "hint_empty": "Tanya satu soalan untuk memulakan perbualan baharu",
       "q_main": "Apakah kandungan utama \"{title}\"?",
       "q_numbers": "Apakah standard atau angka khusus dalam {title}?"
+    },
+    "session": {
+      "new": "Sembang baharu",
+      "new_btn": "Sembang baharu",
+      "empty": "Tiada perbualan lagi",
+      "load_more": "Muat lebih banyak",
+      "expand": "Kembangkan bar sisi",
+      "collapse": "Kuncupkan bar sisi",
+      "list": "Senarai perbualan",
+      "title_input": "Tajuk perbualan",
+      "confirm_rename": "Sahkan nama semula",
+      "cancel_rename": "Batal nama semula",
+      "rename": "Namakan semula perbualan",
+      "delete": "Padam perbualan",
+      "delete_confirm": "Ini akan memadamkan \"{title}\" dan semua mesejnya. Tindakan ini tidak boleh dibatalkan."
+    },
+    "timegroup": {
+      "today": "Hari ini",
+      "week": "7 hari lepas",
+      "earlier": "Lebih awal"
     }
   }
 }
