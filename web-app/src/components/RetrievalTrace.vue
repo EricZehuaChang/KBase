@@ -3,10 +3,12 @@
 // chunk_id 短前缀 + 分数（3 位小数）；融合列中双路命中的行加 accent 左边框；
 // 重排列标注相对融合名次的变化（rankChanges 纯函数，见 lib/trace-utils）。
 import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 import type { TraceStage } from "@/lib/api";
 import { rankChanges, shortChunkId, type RankChange } from "@/lib/trace-utils";
 
 const props = defineProps<{ trace: TraceStage }>();
+const { t } = useI18n();
 
 const TOP_N = 10;
 
@@ -42,13 +44,20 @@ function changeClass(change: RankChange | undefined): string {
   if (change === "新进") return "text-[var(--accent-text)]";
   return "text-[var(--text-3)]";
 }
+
+// 名次变化标记本地化：内部值 "新进" 映射为当前语言；↑N/↓N 为语言中性直接显示。
+function changeText(change: RankChange | undefined): string {
+  if (!change) return "—";
+  if (change === "新进") return t("retrieval.new_entry");
+  return change;
+}
 </script>
 
 <template>
   <div class="grid gap-4" :class="hasReranked ? 'grid-cols-4' : 'grid-cols-3'">
     <!-- 稠密路 -->
-    <section aria-label="稠密路检索结果">
-      <h3 class="mb-2 text-sm font-medium text-[var(--text-2)]">稠密路 top-10</h3>
+    <section :aria-label="t('retrieval.dense')">
+      <h3 class="mb-2 text-sm font-medium text-[var(--text-2)]">{{ t("retrieval.dense_top") }}</h3>
       <ol class="flex flex-col gap-1">
         <li
           v-for="[id, score] in dense"
@@ -58,14 +67,14 @@ function changeClass(change: RankChange | undefined): string {
           <span>{{ shortChunkId(id) }}</span>
           <span class="text-[var(--text-2)]">{{ score.toFixed(3) }}</span>
         </li>
-        <li v-if="!dense.length" class="text-xs text-[var(--text-3)]">无结果</li>
+        <li v-if="!dense.length" class="text-xs text-[var(--text-3)]">{{ t("retrieval.no_result") }}</li>
       </ol>
     </section>
 
     <!-- 关键词路 -->
-    <section aria-label="关键词路检索结果">
-      <h3 class="mb-2 text-sm font-medium text-[var(--text-2)]">关键词路 top-10</h3>
-      <p v-if="!hasKeyword" class="text-xs text-[var(--text-3)]">未启用</p>
+    <section :aria-label="t('retrieval.keyword')">
+      <h3 class="mb-2 text-sm font-medium text-[var(--text-2)]">{{ t("retrieval.keyword_top") }}</h3>
+      <p v-if="!hasKeyword" class="text-xs text-[var(--text-3)]">{{ t("retrieval.disabled") }}</p>
       <ol v-else class="flex flex-col gap-1">
         <li
           v-for="[id, score] in keyword"
@@ -75,13 +84,13 @@ function changeClass(change: RankChange | undefined): string {
           <span>{{ shortChunkId(id) }}</span>
           <span class="text-[var(--text-2)]">{{ score.toFixed(3) }}</span>
         </li>
-        <li v-if="hasKeyword && !keyword.length" class="text-xs text-[var(--text-3)]">无结果</li>
+        <li v-if="hasKeyword && !keyword.length" class="text-xs text-[var(--text-3)]">{{ t("retrieval.no_result") }}</li>
       </ol>
     </section>
 
     <!-- RRF 融合 -->
-    <section aria-label="RRF融合结果">
-      <h3 class="mb-2 text-sm font-medium text-[var(--text-2)]">RRF融合 top-10</h3>
+    <section :aria-label="t('retrieval.fused')">
+      <h3 class="mb-2 text-sm font-medium text-[var(--text-2)]">{{ t("retrieval.fused_top") }}</h3>
       <ol class="flex flex-col gap-1">
         <li
           v-for="[id, score] in fused"
@@ -92,13 +101,13 @@ function changeClass(change: RankChange | undefined): string {
           <span>{{ shortChunkId(id) }}</span>
           <span class="text-[var(--text-2)]">{{ score.toFixed(3) }}</span>
         </li>
-        <li v-if="!fused.length" class="text-xs text-[var(--text-3)]">无结果</li>
+        <li v-if="!fused.length" class="text-xs text-[var(--text-3)]">{{ t("retrieval.no_result") }}</li>
       </ol>
     </section>
 
     <!-- 重排 -->
-    <section v-if="hasReranked" aria-label="重排后结果">
-      <h3 class="mb-2 text-sm font-medium text-[var(--text-2)]">重排 top-10</h3>
+    <section v-if="hasReranked" :aria-label="t('retrieval.reranked')">
+      <h3 class="mb-2 text-sm font-medium text-[var(--text-2)]">{{ t("retrieval.reranked_top") }}</h3>
       <ol class="flex flex-col gap-1">
         <li
           v-for="[id, score] in reranked"
@@ -108,10 +117,10 @@ function changeClass(change: RankChange | undefined): string {
           <span>{{ shortChunkId(id) }}</span>
           <span class="flex items-center gap-2">
             <span class="text-[var(--text-2)]">{{ score.toFixed(3) }}</span>
-            <span :class="changeClass(changes[id])">{{ changes[id] ?? "—" }}</span>
+            <span :class="changeClass(changes[id])">{{ changeText(changes[id]) }}</span>
           </span>
         </li>
-        <li v-if="!reranked.length" class="text-xs text-[var(--text-3)]">无结果</li>
+        <li v-if="!reranked.length" class="text-xs text-[var(--text-3)]">{{ t("retrieval.no_result") }}</li>
       </ol>
     </section>
   </div>

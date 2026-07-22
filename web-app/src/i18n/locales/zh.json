@@ -8,6 +8,9 @@
     "close": "关闭",
     "edit": "编辑",
     "loading": "加载中…",
+    "select_all": "全选",
+    "actions": "操作",
+    "retry": "重试",
     "role": {
       "admin": "管理员",
       "editor": "编辑者",
@@ -126,6 +129,40 @@
     "download_md": "下载 Markdown",
     "download_word": "下载 Word",
     "loading_artifact": "产物加载中…"
+  },
+  "digest": {
+    "no_ready_docs": "该知识库暂无就绪文档",
+    "select_all_count": "全选（{n}/{total}）",
+    "generate": "生成汇编"
+  },
+  "retrieval": {
+    "dense": "稠密路检索结果",
+    "dense_top": "稠密路 top-10",
+    "keyword": "关键词路检索结果",
+    "keyword_top": "关键词路 top-10",
+    "fused": "RRF融合结果",
+    "fused_top": "RRF融合 top-10",
+    "reranked": "重排后结果",
+    "reranked_top": "重排 top-10",
+    "no_result": "无结果",
+    "disabled": "未启用",
+    "new_entry": "新进"
+  },
+  "doc": {
+    "filename": "文件名",
+    "status_label": "状态",
+    "empty": "暂无文档，拖拽或选择文件开始上传",
+    "download": "下载原文件",
+    "review_confirm": "校验确认",
+    "chunks": "分块管理",
+    "status": {
+      "ready": "就绪",
+      "parsing": "解析中",
+      "pending_ocr": "待OCR",
+      "pending_review": "待确认",
+      "pending": "等待中",
+      "failed": "失败"
+    }
   },
   "portal": {
     "empty": {

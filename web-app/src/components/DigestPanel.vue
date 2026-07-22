@@ -2,12 +2,14 @@
 // 定期汇编面板：ready 文档多选（checkbox + 全选）→ 生成汇编 → JobProgress。
 // 不选文档时 doc_ids 传 undefined（=全库 ready 文档，后端 digest.py 语义）。
 import { computed, onMounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { Button } from "@/components/ui/button";
 import JobProgress from "@/components/JobProgress.vue";
 import { createJob, listDocs, type DocumentItem } from "@/lib/api";
 
 const props = defineProps<{ kbId: string; canManage?: boolean }>();
 const emit = defineEmits<{ jobCreated: [] }>();
+const { t } = useI18n();
 
 const docs = ref<DocumentItem[]>([]);
 const readyDocs = computed(() => docs.value.filter((d) => d.status === "ready"));
@@ -59,12 +61,12 @@ async function handleGenerate() {
   <div class="flex flex-col gap-4 max-w-2xl">
     <div v-if="!jobId" class="flex flex-col gap-3">
       <p v-if="!readyDocs.length" class="text-sm text-[var(--text-3)]">
-        该知识库暂无就绪文档
+        {{ t("digest.no_ready_docs") }}
       </p>
       <template v-else>
         <label class="flex items-center gap-2 text-sm font-medium">
-          <input type="checkbox" :checked="allSelected" aria-label="全选" @change="toggleAll">
-          全选（{{ selected.size }}/{{ readyDocs.length }}）
+          <input type="checkbox" :checked="allSelected" :aria-label="t('common.select_all')" @change="toggleAll">
+          {{ t("digest.select_all_count", { n: selected.size, total: readyDocs.length }) }}
         </label>
         <ul class="flex flex-col gap-1.5 max-h-72 overflow-y-auto rounded-[var(--radius-card)] border border-[var(--border)] p-2">
           <li v-for="doc in readyDocs" :key="doc.id">
@@ -85,7 +87,7 @@ async function handleGenerate() {
         v-if="canManage ?? true"
         class="self-start" :disabled="submitting || !readyDocs.length" @click="handleGenerate"
       >
-        {{ submitting ? "提交中…" : "生成汇编" }}
+        {{ submitting ? t("login.submitting") : t("digest.generate") }}
       </Button>
     </div>
 
