@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse
 from kbase.api.routes import RouteDeps
 from kbase.api.schemas import JobCreate, OutlineBody
 from kbase.api.services import Services
+from kbase.errors import AppError
 from kbase.jobs.digest import build_digest_steps
 from kbase.jobs.export_docx import markdown_to_docx
 from kbase.jobs.proposal import build_proposal_steps, generate_outline
@@ -46,7 +47,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         with sf() as s:
             kb = s.get(KnowledgeBase, body.kb_id)
             if kb is None:
-                raise HTTPException(404, f"知识库不存在: {body.kb_id}")
+                raise AppError("error.kb_not_found", "知识库不存在: {id}", status=404, id=body.kb_id)
             kb_name = kb.name
         try:
             llm = svc.get_llm(body.provider)

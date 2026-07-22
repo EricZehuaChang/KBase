@@ -3,7 +3,7 @@
 全部端点 editor 起步——评测是内容运营工具（建集/跑回归会占检索资源），
 viewer 不开放；库可见性沿用 M6-3 ACL（无权库统一 404）。
 """
-from fastapi import HTTPException, Request
+from fastapi import Request
 from fastapi.concurrency import run_in_threadpool
 
 from kbase import evals, kb_acl
@@ -11,6 +11,7 @@ from kbase import retrieval_strategy as rs
 from kbase.api.routes import RouteDeps
 from kbase.api.schemas import EvalRunBody, EvalSetCreate
 from kbase.api.services import Services
+from kbase.errors import AppError
 from kbase.models import KnowledgeBase
 
 
@@ -22,7 +23,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         with sf() as s:
             exists = s.get(KnowledgeBase, kb_id) is not None
         if not exists or not kb_acl.can_access(sf, kb_id, actor):
-            raise HTTPException(404, f"知识库不存在: {kb_id}")
+            raise AppError("error.kb_not_found", "知识库不存在: {id}", status=404, id=kb_id)
 
     @router.post("/kb/{kb_id}/eval-sets",
                  dependencies=[deps.require_editor, deps.audit_mutation])
@@ -41,7 +42,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
     def delete_eval_set(set_id: str, request: Request):
         row = evals.get_set(sf, set_id)
         if row is None:
-            raise HTTPException(404, f"评测集不存在: {set_id}")
+            raise AppError("error.eval_set_not_found", "评测集不存在: {id}", status=404, id=set_id)
         _guard_kb(row.kb_id, request)
         evals.delete_set(sf, set_id)
         return {"ok": True}
@@ -53,7 +54,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         是同步 CPU/IO 混合操作，整体进线程池避免阻塞事件循环。"""
         row = evals.get_set(sf, set_id)
         if row is None:
-            raise HTTPException(404, f"评测集不存在: {set_id}")
+            raise AppError("error.eval_set_not_found", "评测集不存在: {id}", status=404, id=set_id)
         _guard_kb(row.kb_id, request)
         strategy = rs.resolve_strategy(cfg, rs.kb_retrieval_config(sf, row.kb_id))
         result = await run_in_threadpool(
@@ -65,7 +66,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
     def list_eval_runs(set_id: str, request: Request):
         row = evals.get_set(sf, set_id)
         if row is None:
-            raise HTTPException(404, f"评测集不存在: {set_id}")
+            raise AppError("error.eval_set_not_found", "评测集不存在: {id}", status=404, id=set_id)
         _guard_kb(row.kb_id, request)
         return evals.list_runs(sf, set_id)
 
@@ -73,7 +74,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
     def get_eval_run(run_id: str, request: Request):
         run = evals.get_run(sf, run_id)
         if run is None:
-            raise HTTPException(404, f"回归记录不存在: {run_id}")
+            raise AppError("error.eval_run_not_found", "回归记录不存在: {id}", status=404, id=run_id)
         row = evals.get_set(sf, run["set_id"])
         if row is not None:
             _guard_kb(row.kb_id, request)

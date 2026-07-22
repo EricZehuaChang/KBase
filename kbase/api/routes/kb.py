@@ -20,6 +20,7 @@ from kbase.api.schemas import (ChunkUpdate, DocumentReview, FeishuImportBody,
                                KBConfigBody, KBCreate, KbGrantsBody,
                                RebindEmbedderBody, UrlImportBody)
 from kbase.api.services import Services
+from kbase.errors import AppError
 from kbase.models import (Chunk, Connector, ConnectorDoc, Conversation,
                           Document, DocumentImage, KnowledgeBase, Message)
 
@@ -71,7 +72,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         """某库授权用户清单；空=公开库（所有登录用户可见）。"""
         with sf() as s:
             if s.get(KnowledgeBase, kb_id) is None:
-                raise HTTPException(404, f"知识库不存在: {kb_id}")
+                raise AppError("error.kb_not_found", "知识库不存在: {id}", status=404, id=kb_id)
         return {"grants": kb_acl.list_grants(sf, kb_id)}
 
     @router.put("/kb/{kb_id}/grants",
@@ -80,7 +81,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         """全量设置授权用户集合（空列表=恢复公开）。"""
         with sf() as s:
             if s.get(KnowledgeBase, kb_id) is None:
-                raise HTTPException(404, f"知识库不存在: {kb_id}")
+                raise AppError("error.kb_not_found", "知识库不存在: {id}", status=404, id=kb_id)
         kb_acl.set_grants(sf, kb_id, body.user_ids)
         return {"ok": True, "count": len(set(body.user_ids))}
 
@@ -125,7 +126,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         with sf() as s:
             kb = s.get(KnowledgeBase, kb_id)
             if kb is None:
-                raise HTTPException(404, f"知识库不存在: {kb_id}")
+                raise AppError("error.kb_not_found", "知识库不存在: {id}", status=404, id=kb_id)
             doc_ids = [d.id for d in s.query(Document).filter_by(kb_id=kb_id).all()]
             conv_ids = [c.id for c in s.query(Conversation).filter_by(kb_id=kb_id).all()]
         # 级联顺序：向量集合 → 全文索引 → files 目录 → chunks/document_images
@@ -176,7 +177,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         from kbase.reindex import reindex_kb
         with sf() as s:
             if s.get(KnowledgeBase, kb_id) is None:
-                raise HTTPException(404, f"知识库不存在: {kb_id}")
+                raise AppError("error.kb_not_found", "知识库不存在: {id}", status=404, id=kb_id)
         if body.embedder not in svc.embedder_ids:
             raise HTTPException(
                 422, f"未知的向量模型: {body.embedder}，可选: {sorted(svc.embedder_ids)}")
@@ -213,7 +214,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         with sf() as s:
             kb = s.get(KnowledgeBase, kb_id)
             if kb is None:
-                raise HTTPException(404, f"知识库不存在: {kb_id}")
+                raise AppError("error.kb_not_found", "知识库不存在: {id}", status=404, id=kb_id)
             # KBConfigBody 只管分块/增强字段；embedder 绑定（M5-2）是建库时
             # 定死的，必须从旧 config 原样带过来——否则一次分块参数调整就会把
             # 绑定冲掉、让该库静默回落默认模型（检索打分随即失效）。
@@ -272,7 +273,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         422），响应限 text 类且截 10MB（防误配到大文件下载链接炸内存）。"""
         with sf() as s:
             if s.get(KnowledgeBase, kb_id) is None:
-                raise HTTPException(404, f"知识库不存在: {kb_id}")
+                raise AppError("error.kb_not_found", "知识库不存在: {id}", status=404, id=kb_id)
         content, filename = _fetch_url(body.url)
         upload_dir = cfg.data_dir / "uploads"
         upload_dir.mkdir(parents=True, exist_ok=True)
@@ -293,7 +294,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         from kbase import feishu
         with sf() as s:
             if s.get(KnowledgeBase, kb_id) is None:
-                raise HTTPException(404, f"知识库不存在: {kb_id}")
+                raise AppError("error.kb_not_found", "知识库不存在: {id}", status=404, id=kb_id)
         app_id, app_secret = feishu.get_credentials(sf)
         if not (app_id and app_secret):
             raise HTTPException(409, "未配置飞书应用凭据（app_id/app_secret）")
@@ -423,7 +424,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         except ValueError as e:
             raise HTTPException(409, str(e)) from e
         if not found:
-            raise HTTPException(404, f"文档不存在: {doc_id}")
+            raise AppError("error.doc_not_found", "文档不存在: {id}", status=404, id=doc_id)
         with sf() as s:
             doc = s.get(Document, doc_id)
             return {"id": doc.id, "status": doc.status, "error": doc.error}
@@ -440,7 +441,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         with sf() as s:
             doc = s.get(Document, doc_id)
         if doc is None:
-            raise HTTPException(404, f"文档不存在: {doc_id}")
+            raise AppError("error.doc_not_found", "文档不存在: {id}", status=404, id=doc_id)
         content_path = cfg.data_dir / "files" / doc_id / "content.md"
         if not content_path.exists():
             raise HTTPException(404, f"文档全文不存在: {doc_id}")
@@ -470,7 +471,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         with sf() as s:
             doc = s.get(Document, doc_id)
         if doc is None:
-            raise HTTPException(404, f"文档不存在: {doc_id}")
+            raise AppError("error.doc_not_found", "文档不存在: {id}", status=404, id=doc_id)
         if not doc.source_path or not Path(doc.source_path).exists():
             raise HTTPException(404, "原始文件已不存在（历史数据未保留原件或已被清理）")
         media_type = (mimetypes.guess_type(doc.filename)[0]
@@ -489,7 +490,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         from kbase.doc_delete import delete_document_cascade
         if not delete_document_cascade(sf, store, keyword_index, cfg.data_dir,
                                        kb_id, doc_id):
-            raise HTTPException(404, f"文档不存在: {doc_id}")
+            raise AppError("error.doc_not_found", "文档不存在: {id}", status=404, id=doc_id)
         return {"ok": True}
 
     @router.post("/documents/{doc_id}/retry",
@@ -498,7 +499,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         with sf() as s:
             doc = s.get(Document, doc_id)
         if doc is None:
-            raise HTTPException(404, f"文档不存在: {doc_id}")
+            raise AppError("error.doc_not_found", "文档不存在: {id}", status=404, id=doc_id)
         pipeline.retry_document(doc_id)
         with sf() as s:
             doc = s.get(Document, doc_id)
@@ -528,7 +529,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         result = chunk_admin.list_chunks(sf, doc_id, offset=offset,
                                          limit=limit, q=q)
         if result is None:
-            raise HTTPException(404, f"文档不存在: {doc_id}")
+            raise AppError("error.doc_not_found", "文档不存在: {id}", status=404, id=doc_id)
         return result
 
     @router.put("/chunks/{chunk_id}",

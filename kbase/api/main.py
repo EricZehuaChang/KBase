@@ -18,6 +18,7 @@ from kbase.api.routes import (admin as admin_routes, auth as auth_routes,
                               settings as settings_routes)
 from kbase.api.services import build_services
 from kbase.api.static import SPAStaticFiles
+from kbase.errors import register_error_handler
 from kbase.audit import make_mutation_audit_dependency
 from kbase.auth import security
 from kbase.auth.bootstrap import ensure_admin
@@ -67,6 +68,11 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
                       openapi_url=None)
     else:
         app = FastAPI(title="KBase")
+
+    # 业务错误统一处理（i18n 方案 A，spec §6）：AppError → detail={code,params,
+    # message}，前端 core.ts 拦截器据 code 本地化、查不到用 message 兜底。未迁移
+    # 端点的 HTTPException(str) 不受影响（前端另有字符串兜底分支）。
+    register_error_handler(app)
 
     # M4-2 H7：AnyIO 的默认线程池容量（run_in_threadpool 用它执行 retrieve()
     # 等同步阻塞调用）绑定在当前事件循环上，且 create_app() 本身是同步函数、

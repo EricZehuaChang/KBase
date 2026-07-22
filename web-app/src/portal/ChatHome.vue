@@ -9,6 +9,7 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { SendHorizontal, Square } from "@lucide/vue";
+import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { Button } from "@/components/ui/button";
 import MessageStream from "@/components/MessageStream.vue";
@@ -22,6 +23,7 @@ import { groupByTime } from "@/lib/chat-utils";
 import { useChat } from "@/composables/useChat";
 
 const route = useRoute();
+const { t } = useI18n();
 
 const {
   items: conversations, hasMore: hasMoreConvs,
@@ -124,7 +126,7 @@ async function handleFeedback(messageId: string, rating: 1 | -1) {
       realId = lastAssistant.id;
     }
     await submitFeedback(realId, rating);
-    toast.success(rating === 1 ? "感谢反馈" : "已记录，我们会改进该问题的回答");
+    toast.success(t(rating === 1 ? "portal.chat.feedback_thanks" : "portal.chat.feedback_recorded"));
   } catch (err) {
     toast.error(err instanceof Error ? err.message : String(err));
   }
@@ -188,9 +190,9 @@ if (typeof route.query.q === "string" && route.query.q) {
               v-model="inputText"
               rows="1"
               :disabled="!kbId"
-              placeholder="输入问题，向知识库提问…"
+              :placeholder="t('portal.chat.input_placeholder')"
               class="max-h-40 flex-1 resize-none bg-transparent px-2 py-1.5 text-[15px] leading-[1.7] text-[var(--text)] outline-none disabled:opacity-60"
-              aria-label="问题输入框"
+              :aria-label="t('portal.chat.input_label')"
               @keydown="handleKeydown"
             />
             <Button
@@ -201,21 +203,21 @@ if (typeof route.query.q === "string" && route.query.q) {
               @click="cancel"
             >
               <Square class="size-3.5" />
-              停止
+              {{ t("portal.chat.stop") }}
             </Button>
             <Button
               v-else
               size="sm"
               class="shrink-0 rounded-xl"
               :disabled="!inputText.trim() || !kbId"
-              aria-label="发送"
+              :aria-label="t('portal.chat.send')"
               @click="handleSend()"
             >
               <SendHorizontal class="size-4" />
             </Button>
           </div>
           <p class="mt-1.5 text-center text-xs text-[var(--text-3)]">
-            Enter 发送 · Shift+Enter 换行 · 回答依据知识库资料并附引用，请以原文为准
+            {{ t("portal.chat.hint") }}
           </p>
         </div>
       </footer>

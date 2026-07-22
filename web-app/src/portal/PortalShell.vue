@@ -13,11 +13,12 @@
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { KeyRound, LogOut, Sun, Moon } from "@lucide/vue";
+import { useI18n } from "vue-i18n";
 import ChangePasswordDialog from "@/components/ChangePasswordDialog.vue";
 import EmailPromptDialog from "@/components/EmailPromptDialog.vue";
 import LanguagePicker from "@/components/LanguagePicker.vue";
 import { getSession, logout, type Me } from "@/lib/api";
-import { roleLabel, roleBadgeClass, canManageContent } from "@/lib/auth-utils";
+import { roleBadgeClass, canManageContent } from "@/lib/auth-utils";
 import { theme, toggleTheme } from "@/lib/theme";
 import { kbs, kbId, providers, provider, extraKbIds, ensureTopbarLoaded } from "./topbar-state";
 import {
@@ -28,6 +29,7 @@ import { Toaster } from "@/components/ui/sonner";
 
 const route = useRoute();
 const router = useRouter();
+const { t } = useI18n();
 
 const me = ref<Me | null>(null);
 // 路由守卫已确保能到达非 /login 路由时会话必然存在，这里复用同一份缓存
@@ -71,6 +73,17 @@ const emailPromptOpen = ref(false);
 // me 未加载完（null）按隐藏处理——简化界面用户不会看到菜单闪现又消失。
 const showAdvanced = computed(() => me.value?.advanced_ui === true);
 
+// 角色标签本地化：common.role.<role>。未知角色（后端将来新增）查不到 key
+// 时回落原始角色码，与 auth-utils.roleLabel 的"不遮盖新角色"语义一致——
+// 保持 auth-utils 为纯函数（admin 端 P2 仍用它），只在此展示点接 i18n。
+const roleText = computed(() => {
+  const role = me.value?.role;
+  if (!role) return "";
+  const key = `common.role.${role}`;
+  const translated = t(key);
+  return translated !== key ? translated : role;
+});
+
 function handleEmailSaved(email: string) {
   // 原地改而不是换新对象：getSession 缓存的就是这个引用，换新对象的话
   // 下次路由变化 watch 重读缓存仍是 email:null，会再弹一次
@@ -110,7 +123,7 @@ function enterWorkbench() {
       <div class="flex items-center gap-4">
         <div class="text-lg font-semibold tracking-tight">KBase</div>
         <Select v-model="kbId">
-          <SelectTrigger class="w-44"><SelectValue placeholder="选择知识库" /></SelectTrigger>
+          <SelectTrigger class="w-44"><SelectValue :placeholder="t('portal.topbar.select_kb')" /></SelectTrigger>
           <SelectContent>
             <SelectGroup>
               <SelectItem v-for="kb in kbs" :key="kb.id" :value="kb.id">{{ kb.name }}</SelectItem>
@@ -127,12 +140,12 @@ function enterWorkbench() {
                 ? 'border-[var(--accent)] text-[var(--accent-text)]'
                 : 'border-[var(--border)] text-[var(--text-2)] hover:bg-[var(--surface-2)]'"
             >
-              {{ extraKbIds.length ? `联合 ${extraKbIds.length + 1} 库` : "+ 联查" }}
+              {{ extraKbIds.length ? t('portal.topbar.joint_n', { n: extraKbIds.length + 1 }) : t('portal.topbar.joint_add') }}
             </button>
           </PopoverTrigger>
           <PopoverContent class="w-56 p-2">
             <p class="px-1 pb-2 text-xs text-[var(--text-3)]">
-              新会话将同时检索勾选的库（跨库联合问答）
+              {{ t("portal.topbar.joint_hint") }}
             </p>
             <label
               v-for="kb in kbs.filter((k) => k.id !== kbId)"
@@ -150,7 +163,7 @@ function enterWorkbench() {
           </PopoverContent>
         </Popover>
         <Select v-if="showAdvanced" v-model="provider">
-          <SelectTrigger class="w-44"><SelectValue placeholder="选择模型" /></SelectTrigger>
+          <SelectTrigger class="w-44"><SelectValue :placeholder="t('portal.topbar.select_model')" /></SelectTrigger>
           <SelectContent>
             <SelectGroup>
               <SelectItem v-for="p in providers" :key="p" :value="p">{{ p }}</SelectItem>
@@ -165,13 +178,13 @@ function enterWorkbench() {
           class="rounded-[var(--radius-ctl)] border border-[var(--border)] px-3 py-1.5 text-sm text-[var(--text-2)] transition-colors hover:bg-[var(--surface-2)]"
           @click="enterWorkbench"
         >
-          进入工作台
+          {{ t("portal.topbar.workbench") }}
         </button>
         <LanguagePicker />
         <button
           type="button"
           class="rounded-[var(--radius-ctl)] p-2 text-[var(--text-2)] transition-colors hover:bg-[var(--surface-2)]"
-          :title="theme === 'dark' ? '切换到浅色模式' : '切换到深色模式'"
+          :title="t(theme === 'dark' ? 'portal.topbar.to_light' : 'portal.topbar.to_dark')"
           @click="toggleTheme"
         >
           <component :is="theme === 'dark' ? Sun : Moon" class="size-4" />
@@ -180,20 +193,20 @@ function enterWorkbench() {
           <button
             type="button"
             class="rounded-[var(--radius-ctl)] p-2 text-[var(--text-2)] transition-colors hover:bg-[var(--surface-2)]"
-            title="修改密码"
+            :title="t('portal.topbar.change_pw')"
             @click="changePwOpen = true"
           >
             <KeyRound class="size-4" />
           </button>
           <span class="text-sm text-[var(--text)]">{{ me.username }}</span>
           <span class="w-fit rounded-full px-1.5 py-0.5 text-xs" :class="roleBadgeClass(me.role)">
-            {{ roleLabel(me.role) }}
+            {{ roleText }}
           </span>
         </div>
         <button
           type="button"
           class="rounded-[var(--radius-ctl)] p-2 text-[var(--text-2)] transition-colors hover:bg-[var(--surface-2)]"
-          title="登出"
+          :title="t('portal.topbar.logout')"
           @click="handleLogout"
         >
           <LogOut class="size-4" />

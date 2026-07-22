@@ -11,6 +11,7 @@ from kbase import feishu
 from kbase.api.routes import RouteDeps
 from kbase.api.schemas import ConnectorCreate, ConnectorUpdate
 from kbase.api.services import Services
+from kbase.errors import AppError
 from kbase.models import Connector, ConnectorDoc, KnowledgeBase
 
 
@@ -43,7 +44,7 @@ def register(router, svc: Services, deps: RouteDeps):
     def list_connectors(kb_id: str):
         with sf() as s:
             if s.get(KnowledgeBase, kb_id) is None:
-                raise HTTPException(404, f"知识库不存在: {kb_id}")
+                raise AppError("error.kb_not_found", "知识库不存在: {id}", status=404, id=kb_id)
             rows = (s.query(Connector).filter_by(kb_id=kb_id)
                     .order_by(Connector.created_at.asc()).all())
             counts = {r.id: (s.query(ConnectorDoc)
@@ -59,7 +60,7 @@ def register(router, svc: Services, deps: RouteDeps):
         （与一次性导入端点同约定）。"""
         with sf() as s:
             if s.get(KnowledgeBase, kb_id) is None:
-                raise HTTPException(404, f"知识库不存在: {kb_id}")
+                raise AppError("error.kb_not_found", "知识库不存在: {id}", status=404, id=kb_id)
         if body.type == "feishu":
             app_id, app_secret = feishu.get_credentials(sf)
             if not (app_id and app_secret):
@@ -84,7 +85,7 @@ def register(router, svc: Services, deps: RouteDeps):
         with sf() as s:
             row = s.get(Connector, connector_id)
             if row is None:
-                raise HTTPException(404, f"连接器不存在: {connector_id}")
+                raise AppError("error.connector_not_found", "连接器不存在: {id}", status=404, id=connector_id)
             if body.name is not None:
                 row.name = body.name.strip()
             if body.enabled is not None:
@@ -107,7 +108,7 @@ def register(router, svc: Services, deps: RouteDeps):
         ok = conn_mod.delete_connector(sf, store, keyword_index, cfg.data_dir,
                                        connector_id, purge_docs)
         if not ok:
-            raise HTTPException(404, f"连接器不存在: {connector_id}")
+            raise AppError("error.connector_not_found", "连接器不存在: {id}", status=404, id=connector_id)
         return {"ok": True, "purged": purge_docs}
 
     @router.post("/connectors/{connector_id}/sync",
@@ -118,7 +119,7 @@ def register(router, svc: Services, deps: RouteDeps):
         with sf() as s:
             row = s.get(Connector, connector_id)
             if row is None:
-                raise HTTPException(404, f"连接器不存在: {connector_id}")
+                raise AppError("error.connector_not_found", "连接器不存在: {id}", status=404, id=connector_id)
             if row.last_sync_status == "running":
                 raise HTTPException(409, "该连接器正在同步中")
         bg.add_task(_sync, connector_id)

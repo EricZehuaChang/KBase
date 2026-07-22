@@ -67,3 +67,28 @@ def test_public_read_bypasses_auth(tmp_path, fake_embedder):
     assert c.get("/api/i18n").status_code in (401, 403)      # admin 读被拒
     assert c.put("/api/i18n", json={"lang": "en", "key": "a.b",
                                     "value": "x"}).status_code in (401, 403)
+
+
+# ---- P1-4 后端错误 key 化（AppError + 结构化 detail）----
+
+def test_app_error_renders_message_and_params():
+    """AppError：code 原样保留、params 收集成 dict、中文 message 用 params
+    渲染好（{id} 填成实值）——前端查不到 i18n key 时的兜底就是这条 message。"""
+    from kbase.errors import AppError
+    err = AppError("error.kb_not_found", "知识库不存在: {id}", status=404, id="abc")
+    assert (err.code, err.status, err.params) == ("error.kb_not_found", 404, {"id": "abc"})
+    assert err.message == "知识库不存在: abc"
+
+
+def test_migrated_endpoint_returns_structured_detail(tmp_path, fake_embedder):
+    """迁移到 AppError 的端点返回 detail={code,params,message}（而非旧的字符串
+    detail）——前端 core.ts 据 detail.code 本地化、查不到用 detail.message 兜底。
+    删不存在的库触发 error.kb_not_found（直接存在性检查，不走 ACL——admin 也
+    404），验证结构与状态码。"""
+    c = _client(tmp_path, fake_embedder)
+    r = c.delete("/api/kb/nonexistent-kb")
+    assert r.status_code == 404
+    detail = r.json()["detail"]
+    assert detail["code"] == "error.kb_not_found"
+    assert detail["params"] == {"id": "nonexistent-kb"}
+    assert "nonexistent-kb" in detail["message"]   # 中文兜底已把 params 渲染进去

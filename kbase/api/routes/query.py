@@ -18,6 +18,7 @@ from kbase.api.schemas import (ConversationCreate, ConversationRename,
                                FeedbackBody, QueryBody, SearchBody)
 from kbase.api.services import Services
 from kbase.audit import write_query_audit
+from kbase.errors import AppError
 from kbase.rag.generator import Generator
 
 
@@ -103,7 +104,7 @@ def register(router, svc: Services, deps: RouteDeps):
         """M6-3 库级权限：无权访问的库统一 404（不泄漏"存在但无权"）。"""
         actor = getattr(request.state, "actor", None) or {"role": "admin"}
         if not kb_acl.can_access(sf, kb_id, actor):
-            raise HTTPException(404, f"知识库不存在: {kb_id}")
+            raise AppError("error.kb_not_found", "知识库不存在: {id}", status=404, id=kb_id)
 
     @router.post("/kb/{kb_id}/query", dependencies=[deps.require_viewer])
     async def query(kb_id: str, body: QueryBody, request: Request):
@@ -160,7 +161,7 @@ def register(router, svc: Services, deps: RouteDeps):
         # 归属校验先行：不可见（不存在/不是你的）统一 404，不把"存在但无权"
         # 泄漏成 403（403 会暴露 conv_id 确实存在，见 conv_store.get_conversation）。
         if conv_store.get_conversation(sf, conv_id, user_id=actor.get("user_id")) is None:
-            raise HTTPException(404, f"会话不存在: {conv_id}")
+            raise AppError("error.conv_not_found", "会话不存在: {id}", status=404, id=conv_id)
         return conv_store.list_messages(sf, conv_id)
 
     @router.put("/conversations/{conv_id}", dependencies=[deps.require_viewer, deps.audit_mutation])
@@ -172,7 +173,7 @@ def register(router, svc: Services, deps: RouteDeps):
         result = conv_store.rename_conversation(sf, conv_id, title,
                                                 user_id=actor.get("user_id"))
         if result is None:
-            raise HTTPException(404, f"会话不存在: {conv_id}")
+            raise AppError("error.conv_not_found", "会话不存在: {id}", status=404, id=conv_id)
         return result
 
     @router.delete("/conversations/{conv_id}",
@@ -181,7 +182,7 @@ def register(router, svc: Services, deps: RouteDeps):
         actor = request.state.actor
         ok = conv_store.delete_conversation(sf, conv_id, user_id=actor.get("user_id"))
         if not ok:
-            raise HTTPException(404, f"会话不存在: {conv_id}")
+            raise AppError("error.conv_not_found", "会话不存在: {id}", status=404, id=conv_id)
         return {"ok": True}
 
     @router.post("/messages/{message_id}/feedback",
@@ -194,11 +195,11 @@ def register(router, svc: Services, deps: RouteDeps):
         with sf() as s:
             msg = s.get(Message, message_id)
             if msg is None or msg.role != "assistant":
-                raise HTTPException(404, f"消息不存在: {message_id}")
+                raise AppError("error.message_not_found", "消息不存在: {id}", status=404, id=message_id)
             conv_id = msg.conv_id
         actor = request.state.actor
         if conv_store.get_conversation(sf, conv_id, user_id=actor.get("user_id")) is None:
-            raise HTTPException(404, f"消息不存在: {message_id}")
+            raise AppError("error.message_not_found", "消息不存在: {id}", status=404, id=message_id)
         return feedback.upsert_feedback(sf, message_id, body.rating, body.note)
 
     @router.post("/conversations/{conv_id}/query", dependencies=[deps.require_viewer])
@@ -206,7 +207,7 @@ def register(router, svc: Services, deps: RouteDeps):
         actor = request.state.actor
         conv = conv_store.get_conversation(sf, conv_id, user_id=actor.get("user_id"))
         if conv is None:
-            raise HTTPException(404, f"会话不存在: {conv_id}")
+            raise AppError("error.conv_not_found", "会话不存在: {id}", status=404, id=conv_id)
         write_query_audit(sf, request, resource=f"conv_id={conv_id}", question=body.question)
         history = conv_store.build_history(sf, conv_id)
         # 改写只影响检索输入；生成与落库仍固定使用 body.question（原文），

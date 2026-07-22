@@ -7,10 +7,26 @@
     "confirm_delete": "Confirm delete",
     "close": "Close",
     "edit": "Edit",
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "role": {
+      "admin": "Administrator",
+      "editor": "Editor",
+      "viewer": "Viewer"
+    }
   },
   "lang": {
     "label": "Language"
+  },
+  "error": {
+    "kb_not_found": "Knowledge base not found: {id}",
+    "doc_not_found": "Document not found: {id}",
+    "conv_not_found": "Conversation not found: {id}",
+    "message_not_found": "Message not found: {id}",
+    "eval_set_not_found": "Evaluation set not found: {id}",
+    "eval_run_not_found": "Regression record not found: {id}",
+    "connector_not_found": "Connector not found: {id}",
+    "invalid_credentials": "Invalid username or password, or account has been disabled",
+    "old_password_wrong": "Old password is incorrect"
   },
   "portal": {
     "empty": {
@@ -39,6 +55,27 @@
       "today": "Today",
       "week": "Last 7 days",
       "earlier": "Earlier"
+    },
+    "chat": {
+      "feedback_thanks": "Thank you for your feedback",
+      "feedback_recorded": "Recorded. We will improve the answer to this question.",
+      "input_placeholder": "Enter your question for the knowledge base...",
+      "input_label": "Question input box",
+      "stop": "Stop",
+      "send": "Send",
+      "hint": "Enter to send · Shift+Enter for new line · Answers are based on knowledge base materials with citations. Refer to original text."
+    },
+    "topbar": {
+      "select_kb": "Select knowledge base",
+      "select_model": "Select model",
+      "joint_n": "Combined {n} knowledge bases",
+      "joint_add": "+ Cross-search",
+      "joint_hint": "New session will search across selected knowledge bases (cross-KB combined Q&A)",
+      "workbench": "Go to Workbench",
+      "to_light": "Switch to light mode",
+      "to_dark": "Switch to dark mode",
+      "change_pw": "Change password",
+      "logout": "Logout"
     }
   }
 }
