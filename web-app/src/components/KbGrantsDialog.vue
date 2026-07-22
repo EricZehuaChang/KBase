@@ -3,6 +3,7 @@
 // 语义：不勾任何人=公开（所有登录用户可见）；勾了=仅勾选用户+建库人+admin
 // 可见。全量覆盖保存。
 import { ref, watch, computed } from "vue";
+import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,6 +15,7 @@ import {
 
 const props = defineProps<{ open: boolean; kb: Kb | null }>();
 const emit = defineEmits<{ "update:open": [value: boolean] }>();
+const { t } = useI18n();
 
 const users = ref<UserItem[]>([]);
 const selected = ref<Set<string>>(new Set());
@@ -48,8 +50,8 @@ async function save() {
   saving.value = true;
   try {
     await putKbGrants(props.kb.id, [...selected.value]);
-    toast.success(isPublic.value ? "已设为公开（所有人可访问）"
-      : `已限定 ${selected.value.size} 名用户可访问`);
+    toast.success(isPublic.value ? t("grants.saved_public")
+      : t("grants.saved_limited", { count: selected.value.size }));
     emit("update:open", false);
   } catch (err) {
     toast.error(err instanceof Error ? err.message : String(err));
@@ -63,21 +65,21 @@ async function save() {
   <Dialog :open="open" @update:open="(v) => emit('update:open', v)">
     <DialogContent class="max-h-[85vh] overflow-hidden">
       <DialogHeader>
-        <DialogTitle>访问权限：{{ kb?.name }}</DialogTitle>
+        <DialogTitle>{{ t("grants.title", { name: kb?.name }) }}</DialogTitle>
         <DialogDescription>
-          不勾选任何人=公开（所有登录用户可见）；勾选后仅所选用户、建库人与管理员可访问
+          {{ t("grants.desc") }}
         </DialogDescription>
       </DialogHeader>
 
       <div class="rounded-[var(--radius-ctl)] px-3 py-2 text-sm"
            :class="isPublic ? 'bg-[var(--ok-weak)] text-[var(--ok)]' : 'bg-[var(--accent-weak)] text-[var(--accent-text)]'">
-        {{ isPublic ? "当前：公开" : `当前：限定 ${selected.size} 名用户` }}
+        {{ isPublic ? t("grants.current_public") : t("grants.current_limited", { count: selected.size }) }}
       </div>
 
       <div class="max-h-[50vh] overflow-y-auto">
-        <p v-if="loading" class="py-4 text-center text-sm text-[var(--text-3)]">加载中…</p>
+        <p v-if="loading" class="py-4 text-center text-sm text-[var(--text-3)]">{{ t("common.loading") }}</p>
         <p v-else-if="!users.length" class="py-4 text-center text-sm text-[var(--text-3)]">
-          暂无其他用户，请先在用户管理创建
+          {{ t("grants.no_users") }}
         </p>
         <label
           v-for="u in users"
@@ -97,8 +99,8 @@ async function save() {
       </div>
 
       <DialogFooter>
-        <Button variant="outline" @click="emit('update:open', false)">取消</Button>
-        <Button :disabled="saving || loading" @click="save">保存</Button>
+        <Button variant="outline" @click="emit('update:open', false)">{{ t("common.cancel") }}</Button>
+        <Button :disabled="saving || loading" @click="save">{{ t("common.save") }}</Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>

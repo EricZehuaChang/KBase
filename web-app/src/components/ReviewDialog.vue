@@ -2,6 +2,7 @@
 // VLM 识别校验对话框（F）：左侧原图预览、右侧识别 Markdown 可编辑——
 // 管理员对照修正（VLM 幻觉在此拦截）后「确认入库」，此刻才分块向量化。
 import { ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { CheckCircle2 } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ import {
 
 const props = defineProps<{ open: boolean; doc: DocumentItem | null }>();
 const emit = defineEmits<{ "update:open": [value: boolean]; approved: [] }>();
+const { t } = useI18n();
 
 const markdown = ref("");
 const loading = ref(false);
@@ -39,7 +41,7 @@ async function approve() {
   saving.value = true;
   try {
     await reviewDocument(props.doc.id, markdown.value);
-    toast.success("已确认入库，开始向量化");
+    toast.success(t("review.approved"));
     emit("update:open", false);
     emit("approved");
   } catch (err) {
@@ -54,9 +56,9 @@ async function approve() {
   <Dialog :open="open" @update:open="(v) => emit('update:open', v)">
     <DialogContent class="max-h-[92vh] max-w-5xl overflow-hidden">
       <DialogHeader>
-        <DialogTitle>校验识别结果：{{ doc?.filename }}</DialogTitle>
+        <DialogTitle>{{ t("review.title", { name: doc?.filename }) }}</DialogTitle>
         <DialogDescription>
-          对照左侧原图核对右侧识别文本（可直接修改），确认后才会向量化入库
+          {{ t("review.desc") }}
         </DialogDescription>
       </DialogHeader>
 
@@ -72,7 +74,7 @@ async function approve() {
         </div>
         <!-- 右：识别 Markdown 可编辑 -->
         <div class="flex flex-col">
-          <p v-if="loading" class="text-sm text-[var(--text-3)]">加载识别结果…</p>
+          <p v-if="loading" class="text-sm text-[var(--text-3)]">{{ t("review.loading") }}</p>
           <p v-else-if="loadError" class="text-sm text-[var(--err)]">⚠️ {{ loadError }}</p>
           <textarea
             v-else
@@ -83,10 +85,10 @@ async function approve() {
       </div>
 
       <DialogFooter>
-        <Button variant="outline" @click="emit('update:open', false)">稍后处理</Button>
+        <Button variant="outline" @click="emit('update:open', false)">{{ t("review.later") }}</Button>
         <Button :disabled="saving || loading || !markdown.trim()" @click="approve">
           <CheckCircle2 class="size-3.5" />
-          确认入库
+          {{ t("review.approve") }}
         </Button>
       </DialogFooter>
     </DialogContent>
