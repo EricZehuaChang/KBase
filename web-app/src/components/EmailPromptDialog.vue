@@ -3,6 +3,7 @@
 // 邮箱是忘记密码重置的唯一通道，所以开始就让用户补上；仍留"稍后再说"
 // （本次会话内不再弹，sessionStorage 记忆），不做死锁强制。
 import { ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +14,7 @@ import { updateProfile } from "@/lib/api";
 
 const open = defineModel<boolean>("open", { required: true });
 const emit = defineEmits<{ saved: [email: string] }>();
+const { t } = useI18n();
 
 const email = ref("");
 const busy = ref(false);
@@ -24,14 +26,14 @@ const EMAIL_RE = /^\S+@\S+\.\S+$/;
 async function save() {
   const value = email.value.trim();
   if (!EMAIL_RE.test(value)) {
-    error.value = "请输入有效的邮箱地址";
+    error.value = t("email.invalid");
     return;
   }
   busy.value = true;
   error.value = null;
   try {
     await updateProfile(value);
-    toast.success("邮箱已绑定");
+    toast.success(t("email.bound"));
     emit("saved", value);
     open.value = false;
   } catch (err) {
@@ -52,14 +54,14 @@ function later() {
   <Dialog v-model:open="open">
     <DialogContent class="sm:max-w-[400px]" @interact-outside.prevent @escape-key-down.prevent>
       <DialogHeader>
-        <DialogTitle>绑定邮箱</DialogTitle>
+        <DialogTitle>{{ t("email.title") }}</DialogTitle>
         <DialogDescription>
-          你的账号还没有绑定邮箱。邮箱用于忘记密码时接收重置链接，建议现在完成绑定。
+          {{ t("email.desc") }}
         </DialogDescription>
       </DialogHeader>
 
       <label class="flex flex-col gap-1">
-        <span class="text-sm text-[var(--text-2)]">邮箱地址</span>
+        <span class="text-sm text-[var(--text-2)]">{{ t("email.label") }}</span>
         <Input v-model="email" type="email" autofocus placeholder="you@company.com" @keydown.enter.prevent="save" />
       </label>
 
@@ -68,9 +70,9 @@ function later() {
       </p>
 
       <DialogFooter>
-        <Button variant="outline" :disabled="busy" @click="later">稍后再说</Button>
+        <Button variant="outline" :disabled="busy" @click="later">{{ t("email.later") }}</Button>
         <Button :disabled="busy || !email.trim()" @click="save">
-          {{ busy ? "保存中…" : "绑定" }}
+          {{ busy ? t("email.saving") : t("email.bind") }}
         </Button>
       </DialogFooter>
     </DialogContent>

@@ -4,6 +4,7 @@
 // 逐段渲染——不经 v-html）与相关度分数。"查看文档全文"打开 Dialog 展示
 // getDocContent 全文，并在 heading_path 首次出现处高亮定位。
 import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { X, FileText, Download, Eye } from "@lucide/vue";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -17,6 +18,7 @@ const props = defineProps<{
   query: string;
 }>();
 const emit = defineEmits<{ close: [] }>();
+const { t } = useI18n();
 
 const fullTextOpen = ref(false);
 const fullTextLoading = ref(false);
@@ -90,11 +92,11 @@ watch(() => props.citation, () => {
     v-if="citation"
     class="fixed top-0 right-0 z-40 flex h-screen w-[380px] flex-col border-l border-[var(--border)] bg-[var(--surface)]"
     :style="{ boxShadow: 'var(--shadow-drawer)' }"
-    aria-label="引用详情"
+    :aria-label="t('citation.detail')"
   >
     <header class="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
-      <h2 class="text-sm font-medium">引用 [{{ citation.index }}]</h2>
-      <Button variant="ghost" size="icon-sm" aria-label="关闭引用抽屉" @click="emit('close')">
+      <h2 class="text-sm font-medium">{{ t("citation.title", { n: citation.index }) }}</h2>
+      <Button variant="ghost" size="icon-sm" :aria-label="t('citation.close')" @click="emit('close')">
         <X class="size-4" />
       </Button>
     </header>
@@ -114,7 +116,7 @@ watch(() => props.citation, () => {
       </p>
 
       <div class="mt-3 flex items-center gap-2 text-xs text-[var(--text-3)]">
-        <span>相关度</span>
+        <span>{{ t("citation.relevance") }}</span>
         <span class="rounded-full bg-[var(--surface-2)] px-2 py-0.5 font-medium text-[var(--text-2)]">
           {{ citation.score.toFixed(3) }}
         </span>
@@ -123,7 +125,7 @@ watch(() => props.citation, () => {
           v-if="citation.page"
           class="rounded-full bg-[var(--surface-2)] px-2 py-0.5 font-medium text-[var(--text-2)]"
         >
-          第 {{ citation.page }} 页
+          {{ t("citation.page_n", { page: citation.page }) }}
         </span>
       </div>
 
@@ -132,17 +134,17 @@ watch(() => props.citation, () => {
              pdf 带 #page= 定位到引用所在页附近 -->
         <Button v-if="previewKind" variant="outline" size="sm" @click="previewOpen = true">
           <Eye class="size-3.5" />
-          预览原文件{{ citation.page ? `（第${citation.page}页）` : "" }}
+          {{ t("citation.preview") }}{{ citation.page ? t("citation.preview_page", { page: citation.page }) : "" }}
         </Button>
         <Button variant="outline" size="sm" @click="openFullText">
           <FileText class="size-3.5" />
-          查看文档全文
+          {{ t("citation.full_text") }}
         </Button>
         <!-- 原始文件下载：识别前的 .docx/.pdf/扫描图原件，浏览器原生下载
              （同源带 Cookie），文件名恢复上传原名 -->
         <Button variant="outline" size="sm" as="a" :href="docOriginalUrl(citation.doc_id)">
           <Download class="size-3.5" />
-          下载原文件
+          {{ t("citation.download") }}
         </Button>
       </div>
     </div>
@@ -154,7 +156,7 @@ watch(() => props.citation, () => {
       <DialogHeader>
         <DialogTitle>{{ citation?.doc_name }}</DialogTitle>
         <DialogDescription>
-          {{ citation?.page ? `已定位到第 ${citation.page} 页附近` : "原始文件预览" }}
+          {{ citation?.page ? t("citation.located", { page: citation.page }) : t("citation.preview_title") }}
         </DialogDescription>
       </DialogHeader>
       <!-- pdf：浏览器自带查看器（#page=N 跳页）；image：原图直显 -->
@@ -162,7 +164,7 @@ watch(() => props.citation, () => {
         v-if="previewOpen && previewKind === 'pdf'"
         :src="previewUrl"
         class="h-[72vh] w-full rounded-[var(--radius-ctl)] border border-[var(--border)]"
-        title="原始文件预览"
+        :title="t('citation.preview_title')"
       />
       <div v-else-if="previewOpen && previewKind === 'image'" class="max-h-[72vh] overflow-auto">
         <img :src="previewUrl" :alt="citation?.doc_name" class="max-w-full" />
@@ -177,7 +179,7 @@ watch(() => props.citation, () => {
         <DialogDescription>{{ citation?.heading_path }}</DialogDescription>
       </DialogHeader>
       <div class="max-h-[60vh] overflow-y-auto text-sm leading-relaxed">
-        <p v-if="fullTextLoading" class="text-[var(--text-3)]">加载中…</p>
+        <p v-if="fullTextLoading" class="text-[var(--text-3)]">{{ t("common.loading") }}</p>
         <p v-else-if="fullTextError" class="text-[var(--err)]">⚠️ {{ fullTextError }}</p>
         <pre v-else-if="docContent" class="whitespace-pre-wrap font-sans">
           <template v-for="(seg, i) in fullTextSegments(docContent.markdown)" :key="i">

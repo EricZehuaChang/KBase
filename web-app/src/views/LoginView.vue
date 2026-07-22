@@ -6,8 +6,10 @@
 // reset（邮件链接带 ?reset_token= 进来，设新密码）。
 import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { useI18n } from "vue-i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import LanguagePicker from "@/components/LanguagePicker.vue";
 import {
   login, clearSessionCache, getSsoStatus, forgotPassword, resetPassword,
 } from "@/lib/api";
@@ -15,6 +17,7 @@ import { redirectTarget } from "@/lib/auth-utils";
 
 const route = useRoute();
 const router = useRouter();
+const { t } = useI18n();
 
 type Mode = "login" | "forgot" | "reset";
 // 邮件链接落地：URL 带 reset_token 直接进重置模式
@@ -42,7 +45,7 @@ function ssoLogin() {
 
 async function submit() {
   if (!username.value.trim() || !password.value) {
-    error.value = "请输入用户名和密码";
+    error.value = t("login.enter_credentials");
     return;
   }
   submitting.value = true;
@@ -91,11 +94,11 @@ const resetValid = computed(
 
 async function submitReset() {
   if (newPassword.value.length < 6) {
-    error.value = "新密码至少 6 位";
+    error.value = t("login.pwd_min");
     return;
   }
   if (newPassword.value !== confirmPassword.value) {
-    error.value = "两次输入的新密码不一致";
+    error.value = t("login.pwd_mismatch");
     return;
   }
   submitting.value = true;
@@ -114,7 +117,11 @@ async function submitReset() {
 </script>
 
 <template>
-  <div class="flex h-screen w-full items-center justify-center bg-[var(--bg)] text-[var(--text)]">
+  <div class="relative flex h-screen w-full items-center justify-center bg-[var(--bg)] text-[var(--text)]">
+    <!-- 登录前也能切语言：马来/英文客户第一屏即可选母语（顶栏切换器要登录后才有） -->
+    <div class="absolute right-4 top-4">
+      <LanguagePicker />
+    </div>
     <!-- 登录 -->
     <form
       v-if="mode === 'login'"
@@ -123,17 +130,17 @@ async function submitReset() {
     >
       <div class="text-center">
         <h1 class="text-lg font-semibold">KBase</h1>
-        <p class="mt-1 text-sm text-[var(--text-2)]">登录以继续</p>
+        <p class="mt-1 text-sm text-[var(--text-2)]">{{ t("login.continue") }}</p>
       </div>
 
       <label class="flex flex-col gap-1">
-        <span class="text-sm text-[var(--text-2)]">用户名</span>
-        <Input v-model="username" autofocus placeholder="用户名" autocomplete="username" />
+        <span class="text-sm text-[var(--text-2)]">{{ t("login.username") }}</span>
+        <Input v-model="username" autofocus :placeholder="t('login.username')" autocomplete="username" />
       </label>
 
       <label class="flex flex-col gap-1">
-        <span class="text-sm text-[var(--text-2)]">密码</span>
-        <Input v-model="password" type="password" placeholder="密码" autocomplete="current-password" />
+        <span class="text-sm text-[var(--text-2)]">{{ t("login.password") }}</span>
+        <Input v-model="password" type="password" :placeholder="t('login.password')" autocomplete="current-password" />
       </label>
 
       <p v-if="error" class="rounded-[var(--radius-ctl)] bg-[var(--err-weak)] px-3 py-2 text-sm text-[var(--err)]">
@@ -141,11 +148,11 @@ async function submitReset() {
       </p>
 
       <Button type="submit" :disabled="submitting" class="mt-1">
-        {{ submitting ? "登录中…" : "登录" }}
+        {{ submitting ? t("login.logging_in") : t("login.login") }}
       </Button>
 
       <Button v-if="ssoEnabled" type="button" variant="outline" @click="ssoLogin">
-        使用企业账号登录（SSO）
+        {{ t("login.sso") }}
       </Button>
 
       <button
@@ -153,7 +160,7 @@ async function submitReset() {
         class="self-center text-xs text-[var(--text-3)] underline-offset-2 hover:text-[var(--text-2)] hover:underline"
         @click="switchMode('forgot')"
       >
-        忘记密码？
+        {{ t("login.forgot") }}
       </button>
     </form>
 
@@ -164,14 +171,14 @@ async function submitReset() {
       @submit.prevent="submitForgot"
     >
       <div class="text-center">
-        <h1 class="text-lg font-semibold">找回密码</h1>
-        <p class="mt-1 text-sm text-[var(--text-2)]">输入用户名或邮箱，我们会发送重置链接</p>
+        <h1 class="text-lg font-semibold">{{ t("login.forgot_title") }}</h1>
+        <p class="mt-1 text-sm text-[var(--text-2)]">{{ t("login.forgot_hint") }}</p>
       </div>
 
       <template v-if="!forgotSent">
         <label class="flex flex-col gap-1">
-          <span class="text-sm text-[var(--text-2)]">用户名或邮箱</span>
-          <Input v-model="forgotAccount" autofocus placeholder="用户名 / 邮箱" @keydown.enter.prevent="submitForgot" />
+          <span class="text-sm text-[var(--text-2)]">{{ t("login.account") }}</span>
+          <Input v-model="forgotAccount" autofocus :placeholder="t('login.account_placeholder')" @keydown.enter.prevent="submitForgot" />
         </label>
 
         <p v-if="error" class="rounded-[var(--radius-ctl)] bg-[var(--err-weak)] px-3 py-2 text-sm text-[var(--err)]">
@@ -179,7 +186,7 @@ async function submitReset() {
         </p>
 
         <Button type="submit" :disabled="submitting || !forgotAccount.trim()">
-          {{ submitting ? "发送中…" : "发送重置邮件" }}
+          {{ submitting ? t("login.sending") : t("login.send_reset") }}
         </Button>
       </template>
 
@@ -192,7 +199,7 @@ async function submitReset() {
         class="self-center text-xs text-[var(--text-3)] underline-offset-2 hover:text-[var(--text-2)] hover:underline"
         @click="switchMode('login')"
       >
-        返回登录
+        {{ t("login.back_to_login") }}
       </button>
     </form>
 
@@ -203,18 +210,18 @@ async function submitReset() {
       @submit.prevent="submitReset"
     >
       <div class="text-center">
-        <h1 class="text-lg font-semibold">设置新密码</h1>
-        <p class="mt-1 text-sm text-[var(--text-2)]">重置链接 30 分钟内有效，仅可使用一次</p>
+        <h1 class="text-lg font-semibold">{{ t("login.reset_title") }}</h1>
+        <p class="mt-1 text-sm text-[var(--text-2)]">{{ t("login.reset_hint") }}</p>
       </div>
 
       <template v-if="!resetDone">
         <label class="flex flex-col gap-1">
-          <span class="text-sm text-[var(--text-2)]">新密码（至少 6 位）</span>
+          <span class="text-sm text-[var(--text-2)]">{{ t("login.new_pwd") }}</span>
           <Input v-model="newPassword" type="password" autofocus autocomplete="new-password" />
         </label>
 
         <label class="flex flex-col gap-1">
-          <span class="text-sm text-[var(--text-2)]">确认新密码</span>
+          <span class="text-sm text-[var(--text-2)]">{{ t("login.confirm_pwd") }}</span>
           <Input v-model="confirmPassword" type="password" autocomplete="new-password" @keydown.enter.prevent="submitReset" />
         </label>
 
@@ -223,15 +230,15 @@ async function submitReset() {
         </p>
 
         <Button type="submit" :disabled="submitting || !resetValid">
-          {{ submitting ? "提交中…" : "确认重置" }}
+          {{ submitting ? t("login.submitting") : t("login.confirm_reset") }}
         </Button>
       </template>
 
       <template v-else>
         <p class="rounded-[var(--radius-ctl)] bg-[var(--ok-weak)] px-3 py-2 text-sm text-[var(--ok)]">
-          密码已重置，请用新密码登录
+          {{ t("login.reset_done") }}
         </p>
-        <Button type="button" @click="switchMode('login')">去登录</Button>
+        <Button type="button" @click="switchMode('login')">{{ t("login.go_login") }}</Button>
       </template>
     </form>
   </div>

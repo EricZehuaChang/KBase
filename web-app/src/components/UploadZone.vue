@@ -3,9 +3,11 @@
 // File[] 并 emit 给父组件——父组件（KbView）负责调用 uploadDocs 与插入
 // 乐观的 parsing 行，保持本组件纯粹（无网络请求，便于复用/测试）。
 import { ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { UploadCloud } from "@lucide/vue";
 
 const emit = defineEmits<{ filesSelected: [files: File[]] }>();
+const { t } = useI18n();
 
 const dragging = ref(false);
 const fileInput = ref<HTMLInputElement | null>(null);
@@ -32,7 +34,7 @@ function handleInputChange(e: Event) {
   <div
     role="button"
     tabindex="0"
-    aria-label="上传文档，点击或拖拽文件到此处"
+    :aria-label="t('upload.label')"
     class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-[var(--radius-card)] border-2 border-dashed px-6 py-8 text-center transition-colors"
     :class="dragging
       ? 'border-[var(--accent)] bg-[var(--accent-weak)]'
@@ -45,7 +47,7 @@ function handleInputChange(e: Event) {
   >
     <UploadCloud class="size-6 text-[var(--text-3)]" />
     <div class="text-sm text-[var(--text-2)]">
-      拖拽文件到此处，或<span class="text-[var(--accent-text)]">点击选择</span>
+      {{ t("upload.drop_hint") }}<span class="text-[var(--accent-text)]">{{ t("upload.click_select") }}</span>
     </div>
     <input
       ref="fileInput"

@@ -6,6 +6,7 @@
 // 不落库——分享场景无会话归属）。
 import { onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
+import { useI18n } from "vue-i18n";
 import { SendHorizontal } from "@lucide/vue";
 import MessageStream from "@/components/MessageStream.vue";
 import { getShareMeta } from "@/lib/api";
@@ -13,6 +14,7 @@ import { parseSSE } from "@/lib/sse";
 import type { ChatMessage } from "@/composables/useChat";
 
 const route = useRoute();
+const { t } = useI18n();
 const token = String(route.params.token || "");
 const embed = route.query.embed === "1";
 
@@ -51,7 +53,7 @@ async function ask() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question }),
     });
-    if (!resp.ok || !resp.body) throw new Error(`请求失败 (${resp.status})`);
+    if (!resp.ok || !resp.body) throw new Error(`request failed (${resp.status})`);
     const gotDone = await parseSSE(resp.body.getReader(), (event, data) => {
       if (event === "citations") {
         // 附图直链改写到 share 公开端点：/api/documents/... 需要登录态，
@@ -81,8 +83,8 @@ async function ask() {
   <div class="flex h-screen w-full flex-col bg-[var(--bg)] text-[var(--text)]">
     <!-- 失效链接：整页提示，不暴露任何系统入口 -->
     <div v-if="invalid" class="flex flex-1 flex-col items-center justify-center gap-2">
-      <p class="text-lg font-medium">链接不存在或已失效</p>
-      <p class="text-sm text-[var(--text-3)]">请联系为你提供此链接的同事获取新的地址</p>
+      <p class="text-lg font-medium">{{ t("share.invalid_title") }}</p>
+      <p class="text-sm text-[var(--text-3)]">{{ t("share.invalid_hint") }}</p>
     </div>
 
     <template v-else>
@@ -98,9 +100,9 @@ async function ask() {
       <main class="min-h-0 flex-1 overflow-y-auto">
         <div v-if="!messages.length"
              class="flex h-full flex-col items-center justify-center gap-1 px-6 text-center">
-          <p class="text-lg font-medium">有什么可以帮你？</p>
+          <p class="text-lg font-medium">{{ t("portal.empty.title") }}</p>
           <p class="text-sm text-[var(--text-3)]">
-            基于「{{ kbName ?? "…" }}」的资料回答，并附引用原文出处
+            {{ t("share.based_on", { kb: kbName ?? "…" }) }}
           </p>
         </div>
         <div v-else class="mx-auto max-w-3xl px-4 py-4">
@@ -113,7 +115,7 @@ async function ask() {
           <textarea
             v-model="input"
             rows="1"
-            :placeholder="busy ? '回答生成中…' : '输入问题…'"
+            :placeholder="busy ? t('share.generating') : t('share.input_placeholder')"
             :disabled="busy || !kbName"
             class="max-h-32 flex-1 resize-none bg-transparent py-1 text-[15px] leading-[1.6] outline-none placeholder:text-[var(--text-3)]"
             @keydown.enter.exact.prevent="ask"
@@ -122,14 +124,14 @@ async function ask() {
             type="button"
             class="rounded-full bg-[var(--accent)] p-2 text-white transition-opacity disabled:opacity-40"
             :disabled="busy || !input.trim()"
-            aria-label="发送"
+            :aria-label="t('portal.chat.send')"
             @click="ask"
           >
             <SendHorizontal class="size-4" />
           </button>
         </div>
         <p class="mx-auto mt-1.5 max-w-3xl text-center text-xs text-[var(--text-3)]">
-          回答依据知识库资料并附引用，请以原文为准
+          {{ t("share.disclaimer") }}
         </p>
       </footer>
     </template>

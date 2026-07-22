@@ -4,6 +4,7 @@
 // （与 CitationDrawer 全文预览同风格：<pre> + whitespace-pre-wrap，不经
 // v-html）+ md/docx 下载直链。
 import { computed, onBeforeUnmount, ref, watch, type Ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { CheckCircle2, XCircle, Loader2, Circle, Download, FileDown } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import { useJob } from "@/composables/useJob";
@@ -11,6 +12,7 @@ import { artifactUrl, type JobStepStatus } from "@/lib/api";
 import { jobHasArtifact } from "@/lib/generate-utils";
 
 const props = defineProps<{ jobId: string | undefined }>();
+const { t } = useI18n();
 
 const jobId: Ref<string | undefined> = computed(() => props.jobId) as unknown as Ref<string | undefined>;
 const { job, error: jobError, start, stopPolling } = useJob(jobId);
@@ -29,7 +31,7 @@ async function loadPreview(id: string) {
   previewLoading.value = true;
   try {
     const res = await fetch(artifactUrl(id, "md"));
-    if (!res.ok) throw new Error(`产物加载失败 (${res.status})`);
+    if (!res.ok) throw new Error(t("job.artifact_load_failed", { status: res.status }));
     preview.value = await res.text();
   } catch (err) {
     previewError.value = err instanceof Error ? err.message : String(err);
@@ -84,9 +86,9 @@ function stepIconClass(status: JobStepStatus) {
     </ul>
 
     <div v-if="isTerminal" class="text-sm">
-      <span v-if="job?.status === 'done'" class="text-[var(--ok)]">已完成</span>
-      <span v-else-if="job?.status === 'done_with_errors'" class="text-[var(--warn)]">部分完成（存在失败步骤）</span>
-      <span v-else-if="job?.status === 'failed'" class="text-[var(--err)]">生成失败{{ job?.error ? `：${job.error}` : "" }}</span>
+      <span v-if="job?.status === 'done'" class="text-[var(--ok)]">{{ t("job.done") }}</span>
+      <span v-else-if="job?.status === 'done_with_errors'" class="text-[var(--warn)]">{{ t("job.done_with_errors") }}</span>
+      <span v-else-if="job?.status === 'failed'" class="text-[var(--err)]">{{ t("job.failed") }}{{ job?.error ? `：${job.error}` : "" }}</span>
     </div>
 
     <div v-if="hasArtifact" class="flex flex-col gap-3">
@@ -94,19 +96,19 @@ function stepIconClass(status: JobStepStatus) {
         <Button as-child size="sm" variant="outline">
           <a :href="artifactUrl(props.jobId!, 'md')" download>
             <Download class="size-3.5" />
-            下载 Markdown
+            {{ t("job.download_md") }}
           </a>
         </Button>
         <Button as-child size="sm" variant="outline">
           <a :href="artifactUrl(props.jobId!, 'docx')" download>
             <FileDown class="size-3.5" />
-            下载 Word
+            {{ t("job.download_word") }}
           </a>
         </Button>
       </div>
 
       <div class="max-h-[50vh] overflow-y-auto rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-4 text-sm leading-relaxed">
-        <p v-if="previewLoading" class="text-[var(--text-3)]">产物加载中…</p>
+        <p v-if="previewLoading" class="text-[var(--text-3)]">{{ t("job.loading_artifact") }}</p>
         <p v-else-if="previewError" class="text-[var(--err)]">⚠️ {{ previewError }}</p>
         <pre v-else-if="preview" class="whitespace-pre-wrap font-sans">{{ preview }}</pre>
       </div>
