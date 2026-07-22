@@ -4,6 +4,7 @@
 // （verification token 必填 / encrypt key 可选，均只写不回显）+ 绑定
 // 知识库 + 回答模型（对标 FastGPT：模型在管理侧绑定，群成员无感）。
 import { computed, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { Copy } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,8 @@ import {
   getFeishuBot, putFeishuBot, listKbs, listProviders, getFeishuStatus,
   type FeishuBotStatus, type Kb,
 } from "@/lib/api";
+
+const { t } = useI18n();
 
 const status = ref<FeishuBotStatus | null>(null);
 const kbs = ref<Kb[]>([]);
@@ -65,11 +68,11 @@ onMounted(async () => {
 
 async function save() {
   if (!kbId.value) {
-    toast.error("请选择机器人回答依据的知识库");
+    toast.error(t("feishubot.need_kb"));
     return;
   }
   if (!status.value?.has_verification_token && !verificationToken.value.trim()) {
-    toast.error("首次配置需填写 Verification Token（飞书后台事件订阅页）");
+    toast.error(t("feishubot.need_token"));
     return;
   }
   busy.value = true;
@@ -82,7 +85,7 @@ async function save() {
     });
     verificationToken.value = "";
     encryptKey.value = "";
-    toast.success("机器人配置已保存");
+    toast.success(t("feishubot.saved"));
     await refresh();
   } catch (err) {
     toast.error(err instanceof Error ? err.message : String(err));
@@ -93,22 +96,23 @@ async function save() {
 
 async function copyUrl() {
   await navigator.clipboard.writeText(eventsUrl);
-  toast.success("回调地址已复制");
+  toast.success(t("feishubot.url_copied"));
 }
 </script>
 
 <template>
   <article class="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-4">
     <div class="mb-1 flex items-center gap-2">
-      <span class="font-medium">飞书群机器人</span>
+      <span class="font-medium">{{ t("feishubot.title") }}</span>
       <Badge
         :class="status?.configured
           ? 'bg-[var(--ok-weak)] text-[var(--ok)]'
           : 'bg-[var(--surface-2)] text-[var(--text-3)]'"
       >
-        {{ status?.configured ? "已配置" : "未配置" }}
+        {{ status?.configured ? t("smtp.configured") : t("smtp.not_configured") }}
       </Badge>
     </div>
+    <!-- 说明段含 code/一键授权动态链接/条件模板，i18n 成本高，保持中文（技术性 admin 引导） -->
     <p class="mb-3 text-xs text-[var(--text-3)]">
       在飞书群里 @机器人（或单聊）提问，自动用所选知识库检索并卡片回复（含引用来源）。
       使用上方同一个自建应用：需开启「机器人」能力、开通
@@ -128,39 +132,39 @@ async function copyUrl() {
     </p>
 
     <div class="mb-3 flex items-center gap-1.5">
-      <span class="shrink-0 text-sm text-[var(--text-2)]">事件回调地址</span>
+      <span class="shrink-0 text-sm text-[var(--text-2)]">{{ t("feishubot.callback_url") }}</span>
       <code class="min-w-0 flex-1 truncate rounded bg-[var(--surface-2)] px-2 py-1 text-xs">
         {{ eventsUrl }}
       </code>
       <Button size="sm" variant="outline" @click="copyUrl">
         <Copy class="size-3" />
-        复制
+        {{ t("msg.copy") }}
       </Button>
     </div>
 
     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
       <label class="flex flex-col gap-1">
         <span class="text-sm text-[var(--text-2)]">
-          Verification Token{{ status?.has_verification_token ? "（留空=保留当前）" : "" }}
+          Verification Token{{ status?.has_verification_token ? t("feishubot.keep_current") : "" }}
         </span>
         <Input
           v-model="verificationToken" type="password"
-          :placeholder="status?.has_verification_token ? '••••••••（已配置）' : '飞书后台·事件订阅页'"
+          :placeholder="status?.has_verification_token ? t('smtp.password_set') : t('feishubot.token_ph')"
         />
       </label>
       <label class="flex flex-col gap-1">
         <span class="text-sm text-[var(--text-2)]">
-          Encrypt Key（可选{{ status?.has_encrypt_key ? "，留空=保留当前" : "" }}）
+          {{ status?.has_encrypt_key ? t("feishubot.encrypt_label_keep") : t("feishubot.encrypt_label") }}
         </span>
         <Input
           v-model="encryptKey" type="password"
-          :placeholder="status?.has_encrypt_key ? '••••••••（已配置）' : '启用了事件加密才需要'"
+          :placeholder="status?.has_encrypt_key ? t('smtp.password_set') : t('feishubot.encrypt_ph')"
         />
       </label>
       <label class="flex flex-col gap-1">
-        <span class="text-sm text-[var(--text-2)]">回答依据的知识库</span>
+        <span class="text-sm text-[var(--text-2)]">{{ t("feishubot.answer_kb") }}</span>
         <Select v-model="kbId">
-          <SelectTrigger><SelectValue placeholder="选择知识库" /></SelectTrigger>
+          <SelectTrigger><SelectValue :placeholder="t('portal.topbar.select_kb')" /></SelectTrigger>
           <SelectContent>
             <SelectGroup>
               <SelectItem v-for="kb in kbs" :key="kb.id" :value="kb.id">{{ kb.name }}</SelectItem>
@@ -169,12 +173,12 @@ async function copyUrl() {
         </Select>
       </label>
       <label class="flex flex-col gap-1">
-        <span class="text-sm text-[var(--text-2)]">回答模型</span>
+        <span class="text-sm text-[var(--text-2)]">{{ t("sharedlg.model") }}</span>
         <Select v-model="provider">
           <SelectTrigger><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectGroup>
-              <SelectItem value="__default__">系统默认</SelectItem>
+              <SelectItem value="__default__">{{ t("sharedlg.default_model") }}</SelectItem>
               <SelectItem v-for="p in providers" :key="p" :value="p">{{ p }}</SelectItem>
             </SelectGroup>
           </SelectContent>
@@ -183,7 +187,7 @@ async function copyUrl() {
     </div>
 
     <div class="mt-3">
-      <Button size="sm" :disabled="busy || !kbId" @click="save">保存</Button>
+      <Button size="sm" :disabled="busy || !kbId" @click="save">{{ t("common.save") }}</Button>
     </div>
   </article>
 </template>
