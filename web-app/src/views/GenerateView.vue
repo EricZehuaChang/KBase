@@ -3,6 +3,7 @@
 // 点击加载其产物预览）。ProposalWizard/DigestPanel 各自持有向导内部状态，
 // 用 :key="kbId" 在切换知识库时整体重建，避免残留上一个 KB 的表单/大纲状态。
 import { computed, onMounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import {
   Tabs, TabsContent, TabsList, TabsTrigger,
 } from "@/components/ui/tabs";
@@ -14,8 +15,10 @@ import ProposalWizard from "@/components/ProposalWizard.vue";
 import DigestPanel from "@/components/DigestPanel.vue";
 import JobProgress from "@/components/JobProgress.vue";
 import { listKbs, listJobs, listProviders, currentRole, type Kb, type Job } from "@/lib/api";
-import { jobStatusBadge, jobTypeLabel, jobHasArtifact } from "@/lib/generate-utils";
+import { jobStatusBadge, jobHasArtifact } from "@/lib/generate-utils";
 import { canManageContent } from "@/lib/auth-utils";
+
+const { t } = useI18n();
 
 // viewer 可查看生成页（任务历史等）但隐藏发起生成的操作（后端 require_editor
 // 强制校验，这里只是防呆）。
@@ -28,6 +31,18 @@ const tab = ref<"proposal" | "digest">("proposal");
 
 const jobs = ref<Job[]>([]);
 const historyOpenId = ref<string | undefined>(undefined);
+
+// 任务类型/状态标签本地化（jobStatusBadge 只取 class，文案走 i18n）。
+function jobTypeText(type: string): string {
+  if (type === "proposal") return t("generate.tab_proposal");
+  if (type === "digest") return t("generate.tab_digest");
+  return type;
+}
+function jobStatusText(status: string): string {
+  const key = `generate.job_status.${status}`;
+  const tr = t(key);
+  return tr !== key ? tr : status;
+}
 
 async function loadJobs() {
   if (!kbId.value) return;
@@ -58,7 +73,7 @@ const currentKbName = computed(() => kbs.value.find((k) => k.id === kbId.value)?
   <div class="flex h-full flex-col">
     <header class="flex h-14 shrink-0 items-center gap-3 border-b border-[var(--border)] px-4">
       <Select v-model="kbId">
-        <SelectTrigger class="w-48"><SelectValue placeholder="选择知识库" /></SelectTrigger>
+        <SelectTrigger class="w-48"><SelectValue :placeholder="t('portal.topbar.select_kb')" /></SelectTrigger>
         <SelectContent>
           <SelectGroup>
             <SelectItem v-for="kb in kbs" :key="kb.id" :value="kb.id">{{ kb.name }}</SelectItem>
@@ -69,14 +84,14 @@ const currentKbName = computed(() => kbs.value.find((k) => k.id === kbId.value)?
 
     <div class="flex-1 overflow-y-auto p-6">
       <div v-if="!kbId" class="py-12 text-center text-sm text-[var(--text-3)]">
-        请先选择知识库
+        {{ t("generate.select_kb_first") }}
       </div>
 
       <template v-else>
         <Tabs v-model="tab">
           <TabsList>
-            <TabsTrigger value="proposal">方案生成</TabsTrigger>
-            <TabsTrigger value="digest">定期汇编</TabsTrigger>
+            <TabsTrigger value="proposal">{{ t("generate.tab_proposal") }}</TabsTrigger>
+            <TabsTrigger value="digest">{{ t("generate.tab_digest") }}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="proposal" class="mt-4">
@@ -92,9 +107,9 @@ const currentKbName = computed(() => kbs.value.find((k) => k.id === kbId.value)?
 
         <section class="mt-10 max-w-2xl">
           <h2 class="mb-3 text-sm font-medium text-[var(--text-2)]">
-            任务历史{{ currentKbName ? `（${currentKbName}）` : "" }}
+            {{ t("generate.job_history") }}{{ currentKbName ? `（${currentKbName}）` : "" }}
           </h2>
-          <p v-if="!jobs.length" class="text-sm text-[var(--text-3)]">暂无任务</p>
+          <p v-if="!jobs.length" class="text-sm text-[var(--text-3)]">{{ t("generate.no_jobs") }}</p>
           <ul v-else class="flex flex-col gap-2">
             <li
               v-for="job in jobs" :key="job.id"
@@ -107,8 +122,8 @@ const currentKbName = computed(() => kbs.value.find((k) => k.id === kbId.value)?
                 @click="openHistory(job)"
               >
                 <span class="flex items-center gap-2 text-sm">
-                  <span class="font-medium">{{ jobTypeLabel(job.type) }}</span>
-                  <Badge :class="jobStatusBadge(job.status).class">{{ jobStatusBadge(job.status).label }}</Badge>
+                  <span class="font-medium">{{ jobTypeText(job.type) }}</span>
+                  <Badge :class="jobStatusBadge(job.status).class">{{ jobStatusText(job.status) }}</Badge>
                 </span>
                 <span class="text-xs text-[var(--text-3)]">{{ job.updated_at }}</span>
               </button>

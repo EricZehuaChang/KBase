@@ -148,6 +148,62 @@
     "disabled": "未启用",
     "new_entry": "新进"
   },
+  "analysis": {
+    "tab_search": "检索试跑",
+    "tab_eval": "评测回归",
+    "query_placeholder": "输入查询语句",
+    "query_label": "查询输入框",
+    "keyword_override": "多路召回覆盖",
+    "kw_default": "召回·按库策略",
+    "kw_on": "召回·强制多路",
+    "kw_off": "召回·仅向量",
+    "rerank_override": "重排覆盖",
+    "rr_default": "重排·按库策略",
+    "rr_on": "重排·强制开",
+    "rr_off": "重排·强制关",
+    "run": "执行",
+    "searching": "检索中…",
+    "search_failed": "检索失败",
+    "no_docs_prefix": "该知识库暂无文档，请先前往",
+    "kb_manage_link": "知识库管理页",
+    "no_docs_suffix": "导入文档",
+    "empty_hint": "选择知识库并输入查询语句，查看检索过程",
+    "final_blocks": "最终结果 blocks",
+    "collapse": "收起",
+    "expand": "展开全文",
+    "no_match": "无匹配结果"
+  },
+  "forbidden": {
+    "title": "无权限访问管理端",
+    "desc": "当前账号没有管理知识库的权限。如需管理权限请联系管理员，或返回使用端继续问答。",
+    "back": "返回使用端"
+  },
+  "generate": {
+    "select_kb_first": "请先选择知识库",
+    "tab_proposal": "方案生成",
+    "tab_digest": "定期汇编",
+    "job_history": "任务历史",
+    "no_jobs": "暂无任务",
+    "job_status": {
+      "pending": "等待中",
+      "running": "进行中",
+      "done": "已完成",
+      "done_with_errors": "部分完成",
+      "failed": "失败"
+    }
+  },
+  "admin": {
+    "workbench": "管理工作台",
+    "nav_content": "内容",
+    "nav_kb": "知识库",
+    "nav_analysis": "分析",
+    "nav_retrieval": "检索分析",
+    "nav_generate": "生成",
+    "nav_system": "系统",
+    "nav_settings": "设置",
+    "back_to_portal": "返回问答",
+    "dismiss_banner": "关闭提示"
+  },
   "doc": {
     "filename": "文件名",
     "status_label": "状态",
