@@ -5,6 +5,7 @@
 // 见 kbase/api/main.py update_user）；isLastEnabledAdmin 只做前置按钮禁用，
 // 减少用户点了才被拒绝的挫败感，不是安全边界。
 import { onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { Plus, KeyRound } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
@@ -18,7 +19,8 @@ import {
 import UserFormDialogs from "@/components/UserFormDialogs.vue";
 import { listUsers, updateUser, type UserItem } from "@/lib/api";
 import { isLastEnabledAdmin } from "@/lib/settings-utils";
-import { roleLabel } from "@/lib/auth-utils";
+
+const { t } = useI18n();
 
 const ROLES = ["admin", "editor", "viewer"] as const;
 
@@ -45,7 +47,7 @@ async function changeRole(user: UserItem, role: string) {
   if (role === user.role) return;
   try {
     await updateUser(user.id, { role });
-    toast.success(`已将 ${user.username} 的角色改为 ${roleLabel(role)}`);
+    toast.success(t("user.role_changed", { name: user.username, role: t(`common.role.${role}`) }));
   } catch (err) {
     toast.error(err instanceof Error ? err.message : String(err));
   } finally {
@@ -56,8 +58,8 @@ async function changeRole(user: UserItem, role: string) {
 async function toggleAdvancedUi(user: UserItem, advancedUi: boolean) {
   try {
     await updateUser(user.id, { advanced_ui: advancedUi });
-    toast.success(advancedUi ? `已开启高级界面: ${user.username}`
-                             : `已关闭高级界面: ${user.username}`);
+    toast.success(advancedUi ? t("user.adv_on", { name: user.username })
+                             : t("user.adv_off", { name: user.username }));
   } catch (err) {
     toast.error(err instanceof Error ? err.message : String(err));
   } finally {
@@ -68,7 +70,8 @@ async function toggleAdvancedUi(user: UserItem, advancedUi: boolean) {
 async function toggleDisabled(user: UserItem, disabled: boolean) {
   try {
     await updateUser(user.id, { disabled });
-    toast.success(disabled ? `已禁用: ${user.username}` : `已启用: ${user.username}`);
+    toast.success(disabled ? t("user.disabled_toast", { name: user.username })
+                           : t("user.enabled_toast", { name: user.username }));
   } catch (err) {
     toast.error(err instanceof Error ? err.message : String(err));
   } finally {
@@ -80,26 +83,26 @@ async function toggleDisabled(user: UserItem, disabled: boolean) {
 <template>
   <section class="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-4">
     <div class="mb-3 flex items-center justify-between">
-      <h2 class="text-sm font-medium text-[var(--text-2)]">用户管理</h2>
+      <h2 class="text-sm font-medium text-[var(--text-2)]">{{ t("user.title") }}</h2>
       <Button size="sm" @click="createOpen = true">
         <Plus class="size-3.5" />
-        新建用户
+        {{ t("user.create") }}
       </Button>
     </div>
 
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>用户名</TableHead>
-          <TableHead>邮箱</TableHead>
-          <TableHead>角色</TableHead>
-          <TableHead>状态</TableHead>
-          <TableHead>高级界面</TableHead>
-          <TableHead class="w-40">操作</TableHead>
+          <TableHead>{{ t("login.username") }}</TableHead>
+          <TableHead>{{ t("user.col_email") }}</TableHead>
+          <TableHead>{{ t("common.role_col") }}</TableHead>
+          <TableHead>{{ t("common.status") }}</TableHead>
+          <TableHead>{{ t("user.col_advanced") }}</TableHead>
+          <TableHead class="w-40">{{ t("common.actions") }}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
-        <TableEmpty v-if="!loading && users.length === 0" :colspan="6">暂无用户</TableEmpty>
+        <TableEmpty v-if="!loading && users.length === 0" :colspan="6">{{ t("user.empty") }}</TableEmpty>
         <TableRow v-for="u in users" :key="u.id">
           <TableCell>{{ u.username }}</TableCell>
           <TableCell class="text-[var(--text-3)]">{{ u.email ?? "—" }}</TableCell>
@@ -112,7 +115,7 @@ async function toggleDisabled(user: UserItem, disabled: boolean) {
               <SelectTrigger class="w-28"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectGroup>
-                  <SelectItem v-for="r in ROLES" :key="r" :value="r">{{ roleLabel(r) }}</SelectItem>
+                  <SelectItem v-for="r in ROLES" :key="r" :value="r">{{ t(`common.role.${r}`) }}</SelectItem>
                 </SelectGroup>
               </SelectContent>
             </Select>
@@ -124,7 +127,7 @@ async function toggleDisabled(user: UserItem, disabled: boolean) {
                 :disabled="isLastEnabledAdmin(users, u.id)"
                 @update:model-value="(v) => toggleDisabled(u, !v)"
               />
-              <span class="text-sm text-[var(--text-2)]">{{ u.disabled ? "已禁用" : "启用中" }}</span>
+              <span class="text-sm text-[var(--text-2)]">{{ u.disabled ? t("user.disabled_state") : t("user.enabled_state") }}</span>
             </label>
           </TableCell>
           <TableCell>
@@ -133,14 +136,14 @@ async function toggleDisabled(user: UserItem, disabled: boolean) {
             <Switch
               :model-value="u.role !== 'viewer' || u.advanced_ui"
               :disabled="u.role !== 'viewer'"
-              :title="u.role !== 'viewer' ? '编辑者/管理员恒可见' : '开启后可见模型选择与多库联查'"
+              :title="u.role !== 'viewer' ? t('user.adv_always') : t('user.adv_hint')"
               @update:model-value="(v) => toggleAdvancedUi(u, Boolean(v))"
             />
           </TableCell>
           <TableCell>
             <Button variant="ghost" size="sm" @click="resetTarget = u">
               <KeyRound class="size-3.5" />
-              重置密码
+              {{ t("user.reset_pw") }}
             </Button>
           </TableCell>
         </TableRow>
