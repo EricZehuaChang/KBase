@@ -11,6 +11,9 @@
     "select_all": "全选",
     "actions": "操作",
     "retry": "重试",
+    "name": "名称",
+    "status": "状态",
+    "role_col": "角色",
     "role": {
       "admin": "管理员",
       "editor": "编辑者",
@@ -147,6 +150,53 @@
     "no_result": "无结果",
     "disabled": "未启用",
     "new_entry": "新进"
+  },
+  "ops": {
+    "title": "运营看板（近 7 天）",
+    "total": "问答总数",
+    "refused": "无答案",
+    "refusal_rate": "拒答率",
+    "feedback": "赞 / 踩（M6-4 反馈）",
+    "unanswered_title": "最近无答案问题（知识缺口，建议补充文档）",
+    "no_unanswered": "暂无——所有问题都得到了回答 👍",
+    "unanswered_badge": "未答",
+    "downvote_title": "最近差评回答（建议核查文档或检索配置）",
+    "downvote_badge": "差评",
+    "question_missing": "（问题缺失）",
+    "note": "备注：{note}"
+  },
+  "embedder": {
+    "saved": "密钥已保存，下次向量化/检索即生效",
+    "cleared": "已清除页面密钥，回落到环境变量",
+    "title": "向量模型密钥",
+    "desc": "云端向量模型（openai-embed）的 API Key，页面配置优先于环境变量；保存后下次向量化即生效",
+    "no_options": "配置文件 embedders 清单中暂无云端向量模型选项",
+    "db_key": "页面密钥 {hint}",
+    "env_key": "环境变量 {env}",
+    "key_placeholder": "粘贴 API Key（只写入，不回显）",
+    "key_label": "向量模型 API Key",
+    "update_key": "更新密钥",
+    "set_key": "设置密钥",
+    "clear_key": "清除（回落环境变量）"
+  },
+  "apikey": {
+    "create": "新建 Key",
+    "prefix": "前缀",
+    "empty": "暂无 API Key",
+    "revoked": "已吊销",
+    "valid": "有效",
+    "revoke": "吊销"
+  },
+  "license": {
+    "title": "许可证状态",
+    "org": "组织：{org}",
+    "expires": "到期：{date}",
+    "status": {
+      "trial": "试用中",
+      "valid": "有效",
+      "expired": "已过期",
+      "invalid": "无效"
+    }
   },
   "review": {
     "approved": "已确认入库，开始向量化",
