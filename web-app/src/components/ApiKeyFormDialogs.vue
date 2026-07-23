@@ -6,6 +6,7 @@ import { reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { Copy } from "@lucide/vue";
+import { copyToClipboard } from "@/lib/clipboard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -55,12 +56,9 @@ async function submitCreate() {
 
 async function copyKey() {
   if (!createdFullKey.value) return;
-  try {
-    await navigator.clipboard.writeText(createdFullKey.value);
-    toast.success(t("msg.copied"));
-  } catch {
-    toast.error(t("apikey.copy_failed"));
-  }
+  // 兼容工具含 http 非安全上下文回退（execCommand）
+  if (await copyToClipboard(createdFullKey.value)) toast.success(t("msg.copied"));
+  else toast.error(t("apikey.copy_failed"));
 }
 
 function closeCreateDialog() {

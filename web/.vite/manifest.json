@@ -43,16 +43,16 @@
       "_api-CuPUSncW.js"
     ]
   },
-  "_download-BL44N7uO.js": {
-    "file": "assets/download-BL44N7uO.js",
-    "name": "download",
+  "_clipboard-DvKo_6OV.js": {
+    "file": "assets/clipboard-DvKo_6OV.js",
+    "name": "clipboard",
     "imports": [
       "_api-CuPUSncW.js"
     ]
   },
-  "_pencil-nBCRslGP.js": {
-    "file": "assets/pencil-nBCRslGP.js",
-    "name": "pencil",
+  "_download-BL44N7uO.js": {
+    "file": "assets/download-BL44N7uO.js",
+    "name": "download",
     "imports": [
       "_api-CuPUSncW.js"
     ]
@@ -80,7 +80,7 @@
     ]
   },
   "admin.html": {
-    "file": "assets/admin-BgyGBXfY.js",
+    "file": "assets/admin-BQfmgFE2.js",
     "name": "admin",
     "src": "admin.html",
     "isEntry": true,
@@ -97,7 +97,7 @@
     ]
   },
   "index.html": {
-    "file": "assets/main-CqSYC7Z6.js",
+    "file": "assets/main-DBCaiVcG.js",
     "name": "main",
     "src": "index.html",
     "isEntry": true,
@@ -105,7 +105,7 @@
       "_api-CuPUSncW.js",
       "_preload-helper-D2jly7aq.js",
       "_SelectValue-DFlbexaV.js",
-      "_pencil-nBCRslGP.js",
+      "_clipboard-DvKo_6OV.js",
       "_download-BL44N7uO.js",
       "_button-BOpZD13o.js"
     ],
@@ -141,7 +141,7 @@
     ]
   },
   "src/views/KbView.vue": {
-    "file": "assets/KbView-DCBctVpn.js",
+    "file": "assets/KbView-B4UNWTEF.js",
     "name": "KbView",
     "src": "src/views/KbView.vue",
     "isDynamicEntry": true,
@@ -149,7 +149,7 @@
       "_api-CuPUSncW.js",
       "_preload-helper-D2jly7aq.js",
       "_SelectValue-DFlbexaV.js",
-      "_pencil-nBCRslGP.js",
+      "_clipboard-DvKo_6OV.js",
       "_download-BL44N7uO.js",
       "_Switch-Z4OZku8l.js",
       "_search-DopvqipV.js",
@@ -159,7 +159,7 @@
     ]
   },
   "src/views/SettingsView.vue": {
-    "file": "assets/SettingsView-BGAP3lKC.js",
+    "file": "assets/SettingsView-DCYBQPS-.js",
     "name": "SettingsView",
     "src": "src/views/SettingsView.vue",
     "isDynamicEntry": true,
@@ -167,7 +167,7 @@
       "_api-CuPUSncW.js",
       "_preload-helper-D2jly7aq.js",
       "_SelectValue-DFlbexaV.js",
-      "_pencil-nBCRslGP.js",
+      "_clipboard-DvKo_6OV.js",
       "_Switch-Z4OZku8l.js",
       "_button-BOpZD13o.js",
       "admin.html",
@@ -176,7 +176,7 @@
     ]
   },
   "src/views/ShareView.vue": {
-    "file": "assets/ShareView-D7Iy4g9I.js",
+    "file": "assets/ShareView-DiN56IVe.js",
     "name": "ShareView",
     "src": "src/views/ShareView.vue",
     "isDynamicEntry": true,
