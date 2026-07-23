@@ -17,6 +17,7 @@ import EmailPromptDialog from "@/components/EmailPromptDialog.vue";
 import LanguagePicker from "@/components/LanguagePicker.vue";
 import { theme, toggleTheme } from "@/lib/theme";
 import { getSession, logout, getLicense, currentRole, type Me } from "@/lib/api";
+import { setLanguage } from "@/i18n";
 import { roleBadgeClass, canAdminister } from "@/lib/auth-utils";
 import { licenseBannerInfo } from "@/lib/settings-utils";
 import { Toaster } from "@/components/ui/sonner";
@@ -74,6 +75,10 @@ const me = ref<Me | null>(null);
 const emailPromptOpen = ref(false);
 onMounted(async () => {
   me.value = await getSession();
+  // P2-4 账号级语言偏好：账号设过就切过去（覆盖启动本地检测），跨设备一致
+  // 母语。persistAccount:false——读账号→应用，非手动切换，不回写。未设置则
+  // 维持本地检测。
+  if (me.value?.language) void setLanguage(me.value.language, { persistAccount: false });
   // 首登邮箱引导（与 PortalShell 同规则）："稍后再说"记 sessionStorage，
   // 本次浏览器会话内两端都不再弹
   if (me.value && me.value.email === null

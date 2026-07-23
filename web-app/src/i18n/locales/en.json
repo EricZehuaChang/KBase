@@ -46,6 +46,7 @@
     "account_disabled": "Account disabled",
     "no_profile": "Current identity does not support profile management",
     "no_change_pw": "Current identity does not support password change (API Key has no account/password)",
+    "unsupported_language": "Unsupported language: {lang}",
     "feishu_creds_missing": "Feishu app credentials not configured (app_id/app_secret)",
     "feishu_creds_missing_short": "Feishu credentials not configured",
     "connector_syncing": "Connector is syncing",
@@ -352,7 +353,26 @@
     "secret_ph": "App Secret (write-only, no echo)",
     "update_creds": "Update Credentials",
     "config_creds": "Configure Credentials",
-    "clear": "Clear"
+    "clear": "Clear",
+    "setup": {
+      "step1": "Go to {platform} to create an enterprise self-built app, obtain App ID / App Secret",
+      "platform_name": "Feishu Open Platform",
+      "perm_intro": "Permission management {allReadonly}{oneClick}:",
+      "perm_all_readonly": "Enable all read-only permissions at once",
+      "one_click": "(One-click enable)",
+      "perm_wiki": "{code} (Knowledge base tree)",
+      "perm_docx": "{code} (Document content)",
+      "perm_drive": "{code} (Images in documents)",
+      "perm_docs": "{code} (Legacy documents)",
+      "perm_sheets": "{code} (Spreadsheets)",
+      "perm_bitable": "{code} (Multidimensional tables)",
+      "perm_board": "{code} (Export board as image, commonly used for architecture diagrams)",
+      "perm_note": "App identity permissions require admin review, {review}; after enabling, {publish} — just checking without publishing won't take effect",
+      "perm_review": "It is recommended to enable all at once to avoid repeated approvals",
+      "perm_publish": "Create a version release",
+      "step3": "Target knowledge base → Settings → Members → {addMember} — only having permissions without being added to the KB will not allow reading content",
+      "add_member": "Add this app as a member"
+    }
   },
   "connector": {
     "int_manual": "Manual Only",
@@ -405,7 +425,11 @@
     "encrypt_label": "Encrypt Key (optional)",
     "encrypt_label_keep": "Encrypt Key (optional, leave blank = keep current)",
     "encrypt_ph": "Only needed if event encryption is enabled",
-    "answer_kb": "Knowledge base for answers"
+    "answer_kb": "Knowledge base for answers",
+    "desc_intro": "In Feishu group chat, {'@'}bot (or private chat) to ask questions. It will automatically search the selected knowledge base and reply with a card (including source citations). Use the same self-built app above: need to enable the 'Bot' capability, grant {scopeMsg} and {scopeSend} permissions, add {eventKey} to event subscriptions, and fill in the callback URL below in 'Request URL'.",
+    "desc_authed": "After {oneClickBot}, publish the version to take effect (event subscription and callback URL still need to be configured manually as below).",
+    "one_click_bot": "One-click enable send/receive permissions",
+    "desc_no_creds": "(The one-click permission link will appear only after configuring the app credentials in the 'Feishu Connector' above)"
   },
   "feishuimport": {
     "need_creds": "Please fill in Feishu app credentials first (App ID and App Secret)",
@@ -420,7 +444,15 @@
     "source_label": "Feishu wiki link or space ID",
     "import_failed": "Import failed:",
     "importing": "Importing (may take a while if many documents)...",
-    "start": "Start Import"
+    "start": "Start Import",
+    "setup_step1": "Go to {platform} to create an enterprise self-built app, obtain App ID and App Secret, fill them in below",
+    "setup_step2": "In the app's 'Permission Management', {allReadonly} (app identity permissions require admin approval, enable all at once to avoid repeated approvals): seven read-only permissions: wiki / docx / drive / docs / sheets / bitable / board, and {publish} (just checking without publishing won't take effect; full list see Settings → Connector)",
+    "setup_step3": "Open the target knowledge base → Settings → Members → {addMember} (having permissions alone without being added to the KB will not allow reading content)",
+    "configured_note": "Using the configured Feishu app: {appId} (can be changed in Settings → Connector; if a permission error occurs, {oneClickPerm} and then publish a version)",
+    "one_click_perm": "One-click enable permissions",
+    "troubleshoot": "Common causes to check: ① The app must enable all read-only permissions and {publish} to take effect (permission list and one-click enable see above or Settings → Connector); ② The app must be {addKbMember} (knowledge base settings → Members → Add app); having only permissions without being added to the KB will still not allow reading; ③ The link must be a wiki page URL (containing /wiki/), cloud document /docx/ links are not supported for direct import",
+    "publish_short": "Publish version",
+    "add_kb_member": "Add as a member of this knowledge base"
   },
   "sharedlg": {
     "created": "Share link created",

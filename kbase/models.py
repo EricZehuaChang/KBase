@@ -140,6 +140,10 @@ class User(Base):
     # 等高级菜单可见性。editor/admin 恒可见；viewer 默认简化界面，个别
     # 需要的用户由管理员打开。
     advanced_ui: Mapped[bool] = mapped_column(Boolean, default=False)
+    # 账号级界面语言偏好（zh|en|ms；NULL=未设置，跟随客户端检测 localStorage/
+    # 浏览器）。登录后前端据此覆盖本地检测；用户手动切语言时回写本列，实现
+    # 跨设备一致的母语界面（P2-4）。老库存量用户补列后为 NULL=沿用检测。
+    language: Mapped[str | None] = mapped_column(String(10), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

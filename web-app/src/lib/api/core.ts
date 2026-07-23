@@ -3,7 +3,7 @@
 // 会话缓存与 401 拦截互相调用，必须同模块（拆开会形成 http↔auth 循环依赖）。
 import { ref } from "vue";
 
-import { i18n } from "@/i18n";
+import { i18n, setAccountLanguagePersister } from "@/i18n";
 
 // 401 拦截钩子：router 守卫在启动时注册一个回调（跳转 /login），本模块不
 // 直接 import router——避免 api ↔ router 循环依赖。未注册时（如单测）
@@ -82,6 +82,9 @@ export interface Me {
   // 高级界面（模型选择/多库联查菜单可见性）：editor/admin 恒 true；
   // viewer 由管理员在用户管理里按人开关（默认 false=简化界面）
   advanced_ui?: boolean;
+  // 账号级界面语言偏好（P2-4，zh|en|ms）：登录后据此覆盖本地检测（两 Shell
+  // 调 setLanguage）。null=未设置，跟随 localStorage/浏览器；API Key 身份亦为 null。
+  language?: string | null;
 }
 
 export function login(username: string, password: string): Promise<Me> {
@@ -114,6 +117,13 @@ export function changePassword(oldPassword: string, newPassword: string): Promis
 // 登录用户维护自己的邮箱（首登引导填写，用于忘记密码重置）
 export function updateProfile(email: string): Promise<{ ok: boolean }> {
   return req("/api/auth/profile", jsonInit({ email }, "PUT"));
+}
+
+// 账号级语言偏好回写（P2-4）：登录用户手动切语言时同步到账号（跨设备一致）。
+// 只在登录态调用（门槛见文件末 setAccountLanguagePersister 注入），失败静默——
+// 切语言是即时本地生效的，账号回写失败不该阻断或报错打断用户。
+export function setAccountLanguage(language: string): Promise<{ ok: boolean }> {
+  return req("/api/auth/language", jsonInit({ language }, "PUT"));
 }
 
 // 忘记密码：无论账号是否存在都返回同一句话（后端防枚举）
@@ -154,3 +164,12 @@ export function clearSessionCache(): void {
   sessionCache = null;
   currentRole.value = null;
 }
+
+// P2-4 账号语言回写注入：把"仅登录态回写账号"的策略作为回调交给 i18n 层，
+// 避免 i18n → api 的模块循环（core.ts 已 import i18n，反向不可）。用户在
+// LanguagePicker 切语言 → setLanguage → 此回调；currentRole 非空（已登录）
+// 才 PUT，登录页/分享页（currentRole 为 null）静默跳过。失败吞掉——本地已
+// 即时切换，账号同步失败不打断用户。
+setAccountLanguagePersister((lang) => {
+  if (currentRole.value) void setAccountLanguage(lang).catch(() => { /* 回写尽力而为 */ });
+});

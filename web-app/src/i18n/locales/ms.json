@@ -46,6 +46,7 @@
     "account_disabled": "Akaun telah dilumpuhkan",
     "no_profile": "Identiti semasa tidak menyokong penyelenggaraan profil",
     "no_change_pw": "Identiti semasa tidak menyokong menukar kata laluan (Kunci API tiada kata laluan akaun)",
+    "unsupported_language": "Bahasa tidak disokong: {lang}",
     "feishu_creds_missing": "Kelayakan aplikasi Feishu belum dikonfigurasi (app_id/app_secret)",
     "feishu_creds_missing_short": "Kelayakan Feishu belum dikonfigurasi",
     "connector_syncing": "Penyambung sedang menyegerak",
@@ -352,7 +353,26 @@
     "secret_ph": "App Secret (tulis sahaja, tidak dipaparkan semula)",
     "update_creds": "Kemas kini kredensial",
     "config_creds": "Konfigurasi kredensial",
-    "clear": "Kosongkan"
+    "clear": "Kosongkan",
+    "setup": {
+      "step1": "Pergi ke {platform} untuk mencipta aplikasi binaan sendiri perusahaan, dapatkan App ID / App Secret",
+      "platform_name": "Platform Terbuka Feishu",
+      "perm_intro": "Pengurusan kebenaran {allReadonly}{oneClick}:",
+      "perm_all_readonly": "Buka semua kebenaran baca sahaja sekali",
+      "one_click": "(Buka dengan satu klik)",
+      "perm_wiki": "{code} (Pohon pangkalan pengetahuan)",
+      "perm_docx": "{code} (Teks dokumen)",
+      "perm_drive": "{code} (Gambar dalam dokumen)",
+      "perm_docs": "{code} (Dokumen versi lama)",
+      "perm_sheets": "{code} (Spreadsheet)",
+      "perm_bitable": "{code} (Jadual berbilang dimensi)",
+      "perm_board": "{code} (Papan lukisan dieksport sebagai gambar, biasa digunakan untuk gambar rajah seni bina)",
+      "perm_note": "Kebenaran identiti aplikasi perlu disemak oleh pentadbir, {review}; selepas dibuka, {publish} — hanya menandakan tanpa menerbitkan tidak akan berkesan",
+      "perm_review": "Disarankan untuk membuka semua sekali untuk mengelakkan kelulusan berulang",
+      "perm_publish": "Cipta versi terbitan",
+      "step3": "Pangkalan pengetahuan sasaran → Tetapan → Ahli → {addMember} — hanya kebenaran tanpa dimasukkan ke dalam pangkalan tidak boleh membaca kandungan",
+      "add_member": "Tambah aplikasi ini sebagai ahli"
+    }
   },
   "connector": {
     "int_manual": "Segerak manual sahaja",
@@ -405,7 +425,11 @@
     "encrypt_label": "Encrypt Key (pilihan)",
     "encrypt_label_keep": "Encrypt Key (pilihan, biarkan kosong = kekalkan semasa)",
     "encrypt_ph": "Hanya diperlukan jika penyulitan acara diaktifkan",
-    "answer_kb": "Pangkalan pengetahuan untuk jawapan"
+    "answer_kb": "Pangkalan pengetahuan untuk jawapan",
+    "desc_intro": "Dalam kumpulan Feishu, {'@'}bot (atau sembang peribadi) untuk bertanya soalan, secara automatik akan mencari pangkalan pengetahuan yang dipilih dan membalas dengan kad (termasuk sumber rujukan). Gunakan aplikasi binaan sendiri yang sama di atas: perlu mengaktifkan keupayaan 'Bot', buka kebenaran {scopeMsg} dan {scopeSend}, tambah {eventKey} pada langganan acara dan isi alamat panggil balik di bawah ke dalam 'Alamat Permintaan'.",
+    "desc_authed": "Selepas {oneClickBot} dan menerbitkan versi, ia akan berkesan (langganan acara dan alamat panggil balik masih perlu dikonfigurasikan secara manual seperti di bawah).",
+    "one_click_bot": "Buka kebenaran hantar dan terima dengan satu klik",
+    "desc_no_creds": "(Pautan buka kebenaran satu klik akan muncul selepas mengkonfigurasi kelayakan aplikasi di 'Penyambung Feishu' di atas)"
   },
   "feishuimport": {
     "need_creds": "Sila isikan kelayakan aplikasi Feishu (App ID dan App Secret) terlebih dahulu",
@@ -420,7 +444,15 @@
     "source_label": "Pautan wiki Feishu atau ID ruang",
     "import_failed": "Import gagal:",
     "importing": "Sedang mengimport (tunggu jika banyak dokumen)…",
-    "start": "Mula import"
+    "start": "Mula import",
+    "setup_step1": "Di {platform}, cipta aplikasi binaan sendiri perusahaan, dapatkan App ID dan App Secret, dan isi di bawah",
+    "setup_step2": "Aplikasi 'Pengurusan Kebenaran' {allReadonly} (kebenaran identiti aplikasi perlu disemak oleh pentadbir, buka semua sekali untuk elakkan kelulusan berulang): wiki / docx / drive / docs / sheets / bitable / board tujuh item baca sahaja, dan {publish} (hanya menandakan tanpa menerbitkan tidak berkesan; senarai penuh lihat di Tetapan → Penyambung)",
+    "setup_step3": "Buka pangkalan pengetahuan sasaran → Tetapan → Ahli → {addMember} (hanya kebenaran tanpa dimasukkan ke dalam pangkalan tidak boleh membaca kandungan)",
+    "configured_note": "Gunakan aplikasi Feishu yang telah dikonfigurasi: {appId} (Tetapan → Penyambung boleh ditukar; jika ralat kebenaran, boleh {oneClickPerm} kemudian terbitkan versi)",
+    "one_click_perm": "Buka kebenaran dengan satu klik",
+    "troubleshoot": "Punca biasa: ① Aplikasi perlu membuka semua kebenaran baca sahaja dan {publish} untuk berkesan (senarai kebenaran dan buka satu klik lihat di atas atau Tetapan → Penyambung); ② Aplikasi mesti {addKbMember} (tetapan pangkalan pengetahuan → Ahli → Tambah aplikasi), hanya kebenaran tanpa dimasukkan ke dalam pangkalan juga tidak boleh membaca; ③ Pautan mestilah alamat halaman wiki (mengandungi /wiki/), pautan dokumen awan /docx/ tidak disokong untuk import terus buat masa ini.",
+    "publish_short": "Terbitkan versi",
+    "add_kb_member": "Tambah sebagai ahli pangkalan pengetahuan ini"
   },
   "sharedlg": {
     "created": "Pautan perkongsian telah dibuat",

@@ -4,7 +4,7 @@
 // （verification token 必填 / encrypt key 可选，均只写不回显）+ 绑定
 // 知识库 + 回答模型（对标 FastGPT：模型在管理侧绑定，群成员无感）。
 import { computed, onMounted, ref } from "vue";
-import { useI18n } from "vue-i18n";
+import { useI18n, I18nT } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { Copy } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
@@ -112,23 +112,23 @@ async function copyUrl() {
         {{ status?.configured ? t("smtp.configured") : t("smtp.not_configured") }}
       </Badge>
     </div>
-    <!-- 说明段含 code/一键授权动态链接/条件模板，i18n 成本高，保持中文（技术性 admin 引导） -->
+    <!-- 说明段含 code/一键授权动态链接/条件模板：用 <I18nT> 具名 slot 把 3 个
+    权限码（im:message 等，英文 API 标识不译）与授权链接放槽，文案主体进 key。 -->
     <p class="mb-3 text-xs text-[var(--text-3)]">
-      在飞书群里 @机器人（或单聊）提问，自动用所选知识库检索并卡片回复（含引用来源）。
-      使用上方同一个自建应用：需开启「机器人」能力、开通
-      <code class="rounded bg-black/5 px-1">im:message</code> 与
-      <code class="rounded bg-black/5 px-1">im:message:send_as_bot</code> 权限，
-      事件订阅添加 <code class="rounded bg-black/5 px-1">im.message.receive_v1</code>
-      并把下方回调地址填入「请求地址」。
-      <template v-if="authUrl">
-        <a
-          :href="authUrl" target="_blank" rel="noopener"
-          class="text-[var(--accent-text)] underline"
-        >一键开通收发权限</a>后发布版本即生效（事件订阅与回调地址仍需按下方手动配置）。
-      </template>
-      <template v-else>
-        （一键开通权限链接需先在上方「飞书连接器」配置应用凭据后出现）
-      </template>
+      <I18nT keypath="feishubot.desc_intro" tag="span" scope="global">
+        <template #scopeMsg><code class="rounded bg-black/5 px-1">im:message</code></template>
+        <template #scopeSend><code class="rounded bg-black/5 px-1">im:message:send_as_bot</code></template>
+        <template #eventKey><code class="rounded bg-black/5 px-1">im.message.receive_v1</code></template>
+      </I18nT>
+      <I18nT v-if="authUrl" keypath="feishubot.desc_authed" tag="span" scope="global">
+        <template #oneClickBot>
+          <a
+            :href="authUrl" target="_blank" rel="noopener"
+            class="text-[var(--accent-text)] underline"
+          >{{ t("feishubot.one_click_bot") }}</a>
+        </template>
+      </I18nT>
+      <template v-else>{{ t("feishubot.desc_no_creds") }}</template>
     </p>
 
     <div class="mb-3 flex items-center gap-1.5">

@@ -15,12 +15,13 @@ from fastapi.responses import RedirectResponse
 
 from kbase import email_templates, mailer
 from kbase.api.routes import RouteDeps
-from kbase.api.schemas import (ChangePasswordBody, ForgotBody, LoginBody,
-                               ProfileBody, ResetPasswordBody)
+from kbase.api.schemas import (ChangePasswordBody, ForgotBody, LanguageBody,
+                               LoginBody, ProfileBody, ResetPasswordBody)
 from kbase.api.services import Services
 from kbase.audit import write_audit
 from kbase.auth import oidc, security
 from kbase.errors import AppError
+from kbase.i18n_store import SUPPORTED_LANGUAGES
 from kbase.models import AppSetting, User
 
 logger = logging.getLogger(__name__)
@@ -209,12 +210,15 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps, *,
         with sf() as s:
             user = s.query(User).filter_by(username=actor["name"]).first()
             email = user.email if user else None
+            # 账号级语言偏好（P2-4）：前端登录后据此覆盖本地检测。未设置
+            # （None）或 API Key 身份 → null，前端跟随 localStorage/浏览器。
+            language = user.language if user else None
             # 高级界面：editor/admin 恒开；viewer 看个人开关（管理员在用户
             # 管理里配置）。API Key 身份无用户行，按角色默认。
             advanced = (actor["role"] in ("admin", "editor")
                         or bool(user.advanced_ui if user else False))
         return {"username": actor["name"], "role": actor["role"],
-                "email": email, "advanced_ui": advanced}
+                "email": email, "advanced_ui": advanced, "language": language}
 
     @router.put("/auth/profile",
                 dependencies=[deps.require_viewer, deps.audit_mutation])
@@ -226,6 +230,24 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps, *,
             if user is None:
                 raise AppError("error.no_profile", "当前身份不支持维护资料", status=403)
             user.email = body.email.strip()
+            s.commit()
+        return {"ok": True}
+
+    @router.put("/auth/language", dependencies=[deps.require_viewer])
+    def update_language(body: LanguageBody, request: Request):
+        """账号级界面语言偏好（P2-4）：登录用户手动切语言时回写本列，实现跨
+        设备一致母语。白名单校验挡非法码；API Key 身份无用户行（403）。不挂
+        审计——纯个人 UI 偏好，高频写入不进审计流。"""
+        lang = body.language.strip()
+        if lang not in SUPPORTED_LANGUAGES:
+            raise AppError("error.unsupported_language", "不支持的语言：{lang}",
+                           status=422, lang=lang)
+        actor = request.state.actor
+        with sf() as s:
+            user = s.query(User).filter_by(username=actor["name"]).first()
+            if user is None:
+                raise AppError("error.no_profile", "当前身份不支持维护资料", status=403)
+            user.language = lang
             s.commit()
         return {"ok": True}
 
