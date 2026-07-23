@@ -6,6 +6,7 @@ import { onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { Copy, Trash2 } from "@lucide/vue";
+import { copyToClipboard } from "@/lib/clipboard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -74,8 +75,10 @@ function embedSnippet(link: ShareLinkItem): string {
 }
 
 async function copy(text: string, label: string) {
-  await navigator.clipboard.writeText(text);
-  toast.success(t("sharedlg.copied", { label }));
+  // 走兼容工具：http 演示机（非安全上下文）拿不到 navigator.clipboard，
+  // 直接调用会静默失败（真机踩过），copyToClipboard 内含 execCommand 回退。
+  if (await copyToClipboard(text)) toast.success(t("sharedlg.copied", { label }));
+  else toast.error(t("msg.copy_failed"));
 }
 
 async function revoke(link: ShareLinkItem) {

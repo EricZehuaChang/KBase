@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { citedIndexSet, inlineMarkdownHtml, renderWithChips } from "@/lib/chat-utils";
+import { copyToClipboard } from "@/lib/clipboard";
 import type { ChatMessage } from "@/composables/useChat";
 import type { Citation } from "@/lib/api";
 
@@ -85,25 +86,9 @@ function lastQuestionFor(index: number): string {
 }
 
 async function copyMessage(content: string) {
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(content);
-    } else {
-      // 回退路径：非安全上下文（如局域网 http 部署）拿不到 navigator.clipboard，
-      // execCommand 虽已废弃但兼容性仍覆盖这类场景，作为兜底而不是唯一实现。
-      const ta = document.createElement("textarea");
-      ta.value = content;
-      ta.style.position = "fixed";
-      ta.style.opacity = "0";
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand("copy");
-      document.body.removeChild(ta);
-    }
-    toast.success(t("msg.copied"));
-  } catch {
-    toast.error(t("msg.copy_failed"));
-  }
+  // 剪贴板兼容逻辑抽到 @/lib/clipboard（含 http 非安全上下文 execCommand 回退）
+  if (await copyToClipboard(content)) toast.success(t("msg.copied"));
+  else toast.error(t("msg.copy_failed"));
 }
 
 function reask(index: number) {

@@ -7,6 +7,7 @@ import { computed, onMounted, ref } from "vue";
 import { useI18n, I18nT } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { Copy } from "@lucide/vue";
+import { copyToClipboard } from "@/lib/clipboard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -95,8 +96,9 @@ async function save() {
 }
 
 async function copyUrl() {
-  await navigator.clipboard.writeText(eventsUrl);
-  toast.success(t("feishubot.url_copied"));
+  // 兼容工具含 http 非安全上下文回退（execCommand）
+  if (await copyToClipboard(eventsUrl)) toast.success(t("feishubot.url_copied"));
+  else toast.error(t("msg.copy_failed"));
 }
 </script>
 
