@@ -93,6 +93,16 @@ llm:
       api_key_env: OPENAI_API_KEY
       model: gpt-5.4
       max_concurrency: 4
+    - name: kimi-k3               # 月之暗面 Kimi·K3（推理档；密钥走 MOONSHOT_API_KEY）
+      # 与其他厂商相反：k3 是推理模型，此处用 reasoning_effort 主动开高推理力度
+      # （实测 Moonshot 接受该 body 参数）；不需要"关思考"。
+      base_url: https://api.moonshot.cn/v1
+      api_key_env: MOONSHOT_API_KEY
+      model: kimi-k3
+      max_concurrency: 4
+      params:
+        extra_body:
+          reasoning_effort: high
 # OCR：扫描件/图片摄取时转 Markdown。两种后端：
 # - glm-ocr（默认推荐）：智谱云 layout_parsing（kbase/plugins/ocr/glm_http.py），
 #   密钥走 ZHIPU_API_KEY 环境变量（api_key_env 可改名）；endpoint 留空用官方云，

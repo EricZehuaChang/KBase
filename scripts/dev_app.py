@@ -43,6 +43,13 @@ llm:
       base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
       api_key_env: DASHSCOPE_API_KEY
       model: qwen-plus
+    - name: kimi-k3
+      base_url: https://api.moonshot.cn/v1
+      api_key_env: MOONSHOT_API_KEY
+      model: kimi-k3
+      params:
+        extra_body:
+          reasoning_effort: high
 """
 
 
@@ -71,8 +78,27 @@ def _load_dotenv(path: Path) -> None:
         os.environ.setdefault(k.strip(), v.strip())
 
 
+def _load_secrets_yaml() -> None:
+    """本地开发便利：若存在集中密钥库（默认 D:/Claude Code/env/secrets.yaml，
+    可用环境变量 KBASE_SECRETS_DIR 覆盖路径），经 load_keys 注入环境变量——
+    secrets.yaml 单一来源，改 yaml 即可，无需再往仓库 .env 复制一份（如
+    MOONSHOT_API_KEY）。找不到就静默跳过：生产走 compose/.env、他机无此路径，
+    dev_app 本就不用于生产，故 best-effort 不报错。"""
+    import os
+    import sys as _sys
+    env_dir = os.environ.get("KBASE_SECRETS_DIR", r"D:/Claude Code/env")
+    try:
+        if env_dir not in _sys.path:
+            _sys.path.insert(0, env_dir)
+        from load_keys import load_keys
+        load_keys()
+    except Exception:
+        pass  # 无集中密钥库 → 回落到仓库 .env
+
+
 def create_dev_app():
-    _load_dotenv(REPO / ".env")
+    _load_secrets_yaml()          # 先从集中密钥库注入（secrets.yaml，若有）
+    _load_dotenv(REPO / ".env")   # 仓库 .env 兜底/补缺（setdefault 不覆盖已注入的）
     cfg_dir = REPO / "data" / "dev"
     cfg_dir.mkdir(parents=True, exist_ok=True)
     cfg_path = cfg_dir / "kbase.dev.yaml"

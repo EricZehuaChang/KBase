@@ -63,7 +63,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     models: ["gpt-5.4-mini", "gpt-5.4"], api_key_env: "OPENAI_API_KEY" },
   { key: "moonshot", label: "月之暗面 Kimi",
     base_url: "https://api.moonshot.cn/v1",
-    models: ["kimi-k2.6"], api_key_env: "MOONSHOT_API_KEY" },
+    models: ["kimi-k3", "kimi-k2.7-code", "kimi-k2.6"], api_key_env: "MOONSHOT_API_KEY" },
   { key: "siliconflow", label: "硅基流动 SiliconFlow",
     base_url: "https://api.siliconflow.cn/v1",
     models: ["ZHIPU/GLM-5", "deepseek-ai/DeepSeek-V3"], api_key_env: "SILICONFLOW_API_KEY" },
