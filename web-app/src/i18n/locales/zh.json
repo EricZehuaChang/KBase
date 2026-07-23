@@ -46,6 +46,7 @@
     "account_disabled": "账号已被禁用",
     "no_profile": "当前身份不支持维护资料",
     "no_change_pw": "当前身份不支持修改密码（API Key 无账号密码）",
+    "unsupported_language": "不支持的语言：{lang}",
     "feishu_creds_missing": "未配置飞书应用凭据（app_id/app_secret）",
     "feishu_creds_missing_short": "未配置飞书凭据",
     "connector_syncing": "该连接器正在同步中",
@@ -352,7 +353,26 @@
     "secret_ph": "App Secret（只写入，不回显）",
     "update_creds": "更新凭据",
     "config_creds": "配置凭据",
-    "clear": "清除"
+    "clear": "清除",
+    "setup": {
+      "step1": "前往{platform}创建企业自建应用，取得 App ID / App Secret",
+      "platform_name": "飞书开放平台",
+      "perm_intro": "权限管理{allReadonly}{oneClick}：",
+      "perm_all_readonly": "一次性开通全部只读权限",
+      "one_click": "（一键开通）",
+      "perm_wiki": "{code}（知识库树）",
+      "perm_docx": "{code}（文档正文）",
+      "perm_drive": "{code}（文档内图片）",
+      "perm_docs": "{code}（旧版文档）",
+      "perm_sheets": "{code}（电子表格）",
+      "perm_bitable": "{code}（多维表格）",
+      "perm_board": "{code}（画板导出成图，架构图常用）",
+      "perm_note": "应用身份权限需管理员审核，{review}；开通后{publish}——只勾选不发布不生效",
+      "perm_review": "建议一次开全避免反复审批",
+      "perm_publish": "创建版本发布",
+      "step3": "目标知识库 → 设置 → 成员 → {addMember}——仅有权限未入库读不到内容",
+      "add_member": "添加该应用为成员"
+    }
   },
   "connector": {
     "int_manual": "仅手动同步",
@@ -405,7 +425,11 @@
     "encrypt_label": "Encrypt Key（可选）",
     "encrypt_label_keep": "Encrypt Key（可选，留空=保留当前）",
     "encrypt_ph": "启用了事件加密才需要",
-    "answer_kb": "回答依据的知识库"
+    "answer_kb": "回答依据的知识库",
+    "desc_intro": "在飞书群里 {'@'}机器人（或单聊）提问，自动用所选知识库检索并卡片回复（含引用来源）。使用上方同一个自建应用：需开启「机器人」能力、开通{scopeMsg}与{scopeSend}权限，事件订阅添加{eventKey}并把下方回调地址填入「请求地址」。",
+    "desc_authed": "{oneClickBot}后发布版本即生效（事件订阅与回调地址仍需按下方手动配置）。",
+    "one_click_bot": "一键开通收发权限",
+    "desc_no_creds": "（一键开通权限链接需先在上方「飞书连接器」配置应用凭据后出现）"
   },
   "feishuimport": {
     "need_creds": "请先填写飞书应用凭据（App ID 与 App Secret）",
@@ -420,7 +444,15 @@
     "source_label": "飞书 wiki 链接或空间 ID",
     "import_failed": "导入失败：",
     "importing": "导入中（文档多时需等待）…",
-    "start": "开始导入"
+    "start": "开始导入",
+    "setup_step1": "在{platform}创建企业自建应用，取得 App ID 与 App Secret 填入下方",
+    "setup_step2": "应用「权限管理」{allReadonly}（应用身份权限需管理员审核，一次开全避免反复审批）：wiki / docx / drive / docs / sheets / bitable / board 七项只读，并{publish}（只勾选不发布不生效；完整清单见 设置 → 连接器）",
+    "setup_step3": "打开目标知识库 → 设置 → 成员 → {addMember}（仅有权限而未入库读不到内容）",
+    "configured_note": "使用已配置的飞书应用：{appId}（设置 → 连接器 可更换；若报权限错误可{oneClickPerm}后发布版本）",
+    "one_click_perm": "一键开通权限",
+    "troubleshoot": "常见原因排查：① 应用需开通全部只读权限并{publish}后才生效（权限清单与一键开通见上方或 设置 → 连接器）；② 应用必须被{addKbMember}（知识库设置 → 成员 → 添加应用），仅有权限而未入库同样读不到；③ 链接需是 wiki 页面地址（含 /wiki/），云文档 /docx/ 链接暂不支持直导",
+    "publish_short": "发布版本",
+    "add_kb_member": "添加为该知识库的成员"
   },
   "sharedlg": {
     "created": "分享链接已创建",

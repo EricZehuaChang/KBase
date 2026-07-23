@@ -18,6 +18,7 @@ import ChangePasswordDialog from "@/components/ChangePasswordDialog.vue";
 import EmailPromptDialog from "@/components/EmailPromptDialog.vue";
 import LanguagePicker from "@/components/LanguagePicker.vue";
 import { getSession, logout, type Me } from "@/lib/api";
+import { setLanguage } from "@/i18n";
 import { roleBadgeClass, canManageContent } from "@/lib/auth-utils";
 import { theme, toggleTheme } from "@/lib/theme";
 import { kbs, kbId, providers, provider, extraKbIds, ensureTopbarLoaded } from "./topbar-state";
@@ -55,6 +56,10 @@ watch(() => (route.matched.length ? route.path : null), (path) => {
   if (path === null || path === "/login" || path.startsWith("/share/")) return;
   getSession().then((session) => {
     me.value = session;
+    // P2-4 账号级语言偏好：账号设过就切过去（覆盖启动时的本地检测），实现
+    // 跨设备一致母语。persistAccount:false——这是"读账号→应用"，不是用户手动
+    // 切换，别把刚读到的偏好又原样回写。未设置（null）则维持本地检测结果。
+    if (session?.language) void setLanguage(session.language, { persistAccount: false });
     // 首登邮箱引导：没绑邮箱就提醒补（忘记密码重置的唯一通道）。
     // "稍后再说"记 sessionStorage，本次浏览器会话内不再弹。
     if (session && session.email === null

@@ -5,6 +5,12 @@ from datetime import datetime
 
 from kbase.models import Translation
 
+# 后端认可的界面语言码。前端 web-app/src/i18n/languages.ts 是"加语言的唯一
+# 改动点"（真正的源），两端各自独立运行故此处必须留一份副本；账号级语言
+# 偏好写库前用它挡住非法码（覆盖表 key 不受此限，见 set_override）。加新语言
+# 时同步这里与前端清单。
+SUPPORTED_LANGUAGES: frozenset[str] = frozenset({"zh", "en", "ms"})
+
 
 def get_overrides(sf, lang: str) -> dict[str, str]:
     """某语言的全部覆盖 {key: value}——喂 GET /api/i18n/{lang},前端合并

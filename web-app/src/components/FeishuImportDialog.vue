@@ -3,8 +3,8 @@
 // 或 space_id（导整个空间）。打开时探测凭据状态——未配置就在对话框内
 // 就地输入 app_id/app_secret（先存到设置再导入），不逼用户跳去设置页；
 // 已配置则只显示当前 App ID，一步直达导入。
-import { ref, watch } from "vue";
-import { useI18n } from "vue-i18n";
+import { computed, ref, watch } from "vue";
+import { useI18n, I18nT } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,6 +26,15 @@ const appSecret = ref("");
 const importing = ref(false);
 // 错误常驻对话框内（生产反馈：toast 一闪而过，用户只看到"没反应"）
 const error = ref<string | null>(null);
+
+// 已配置态下"一键开通权限"深链（带 status.app_id）；未配置无 app_id 不渲染。
+const oneClickAuthUrl = computed(() =>
+  status.value?.configured
+    ? `https://open.feishu.cn/app/${status.value.app_id}/auth`
+      + "?q=wiki:wiki:readonly,docx:document:readonly,drive:drive:readonly,"
+      + "docs:doc:readonly,sheets:spreadsheet:readonly,bitable:app:readonly,"
+      + "board:whiteboard:node:read&op_from=openapi&token_type=tenant"
+    : null);
 
 watch(() => props.open, async (isOpen) => {
   if (!isOpen) return;
@@ -87,8 +96,9 @@ async function doImport() {
       </DialogHeader>
 
       <div class="flex flex-col gap-3">
-        <!-- 凭据区：未配置就地输入 + 完整三步指引；已配置收成一行。
-        含链接/bold/动态 href 的三步指引与已配置说明保持中文（技术性 admin 引导）。 -->
+        <!-- 凭据区：未配置就地输入 + 完整三步指引；已配置收成一行。三步指引
+        与已配置说明的动态 href/bold 用 <I18nT> 具名 slot，文案主体进 i18n key
+        （bold 片段与「飞书开放平台」等复用 feishu.setup.* 共享键）。 -->
         <div
           v-if="status && !status.configured"
           class="flex flex-col gap-2 rounded-[var(--radius-ctl)] border border-[var(--warn)] bg-[var(--warn-weak)] p-3"
@@ -96,27 +106,38 @@ async function doImport() {
           <p class="text-xs font-medium text-[var(--warn)]">{{ t("feishuimport.setup_title") }}</p>
           <ol class="list-decimal pl-4 text-xs leading-relaxed text-[var(--text-2)]">
             <li>
-              在<a href="https://open.feishu.cn/app" target="_blank" rel="noopener" class="text-[var(--accent-text)] underline">飞书开放平台</a>创建企业自建应用，取得 App ID 与 App Secret 填入下方
+              <I18nT keypath="feishuimport.setup_step1" tag="span" scope="global">
+                <template #platform>
+                  <a href="https://open.feishu.cn/app" target="_blank" rel="noopener" class="text-[var(--accent-text)] underline">{{ t("feishu.setup.platform_name") }}</a>
+                </template>
+              </I18nT>
             </li>
             <li>
-              应用「权限管理」<b>一次性开通全部只读权限</b>（应用身份权限需
-              管理员审核，一次开全避免反复审批）：wiki / docx / drive /
-              docs / sheets / bitable / board 七项只读，并<b>创建版本发布</b>
-              （只勾选不发布不生效；完整清单见 设置 → 连接器）
+              <I18nT keypath="feishuimport.setup_step2" tag="span" scope="global">
+                <template #allReadonly><b>{{ t("feishu.setup.perm_all_readonly") }}</b></template>
+                <template #publish><b>{{ t("feishu.setup.perm_publish") }}</b></template>
+              </I18nT>
             </li>
             <li>
-              打开目标知识库 → 设置 → 成员 → <b>把该应用添加为成员</b>（仅有权限而未入库读不到内容）
+              <I18nT keypath="feishuimport.setup_step3" tag="span" scope="global">
+                <template #addMember><b>{{ t("feishu.setup.add_member") }}</b></template>
+              </I18nT>
             </li>
           </ol>
           <Input v-model="appId" :placeholder="t('feishu.appid_ph')" />
           <Input v-model="appSecret" type="password" :placeholder="t('feishuimport.secret_ph')" />
         </div>
         <p v-else-if="status?.configured" class="text-xs text-[var(--text-3)]">
-          使用已配置的飞书应用：{{ status.app_id }}（设置 → 连接器 可更换；若报权限错误可
-          <a
-            :href="`https://open.feishu.cn/app/${status.app_id}/auth?q=wiki:wiki:readonly,docx:document:readonly,drive:drive:readonly,docs:doc:readonly,sheets:spreadsheet:readonly,bitable:app:readonly,board:whiteboard:node:read&op_from=openapi&token_type=tenant`"
-            target="_blank" rel="noopener" class="text-[var(--accent-text)] underline"
-          >一键开通权限</a>后发布版本）
+          <I18nT keypath="feishuimport.configured_note" tag="span" scope="global">
+            <template #appId><b>{{ status.app_id }}</b></template>
+            <template #oneClickPerm>
+              <a
+                v-if="oneClickAuthUrl"
+                :href="oneClickAuthUrl"
+                target="_blank" rel="noopener" class="text-[var(--accent-text)] underline"
+              >{{ t("feishuimport.one_click_perm") }}</a>
+            </template>
+          </I18nT>
         </p>
 
         <Input
@@ -132,13 +153,10 @@ async function doImport() {
           class="rounded-[var(--radius-ctl)] border border-[var(--err)] bg-[var(--err-weak)] p-3 text-xs"
         >
           <p class="font-medium text-[var(--err)]">{{ t("feishuimport.import_failed") }}{{ error }}</p>
-          <p class="mt-1.5 text-[var(--text-2)]">
-            常见原因排查：① 应用需开通全部只读权限并<b>发布版本</b>后才生效
-            （权限清单与一键开通见上方或 设置 → 连接器）；② 应用必须被
-            <b>添加为该知识库的成员</b>（知识库设置 → 成员 → 添加应用），
-            仅有权限而未入库同样读不到；③ 链接需是 wiki 页面地址（含
-            /wiki/），云文档 /docx/ 链接暂不支持直导
-          </p>
+          <I18nT keypath="feishuimport.troubleshoot" tag="p" scope="global" class="mt-1.5 text-[var(--text-2)]">
+            <template #publish><b>{{ t("feishuimport.publish_short") }}</b></template>
+            <template #addKbMember><b>{{ t("feishuimport.add_kb_member") }}</b></template>
+          </I18nT>
         </div>
       </div>
 

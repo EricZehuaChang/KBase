@@ -45,6 +45,9 @@ _COLUMN_MIGRATIONS = [
     ("users", "email", "TEXT"),
     # 高级界面开关（viewer 顶栏模型选择/联查菜单可见性），默认关=简化界面
     ("users", "advanced_ui", "INTEGER DEFAULT 0"),
+    # P2-4 账号级语言偏好（zh|en|ms）。老库补列为 NULL=未设置，前端跟随
+    # localStorage/浏览器检测，行为与升级前一致。
+    ("users", "language", "TEXT"),
 ]
 
 _FTS_DDL = (

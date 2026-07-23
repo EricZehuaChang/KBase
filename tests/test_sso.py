@@ -62,7 +62,7 @@ def test_sso_full_flow_auto_creates_user(tmp_path, fake_embedder, monkeypatch):
     # 3) 会话生效，身份为自动建的 viewer
     me = c.get("/api/auth/me").json()
     assert me == {"username": "zhang.san", "role": "viewer", "email": None,
-                  "advanced_ui": False}
+                  "advanced_ui": False, "language": None}
 
     # 4) 再次登录复用同一账号（不重复建号）
     admin = TestClient(app)

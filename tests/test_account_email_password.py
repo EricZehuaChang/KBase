@@ -84,6 +84,30 @@ def test_profile_email_self_service(app_on):
     assert user.get("/api/auth/me").json()["email"] == "wang.wu@corp.example"
 
 
+def test_account_language_preference(app_on):
+    """账号级语言偏好（P2-4）：me 暴露 language（默认 None）；PUT /api/auth/
+    language 自助设置并跨会话保持；非法码 422 且不落库。"""
+    admin = _login(app_on, "admin", "admin-pw")
+    admin.post("/api/users", json={"username": "lang.user", "role": "viewer",
+                                   "password": "pw123456"})
+    user = _login(app_on, "lang.user", "pw123456")
+    # 未设置 → null，前端跟随本地检测
+    assert user.get("/api/auth/me").json()["language"] is None
+
+    # 设为英文 → me 反映，且新会话（跨设备）同样读到
+    r = user.put("/api/auth/language", json={"language": "en"})
+    assert r.status_code == 200 and r.json()["ok"] is True
+    assert user.get("/api/auth/me").json()["language"] == "en"
+    assert _login(app_on, "lang.user", "pw123456").get(
+        "/api/auth/me").json()["language"] == "en"
+
+    # 非法语言码 → 422，且已存的 en 不被污染
+    bad = user.put("/api/auth/language", json={"language": "fr"})
+    assert bad.status_code == 422
+    assert bad.json()["detail"]["code"] == "error.unsupported_language"
+    assert user.get("/api/auth/me").json()["language"] == "en"
+
+
 def test_forgot_reset_flow(app_on, monkeypatch):
     """忘记密码全流程：发信拿 token → 重置 → 新密码生效/旧失效 →
     token 一次性；未知账号防枚举（同样 200，不发信）。"""

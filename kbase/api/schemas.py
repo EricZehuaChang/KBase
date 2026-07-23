@@ -330,6 +330,12 @@ class ProfileBody(BaseModel):
     email: str = Field(min_length=3)
 
 
+class LanguageBody(BaseModel):
+    """账号级界面语言偏好（P2-4）。code 为 BCP-47 简码（zh|en|ms），后端按
+    SUPPORTED_LANGUAGES 白名单校验；与 email 独立成端点，语言切换不牵动邮箱。"""
+    language: str = Field(min_length=2, max_length=10)
+
+
 class ShareLinkCreate(BaseModel):
     """建免登录分享链接：name 备注用；provider 绑定回答模型（None=系统默认，
     对标 Dify/FastGPT——模型在建链接侧配置，终端用户无感）。"""
