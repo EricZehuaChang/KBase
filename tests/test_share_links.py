@@ -119,6 +119,74 @@ def test_share_image_public_access(app_on, tmp_path):
     ).status_code == 404
 
 
+def _stream_citations(anon, token, question):
+    """跑一次匿名问答，返回 (事件名列表, citations)。"""
+    events, citations = [], []
+    with anon.stream("POST", f"/api/share/{token}/query",
+                     json={"question": question}) as resp:
+        assert resp.status_code == 200, resp.read()
+        event = ""
+        for line in resp.iter_lines():
+            if line.startswith("event:"):
+                event = line[6:].strip()
+                events.append(event)
+            elif line.startswith("data:") and event == "citations" and not citations:
+                citations = json.loads(line[5:].strip())
+    return events, citations
+
+
+def test_share_link_multi_kb(app_on, tmp_path):
+    """多库联查分享：建链接绑多库（副库校验存在）→ meta 报全量库名 →
+    匿名问答跨库命中副库文档 → 副库附图可出 → 删副库=缩范围不死链。"""
+    admin = _login(app_on)
+    kb1 = _prepare_kb_with_doc(admin)                      # 报销.md
+    kb2 = admin.post("/api/kb", json={"name": "差旅库"}).json()["id"]
+    r = admin.post(f"/api/kb/{kb2}/documents",
+                   files=[("files", ("差旅.md",
+                                     "# 差旅规定\n机票需提前三天预订。".encode(),
+                                     "text/markdown"))])
+    assert r.status_code == 200, r.text
+
+    # 副库不存在 → 建链接即 404（不留脏引用）
+    assert admin.post(f"/api/kb/{kb1}/share-links",
+                      json={"name": "x", "extra_kb_ids": ["no-such-kb"]}
+                      ).status_code == 404
+
+    link = admin.post(f"/api/kb/{kb1}/share-links",
+                      json={"name": "联查分享", "extra_kb_ids": [kb2]}).json()
+    assert link["kb_ids"] == [kb1, kb2]
+    # 管理列表带 kb_names（显示联查范围）
+    rows = admin.get(f"/api/kb/{kb1}/share-links").json()
+    assert rows[0]["kb_names"] == ["分享库", "差旅库"]
+
+    anon = TestClient(app_on)
+    meta = anon.get(f"/api/share/{link['token']}").json()
+    assert meta["kb_name"] == "分享库"                     # 主库名（向后兼容）
+    assert meta["kb_names"] == ["分享库", "差旅库"]
+
+    # 跨库检索：副库文档命中（问差旅问题，答案引用应含 差旅.md）
+    events, citations = _stream_citations(anon, link["token"], "机票需要提前几天预订")
+    assert "citations" in events and "done" in events
+    assert any("差旅" in c["doc_name"] for c in citations), citations
+
+    # 副库文档的附图免登录可出（回答可能引用副库文档）
+    doc2 = admin.get(f"/api/kb/{kb2}/documents").json()[0]["id"]
+    img_dir = tmp_path / "data" / "files" / doc2 / "images"
+    img_dir.mkdir(parents=True, exist_ok=True)
+    (img_dir / "t.png").write_bytes(b"\x89PNG-kb2")
+    assert anon.get(
+        f"/api/share/{link['token']}/images/{doc2}/t.png").status_code == 200
+
+    # 删副库：链接不死（主库还在），范围静默缩为单库；已删库附图 404
+    assert admin.delete(f"/api/kb/{kb2}").status_code == 200
+    meta2 = anon.get(f"/api/share/{link['token']}").json()
+    assert meta2["kb_names"] == ["分享库"]
+    ev2, _ = _stream_citations(anon, link["token"], "住宿上限是多少")
+    assert "done" in ev2
+    assert anon.get(
+        f"/api/share/{link['token']}/images/{doc2}/t.png").status_code == 404
+
+
 def test_advanced_ui_switch(app_on):
     """viewer 高级界面开关：默认关；admin 可开；me 按角色/开关给出单一判断源。"""
     admin = _login(app_on)

@@ -26,7 +26,11 @@ const busy = ref(false);
 
 onMounted(async () => {
   try {
-    kbName.value = (await getShareMeta(token)).kb_name;
+    const meta = await getShareMeta(token);
+    // 多库联查链接：头部/空态显示全部库名（访客知道自己在问什么范围）；
+    // 单库时 kb_names 长度 1，展示与旧版一致
+    kbName.value = meta.kb_names?.length
+      ? meta.kb_names.join(" · ") : meta.kb_name;
   } catch {
     invalid.value = true;    // 链接不存在或已撤销：整页替换为失效提示
   }

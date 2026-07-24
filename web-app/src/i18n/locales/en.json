@@ -469,7 +469,9 @@
     "model_prefix": "Model:",
     "revoke": "Revoke (immediately invalid)",
     "link": "Link",
-    "embed": "Embed code"
+    "embed": "Embed code",
+    "joint_pick": "Joint search additional libraries (optional; when checked, visitor queries will also search across)",
+    "joint_badge": "Joint search {n} libraries"
   },
   "chunk": {
     "enabled_toast": "Enabled (rejoin retrieval)",

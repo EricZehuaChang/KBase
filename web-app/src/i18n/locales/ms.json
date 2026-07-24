@@ -469,7 +469,9 @@
     "model_prefix": "Model:",
     "revoke": "Batal (serta-merta tidak sah)",
     "link": "Pautan",
-    "embed": "Kod benam"
+    "embed": "Kod benam",
+    "joint_pick": "Carian bersama lebih banyak pangkalan (pilihan, tandakan untuk carian serentak)",
+    "joint_badge": "Carian bersama {n} pangkalan"
   },
   "chunk": {
     "enabled_toast": "Diaktifkan (disertakan semula dalam carian)",

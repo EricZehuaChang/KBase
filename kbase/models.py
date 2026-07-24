@@ -154,6 +154,11 @@ class ShareLink(Base):
     __tablename__ = "share_links"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     kb_id: Mapped[str] = mapped_column(String(36), index=True)
+    # 多库联查分享（复用 M6-2 retrieve_multi）：JSON 数组存全部检索库（首项
+    # 即 kb_id 主库），NULL=单库（既有行为不变）。kb_id 保留为主库——链接
+    # 归属/管理列表入口/失效判定仍以主库为准（主库删=链接死，与单库语义
+    # 一致；联查副库删=静默缩小检索范围，链接不死）。
+    kb_ids: Mapped[str | None] = mapped_column(Text, nullable=True)
     token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(200), default="")
     provider: Mapped[str | None] = mapped_column(String(100), nullable=True)

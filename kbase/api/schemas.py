@@ -338,9 +338,11 @@ class LanguageBody(BaseModel):
 
 class ShareLinkCreate(BaseModel):
     """建免登录分享链接：name 备注用；provider 绑定回答模型（None=系统默认，
-    对标 Dify/FastGPT——模型在建链接侧配置，终端用户无感）。"""
+    对标 Dify/FastGPT——模型在建链接侧配置，终端用户无感）；extra_kb_ids
+    为联查副库（与路径主库合并去重，匿名问答跨全部库散射检索，M6-2 复用）。"""
     name: str = ""
     provider: str | None = None
+    extra_kb_ids: list[str] = []
 
 
 class ForgotBody(BaseModel):
