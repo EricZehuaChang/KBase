@@ -6,6 +6,7 @@
 // 图标很突兀，且不认识当前界面语言的访客未必想到点它。平铺各语言的母语
 // 自称文字（中文 · English · Bahasa Melayu），马来/英文客户第一眼就能看到
 // 自己的语言名直接点。
+import { computed } from "vue";
 import { Check, Languages } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -15,6 +16,11 @@ import { LANGUAGES } from "@/i18n/languages";
 defineProps<{ inline?: boolean }>();
 
 const { t, locale } = useI18n();
+
+// 顶栏触发钮带当前语言母语名（"文A 中文"/"文A English"）：光秃图标含义
+// 不自明（用户反馈突兀），带名字读作一个有标签的控件
+const currentName = computed(
+  () => LANGUAGES.find((l) => l.code === locale.value)?.name ?? "");
 </script>
 
 <template>
@@ -41,11 +47,12 @@ const { t, locale } = useI18n();
     <PopoverTrigger as-child>
       <button
         type="button"
-        class="rounded-[var(--radius-ctl)] p-2 text-[var(--text-2)] transition-colors hover:bg-[var(--surface-2)]"
+        class="flex items-center gap-1.5 rounded-[var(--radius-ctl)] px-2 py-1.5 text-[var(--text-2)] transition-colors hover:bg-[var(--surface-2)]"
         :title="t('lang.label')"
         :aria-label="t('lang.label')"
       >
         <Languages class="size-4" />
+        <span class="text-xs">{{ currentName }}</span>
       </button>
     </PopoverTrigger>
     <PopoverContent class="w-44 p-1" align="end">

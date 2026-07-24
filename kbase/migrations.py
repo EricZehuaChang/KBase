@@ -48,6 +48,8 @@ _COLUMN_MIGRATIONS = [
     # P2-4 账号级语言偏好（zh|en|ms）。老库补列为 NULL=未设置，前端跟随
     # localStorage/浏览器检测，行为与升级前一致。
     ("users", "language", "TEXT"),
+    # 多库联查分享：JSON 数组存全部检索库；老库补列 NULL=单库（既有行为）。
+    ("share_links", "kb_ids", "TEXT"),
 ]
 
 _FTS_DDL = (

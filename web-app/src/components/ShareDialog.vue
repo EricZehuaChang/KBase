@@ -16,8 +16,8 @@ import {
   Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  createShareLink, listShareLinks, revokeShareLink, listProviders,
-  type ShareLinkItem,
+  createShareLink, listShareLinks, revokeShareLink, listProviders, listKbs,
+  type ShareLinkItem, type Kb,
 } from "@/lib/api";
 
 const props = defineProps<{ kbId: string }>();
@@ -30,6 +30,10 @@ const name = ref("");
 // "__default__" 哨兵：Select 组件不接受空串 value，用哨兵表达"系统默认"
 const provider = ref("__default__");
 const busy = ref(false);
+// 多库联查（对标登录端 + 联查）：勾选的副库随建链接一并绑定，匿名问答
+// 跨全部库散射检索。清单排除当前主库自身。
+const otherKbs = ref<Kb[]>([]);
+const extraKbIds = ref<string[]>([]);
 
 async function refresh() {
   try {
@@ -45,8 +49,19 @@ onMounted(async () => {
   } catch {
     // provider 清单拉不到不阻塞建链接（用系统默认）
   }
+  try {
+    otherKbs.value = (await listKbs()).filter((kb) => kb.id !== props.kbId);
+  } catch {
+    // 库清单拉不到只是没有联查选项，单库建链接照常
+  }
 });
 watch(open, (v) => { if (v) refresh(); }, { immediate: true });
+
+function toggleExtra(id: string) {
+  extraKbIds.value = extraKbIds.value.includes(id)
+    ? extraKbIds.value.filter((x) => x !== id)
+    : [...extraKbIds.value, id];
+}
 
 async function create() {
   busy.value = true;
@@ -54,8 +69,10 @@ async function create() {
     await createShareLink(props.kbId, {
       name: name.value.trim(),
       provider: provider.value === "__default__" ? null : provider.value,
+      extra_kb_ids: extraKbIds.value,
     });
     name.value = "";
+    extraKbIds.value = [];
     toast.success(t("sharedlg.created"));
     await refresh();
   } catch (err) {
@@ -123,6 +140,26 @@ async function revoke(link: ShareLinkItem) {
         <Button :disabled="busy" @click="create">{{ t("common.create") }}</Button>
       </div>
 
+      <!-- 多库联查（可选）：勾选副库，匿名问答同时检索（对标登录端 + 联查） -->
+      <div v-if="otherKbs.length" class="flex flex-col gap-1.5">
+        <span class="text-sm text-[var(--text-2)]">{{ t("sharedlg.joint_pick") }}</span>
+        <div class="flex flex-wrap gap-x-4 gap-y-1.5">
+          <label
+            v-for="kb in otherKbs"
+            :key="kb.id"
+            class="flex cursor-pointer items-center gap-1.5 text-sm text-[var(--text-2)]"
+          >
+            <input
+              type="checkbox"
+              class="accent-[var(--accent)]"
+              :checked="extraKbIds.includes(kb.id)"
+              @change="toggleExtra(kb.id)"
+            />
+            <span class="truncate">{{ kb.name }}</span>
+          </label>
+        </div>
+      </div>
+
       <!-- 链接列表 -->
       <p v-if="!links.length" class="py-2 text-sm text-[var(--text-3)]">
         {{ t("sharedlg.empty") }}
@@ -138,6 +175,14 @@ async function revoke(link: ShareLinkItem) {
               {{ link.name || t("sharedlg.unnamed") }}
               <span class="ml-1 text-xs font-normal text-[var(--text-3)]">
                 {{ t("sharedlg.model_prefix") }}{{ link.provider || t("sharedlg.default_model") }}
+              </span>
+              <!-- 联查徽标：悬停可见完整库名清单 -->
+              <span
+                v-if="(link.kb_names?.length ?? 0) > 1"
+                class="ml-1 rounded bg-[var(--accent-weak)] px-1.5 py-0.5 text-xs font-normal text-[var(--accent-text)]"
+                :title="link.kb_names.join(' · ')"
+              >
+                {{ t("sharedlg.joint_badge", { n: link.kb_names.length }) }}
               </span>
             </span>
             <button

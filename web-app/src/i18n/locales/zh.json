@@ -469,7 +469,9 @@
     "model_prefix": "模型：",
     "revoke": "撤销（立即失效）",
     "link": "链接",
-    "embed": "嵌入代码"
+    "embed": "嵌入代码",
+    "joint_pick": "联查更多库（可选，勾选后访客提问将同时检索）",
+    "joint_badge": "联查 {n} 库"
   },
   "chunk": {
     "enabled_toast": "已启用（重新加入检索）",
