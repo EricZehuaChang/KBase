@@ -118,9 +118,11 @@ async function submitReset() {
 
 <template>
   <div class="relative flex h-screen w-full items-center justify-center bg-[var(--bg)] text-[var(--text)]">
-    <!-- 登录前也能切语言：马来/英文客户第一屏即可选母语（顶栏切换器要登录后才有） -->
-    <div class="absolute right-4 top-4">
-      <LanguagePicker />
+    <!-- 登录前也能切语言：马来/英文客户第一屏即可选母语（顶栏切换器要登录后
+    才有）。inline 文字行放页脚居中——比角落悬浮地球图标融入页面，且母语自称
+    （中文 · English · Bahasa Melayu）对不识中文的访客一眼可认。 -->
+    <div class="absolute inset-x-0 bottom-8 flex justify-center">
+      <LanguagePicker inline />
     </div>
     <!-- 登录 -->
     <form
