@@ -220,6 +220,7 @@ export interface UserCreateBody {
 }
 
 export interface UserUpdateBody {
+  username?: string;      // 改账号名（仅超管）：旧名会话失效须重新登录
   role?: string;
   disabled?: boolean;
   password?: string;
@@ -237,6 +238,12 @@ export function createUser(body: UserCreateBody): Promise<UserItem> {
 
 export function updateUser(id: string, body: UserUpdateBody): Promise<UserItem> {
   return req(`/api/users/${id}`, jsonInit(body, "PUT"));
+}
+
+/** 删除账号（仅超管）：连带清理其私有数据（会话/消息/反馈/授权行）；
+ * 团队资产（知识库/文档）不随人删。不可恢复——调用方必须先弹确认。 */
+export function deleteUser(id: string): Promise<{ ok: boolean }> {
+  return req(`/api/users/${id}`, { method: "DELETE" });
 }
 
 /** 邀请用户（「邮箱与邀请」）：可顺带维护邮箱；password 留空=随机生成。

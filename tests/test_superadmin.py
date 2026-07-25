@@ -99,6 +99,82 @@ def test_superadmin_audit_visible_only_to_superadmin(
     assert super_view["total"] > admin_view["total"]
 
 
+def test_superadmin_can_rename_user(tmp_path, fake_embedder, monkeypatch):
+    """超管改任意账号名：旧名会话失效/旧名登录失败/新名可登录；重名 409；
+    普通 admin 改名 403（身份级操作仅超管）。"""
+    app, superc, adminc = _setup_super_and_admin(tmp_path, fake_embedder, monkeypatch)
+    u = _create_user(superc, username="old.name", role="viewer",
+                     password="pw123456").json()
+    userc = _login(app, "old.name", "pw123456")   # 持旧名会话
+
+    # 普通 admin 改名 → 403
+    r = adminc.put(f"/api/users/{u['id']}", json={"username": "x.name"})
+    assert r.status_code == 403
+    assert r.json()["detail"]["code"] == "error.superadmin_required"
+    # 重名 → 409
+    assert superc.put(f"/api/users/{u['id']}",
+                      json={"username": "demo.admin"}).status_code == 409
+    # 超管改名成功
+    r = superc.put(f"/api/users/{u['id']}", json={"username": "new.name"})
+    assert r.status_code == 200 and r.json()["username"] == "new.name"
+    # 旧名会话下一次请求即 401（JWT sub=旧名查无此人）
+    assert userc.get("/api/auth/me").status_code == 401
+    # 旧名登录失败、新名+原密码可登录
+    from fastapi.testclient import TestClient
+    assert TestClient(app).post("/api/auth/login", json={
+        "username": "old.name", "password": "pw123456"}).status_code == 401
+    _login(app, "new.name", "pw123456")
+
+
+def test_superadmin_can_delete_user_with_cascade(tmp_path, fake_embedder, monkeypatch):
+    """超管删号：账号消失、登录失败；其私有数据（会话/消息/反馈/授权行）
+    级联清理；普通 admin 删号 403；最后一个启用超管不可删。"""
+    import sqlite3 as _sql
+    from datetime import datetime as _dt
+
+    app, superc, adminc = _setup_super_and_admin(tmp_path, fake_embedder, monkeypatch)
+    u = _create_user(superc, username="gone.user", role="viewer",
+                     password="pw123456").json()
+    # 直插该用户的私有数据（会话+消息+反馈+库授权行）
+    db = str(tmp_path / "data" / "kbase.sqlite")
+    con = _sql.connect(db)
+    now = _dt.utcnow().isoformat(sep=" ")
+    con.execute("INSERT INTO conversations (id, kb_id, title, user_id,"
+                " created_at, updated_at) VALUES ('cv1','kbx','t',?,?,?)",
+                (u["id"], now, now))
+    con.execute("INSERT INTO messages (id, conv_id, seq, role, content,"
+                " created_at) VALUES ('m1','cv1',1,'user','q',?)", (now,))
+    con.execute("INSERT INTO message_feedback (id, message_id, conv_id,"
+                " rating, created_at) VALUES ('fb1','m1','cv1',1,?)", (now,))
+    con.execute("INSERT INTO kb_grants (id, kb_id, user_id, created_at)"
+                " VALUES ('g1','kbx',?,?)", (u["id"], now))
+    con.commit(); con.close()
+
+    # 普通 admin 删号 → 403
+    r = adminc.delete(f"/api/users/{u['id']}")
+    assert r.status_code == 403
+    assert r.json()["detail"]["code"] == "error.superadmin_required"
+
+    # 超管删号成功：账号与私有数据全清，登录 401
+    assert superc.delete(f"/api/users/{u['id']}").json()["ok"] is True
+    assert "gone.user" not in {x["username"]
+                               for x in superc.get("/api/users").json()}
+    con = _sql.connect(db)
+    for table in ("conversations", "messages", "message_feedback", "kb_grants"):
+        assert con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0, table
+    con.close()
+    from fastapi.testclient import TestClient
+    assert TestClient(app).post("/api/auth/login", json={
+        "username": "gone.user", "password": "pw123456"}).status_code == 401
+
+    # 最后一个启用超管不可删（防锁死）
+    super_id = next(x["id"] for x in superc.get("/api/users").json()
+                    if x["username"] == "admin")
+    r = superc.delete(f"/api/users/{super_id}")
+    assert r.status_code == 422
+    assert r.json()["detail"]["code"] == "error.last_superadmin"
+
+
 def test_legacy_db_without_superadmin_keeps_last_admin_guard(
         tmp_path, fake_embedder, monkeypatch):
     """无超管的存量库（迁移遗漏/手工库）退守旧规则：启用 admin 不清零。"""

@@ -7,7 +7,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
-import { Plus, KeyRound, Mail } from "@lucide/vue";
+import { Plus, KeyRound, Mail, Pencil, Trash2 } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/table";
 import UserFormDialogs from "@/components/UserFormDialogs.vue";
 import UserInviteDialog from "@/components/UserInviteDialog.vue";
+import UserDangerDialogs from "@/components/UserDangerDialogs.vue";
 import { listUsers, updateUser, currentRole, type UserItem } from "@/lib/api";
 import { isSuperadmin } from "@/lib/auth-utils";
 import { isLastEnabledAdmin } from "@/lib/settings-utils";
@@ -54,6 +55,9 @@ const createOpen = ref(false);
 const resetTarget = ref<UserItem | null>(null);
 // 「邮箱与邀请」对话框目标（维护邮箱/发凭据邮件），超管行对普通 admin 锁定
 const inviteTarget = ref<UserItem | null>(null);
+// 超管专属危险操作：改账号名 / 删除账号（入口仅超管可见）
+const renameTarget = ref<UserItem | null>(null);
+const deleteTarget = ref<UserItem | null>(null);
 
 async function changeRole(user: UserItem, role: string) {
   if (role === user.role) return;
@@ -116,7 +120,21 @@ async function toggleDisabled(user: UserItem, disabled: boolean) {
       <TableBody>
         <TableEmpty v-if="!loading && users.length === 0" :colspan="6">{{ t("user.empty") }}</TableEmpty>
         <TableRow v-for="u in users" :key="u.id">
-          <TableCell>{{ u.username }}</TableCell>
+          <TableCell>
+            <span class="inline-flex items-center gap-1">
+              {{ u.username }}
+              <!-- 改账号名：仅超管可见（身份级操作，后端二次强制） -->
+              <button
+                v-if="iAmSuper"
+                type="button"
+                class="rounded p-0.5 text-[var(--text-3)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--text-2)]"
+                :title="t('user.rename_title', { name: u.username })"
+                @click="renameTarget = u"
+              >
+                <Pencil class="size-3" />
+              </button>
+            </span>
+          </TableCell>
           <TableCell class="text-[var(--text-3)]">{{ u.email ?? "—" }}</TableCell>
           <TableCell>
             <Select
@@ -173,6 +191,17 @@ async function toggleDisabled(user: UserItem, disabled: boolean) {
                 <Mail class="size-3.5" />
                 {{ t("user.invite_btn") }}
               </Button>
+              <!-- 删除账号：仅超管可见；最后一个启用超管禁删（防锁死） -->
+              <Button
+                v-if="iAmSuper"
+                variant="ghost" size="sm"
+                class="text-[var(--err)] hover:bg-[var(--err-weak)] hover:text-[var(--err)]"
+                :disabled="isLastEnabledAdmin(users, u.id)"
+                :title="isLastEnabledAdmin(users, u.id) ? t('error.last_superadmin') : t('user.delete_title', { name: u.username })"
+                @click="deleteTarget = u"
+              >
+                <Trash2 class="size-3.5" />
+              </Button>
             </div>
           </TableCell>
         </TableRow>
@@ -186,4 +215,9 @@ async function toggleDisabled(user: UserItem, disabled: boolean) {
     @changed="load"
   />
   <UserInviteDialog v-model:target="inviteTarget" @changed="load" />
+  <UserDangerDialogs
+    v-model:rename-target="renameTarget"
+    v-model:delete-target="deleteTarget"
+    @changed="load"
+  />
 </template>
