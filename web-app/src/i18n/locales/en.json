@@ -77,7 +77,10 @@
     "embedder_no_page_key": "This option has no page key configured: {id}",
     "missing_base_url": "Missing base_url",
     "superadmin_only": "Only super admins can create/manage super admin accounts",
-    "last_superadmin": "Cannot disable/demote the last super admin"
+    "last_superadmin": "Cannot disable/demote the last super admin",
+    "invite_needs_email": "This user has not set an email. Please fill in the email first.",
+    "smtp_unconfigured": "Outbox not configured (Settings → System → Outbox)",
+    "invite_send_failed": "Failed to send invitation email: {msg}"
   },
   "login": {
     "continue": "Log in to continue",
@@ -270,7 +273,19 @@
     "initial_pw_ph": "Initial password (user can change after login)",
     "reset_desc": "Set new password for {name}",
     "new_pw_ph": "New password",
-    "superadmin_locked": "Super admin account can only be managed by the super admin themselves"
+    "superadmin_locked": "Super admin account can only be managed by the super admin themselves",
+    "invite_btn": "Invite",
+    "invite_title": "Email & Invitation — {name}",
+    "invite_desc": "Manage the account's email; sending an invitation will set a new initial password and send the login URL, account, and initial password to this email.",
+    "invite_email_label": "Email",
+    "save_email": "Save Email Only",
+    "email_saved": "Email saved",
+    "invite_pw_label": "Initial Password",
+    "invite_pw_ph": "Leave blank = auto-generate random password",
+    "invite_note": "Note: Sending an invitation will reset the account's password (old password immediately invalid). The email will use Chinese or English template based on the account's language preference.",
+    "send_invite": "Send Invitation Email",
+    "invite_sending": "Sending…",
+    "invite_sent": "Invitation sent to {email}"
   },
   "apikey": {
     "create": "Create Key",

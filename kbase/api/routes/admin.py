@@ -1,11 +1,12 @@
 """管理域路由：用户管理、API Key、审计查询、许可证状态（spec §3/§5，G3）。"""
+import secrets as _secrets
 import uuid
 
 from fastapi import BackgroundTasks, Query, Request
 
 from kbase import qa_stats
 from kbase.api.routes import RouteDeps
-from kbase.api.schemas import ApiKeyCreate, UserCreate, UserUpdate
+from kbase.api.schemas import ApiKeyCreate, InviteBody, UserCreate, UserUpdate
 from kbase.api.services import Services
 from kbase.audit import list_audit
 from kbase.auth import security
@@ -214,6 +215,48 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
             s.commit()
             s.refresh(user)
             return _user_out(user)
+
+    @router.post("/users/{user_id}/invite",
+                 dependencies=[deps.require_admin, deps.audit_mutation])
+    def invite_user(user_id: str, body: InviteBody, request: Request):
+        """邀请/重发凭据（「邮箱与邀请」对话框）：可顺带维护邮箱，为账号设置
+        新初始密码（给定或随机生成），发送"登录地址+账号+初始密码"邮件（按
+        账号语言偏好选中/英文模板）。**同步发送**——失败直接报给管理员（邀请
+        的全部意义就是发信，不静默吞）；先发信后落库，发信失败不动密码。"""
+        from kbase import email_templates, mailer
+        if not mailer.status(sf)["configured"]:
+            raise AppError("error.smtp_unconfigured",
+                           "发件箱未配置（设置 → 系统 → 发件箱）", status=422)
+        with sf() as s:
+            user = s.get(User, user_id)
+            if user is None:
+                raise AppError("error.user_not_found", "用户不存在: {id}",
+                               status=404, id=user_id)
+            # 超管对普通 admin 不可见：按"不存在"处理（与 update_user 同语义）
+            if user.role == "superadmin" and not _actor_is_super(request):
+                raise AppError("error.user_not_found", "用户不存在: {id}",
+                               status=404, id=user_id)
+            email = (body.email or "").strip() or (user.email or "")
+            if not email:
+                raise AppError("error.invite_needs_email",
+                               "该用户未设置邮箱，请先填写邮箱", status=422)
+            username, lang = user.username, user.language
+        password = (body.password or "").strip() or _secrets.token_urlsafe(9)
+        login_url = str(request.base_url).rstrip("/")
+        subject, text, html_body = email_templates.account_invite(
+            username, password, login_url, lang=lang)
+        try:
+            mailer.send_mail(sf, email, subject, text, html=html_body)
+        except Exception as e:  # noqa: BLE001
+            raise AppError("error.invite_send_failed", "邀请邮件发送失败：{msg}",
+                           status=502, msg=str(e)[:200]) from e
+        # 发信成功才落库：邮件里的初始密码与 DB 哈希保持一致
+        with sf() as s:
+            user = s.get(User, user_id)
+            user.email = email
+            user.password_hash = security.hash_password(password)
+            s.commit()
+        return {"ok": True, "email": email}
 
     @router.get("/license", dependencies=[deps.require_viewer])
     def get_license():

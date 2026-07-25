@@ -77,7 +77,10 @@
     "embedder_no_page_key": "该选项未配置页面密钥: {id}",
     "missing_base_url": "缺少 base_url",
     "superadmin_only": "仅超级管理员可创建/管理超级管理员账号",
-    "last_superadmin": "不能禁用/降级最后一个超级管理员"
+    "last_superadmin": "不能禁用/降级最后一个超级管理员",
+    "invite_needs_email": "该用户未设置邮箱，请先填写邮箱",
+    "smtp_unconfigured": "发件箱未配置（设置 → 系统 → 发件箱）",
+    "invite_send_failed": "邀请邮件发送失败：{msg}"
   },
   "login": {
     "continue": "登录以继续",
@@ -270,7 +273,19 @@
     "initial_pw_ph": "初始密码（用户登录后可自行修改）",
     "reset_desc": "为「{name}」设置新密码",
     "new_pw_ph": "新密码",
-    "superadmin_locked": "超级管理员账号仅超级管理员本人可管理"
+    "superadmin_locked": "超级管理员账号仅超级管理员本人可管理",
+    "invite_btn": "邀请",
+    "invite_title": "邮箱与邀请 — {name}",
+    "invite_desc": "维护该账号的邮箱；发送邀请会设置新的初始密码，并把登录地址、账号与初始密码发送到该邮箱",
+    "invite_email_label": "邮箱",
+    "save_email": "仅保存邮箱",
+    "email_saved": "邮箱已保存",
+    "invite_pw_label": "初始密码",
+    "invite_pw_ph": "留空 = 自动生成随机密码",
+    "invite_note": "注意：发送邀请会重置该账号的密码（旧密码立即失效）；邮件按该账号的语言偏好选用中文或英文模板",
+    "send_invite": "发送邀请邮件",
+    "invite_sending": "发送中…",
+    "invite_sent": "邀请已发送至 {email}"
   },
   "apikey": {
     "create": "新建 Key",

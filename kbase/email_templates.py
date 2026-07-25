@@ -196,3 +196,33 @@ def smtp_test() -> tuple[str, str, str]:
                     "均可正常送达。"],
         blocks=_note("本邮件仅用于验证发件配置，无需任何操作。"))
     return subject, text, html
+
+
+def account_invite(username: str, password: str, login_url: str,
+                   lang: str | None = None) -> tuple[str, str, str]:
+    """邀请邮件（管理端「发送邀请」）：内容=登录地址+账号+初始密码。按账号
+    语言偏好选文案——lang=="en" 用英文版（马来/国际伙伴场景），其余复用中文
+    开通通知模板（account_created）。"""
+    if lang != "en":
+        return account_created(username, password, login_url)
+    subject = "Your KBase account is ready"
+    text = (f"Hello {username},\n\n"
+            f"An administrator has set up your KBase account.\n\n"
+            f"Login URL: {login_url}\nUsername: {username}\n"
+            f"Initial password: {password}\n\n"
+            f"Please change your password after your first login "
+            f"(top-right menu). You can switch the interface language "
+            f"at the bottom of the login page.")
+    html = _render(
+        title="Your KBase account is ready",
+        paragraphs=[f"Hello, <b>{_esc(username)}</b>. An administrator has "
+                    "set up your KBase account. Your credentials:"],
+        blocks=(_fields([("Login URL", login_url), ("Username", username),
+                         ("Initial password", password)])
+                + _button("Open KBase", login_url)
+                + _note("Please change your password after your first login "
+                        "(top-right menu) and bind your email when prompted. "
+                        "You can switch the interface language (English / "
+                        "Bahasa Melayu / 中文) at the bottom of the login page.")
+                + _link_fallback(login_url)))
+    return subject, text, html

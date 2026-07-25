@@ -77,7 +77,10 @@
     "embedder_no_page_key": "Pilihan ini tidak mempunyai kunci halaman: {id}",
     "missing_base_url": "base_url hilang",
     "superadmin_only": "Hanya pentadbir super boleh mencipta/mengurus akaun pentadbir super",
-    "last_superadmin": "Tidak boleh melumpuhkan/menurunkan taraf pentadbir super terakhir"
+    "last_superadmin": "Tidak boleh melumpuhkan/menurunkan taraf pentadbir super terakhir",
+    "invite_needs_email": "Pengguna ini belum menetapkan e-mel, sila isikan e-mel terlebih dahulu",
+    "smtp_unconfigured": "Peti mel keluar belum dikonfigurasi (Tetapan → Sistem → Peti mel keluar)",
+    "invite_send_failed": "E-mel jemputan gagal dihantar: {msg}"
   },
   "login": {
     "continue": "Log masuk untuk meneruskan",
@@ -270,7 +273,19 @@
     "initial_pw_ph": "Kata laluan awal (boleh diubah selepas log masuk)",
     "reset_desc": "Tetapkan kata laluan baru untuk '{name}'",
     "new_pw_ph": "Kata laluan baru",
-    "superadmin_locked": "Akaun pentadbir super hanya boleh diurus oleh pentadbir super sendiri"
+    "superadmin_locked": "Akaun pentadbir super hanya boleh diurus oleh pentadbir super sendiri",
+    "invite_btn": "Jemput",
+    "invite_title": "E-mel dan Jemputan — {name}",
+    "invite_desc": "Urus e-mel akaun ini; menghantar jemputan akan menetapkan kata laluan awal baharu dan menghantar alamat log masuk, akaun, dan kata laluan awal ke e-mel tersebut.",
+    "invite_email_label": "E-mel",
+    "save_email": "Simpan e-mel sahaja",
+    "email_saved": "E-mel telah disimpan",
+    "invite_pw_label": "Kata laluan awal",
+    "invite_pw_ph": "Kosongkan = jana kata laluan rawak automatik",
+    "invite_note": "Nota: Menghantar jemputan akan menetapkan semula kata laluan akaun ini (kata laluan lama akan terbatal serta-merta); e-mel akan menggunakan templat Cina atau Inggeris mengikut keutamaan bahasa akaun tersebut.",
+    "send_invite": "Hantar e-mel jemputan",
+    "invite_sending": "Sedang menghantar…",
+    "invite_sent": "Jemputan telah dihantar ke {email}"
   },
   "apikey": {
     "create": "Buat Key Baru",
