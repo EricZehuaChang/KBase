@@ -32,17 +32,27 @@ def test_admin_cannot_create_superadmin(tmp_path, fake_embedder, monkeypatch):
     assert r.json()["detail"]["code"] == "error.superadmin_only"
 
 
+def test_superadmin_invisible_to_admin(tmp_path, fake_embedder, monkeypatch):
+    """超管账号对普通 admin 完全不可见：用户列表不出现；超管自己看得到全量。"""
+    app, superc, adminc = _setup_super_and_admin(tmp_path, fake_embedder, monkeypatch)
+    admin_view = {u["username"] for u in adminc.get("/api/users").json()}
+    assert "admin" not in admin_view          # 超管行被过滤
+    assert "demo.admin" in admin_view
+    super_view = {u["username"] for u in superc.get("/api/users").json()}
+    assert {"admin", "demo.admin"} <= super_view   # 超管看全量
+
+
 def test_admin_cannot_touch_superadmin_account(tmp_path, fake_embedder, monkeypatch):
-    """普通 admin 对超管账号的任何修改（改密顶号/禁用/降级）一律 403——
-    外发演示 admin 无法夺权或锁死系统 owner。"""
+    """普通 admin 对超管账号的任何修改（改密顶号/禁用/降级）一律 404——
+    不可见即不存在（403 会泄漏存在性），外发演示 admin 无法夺权或锁死 owner。"""
     app, superc, adminc = _setup_super_and_admin(tmp_path, fake_embedder, monkeypatch)
     super_id = next(u["id"] for u in superc.get("/api/users").json()
                     if u["username"] == "admin")
     for payload in ({"password": "hijack99"}, {"disabled": True},
                     {"role": "viewer"}):
         r = adminc.put(f"/api/users/{super_id}", json=payload)
-        assert r.status_code == 403, payload
-        assert r.json()["detail"]["code"] == "error.superadmin_only"
+        assert r.status_code == 404, payload
+        assert r.json()["detail"]["code"] == "error.user_not_found"
 
 
 def test_admin_cannot_promote_to_superadmin(tmp_path, fake_embedder, monkeypatch):
