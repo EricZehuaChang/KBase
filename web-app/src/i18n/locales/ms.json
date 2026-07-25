@@ -18,7 +18,8 @@
     "role": {
       "admin": "Pentadbir",
       "editor": "Penyunting",
-      "viewer": "Pemerhati"
+      "viewer": "Pemerhati",
+      "superadmin": "Pentadbir Super"
     }
   },
   "lang": {
@@ -74,7 +75,9 @@
     "default_provider_undeletable": "Pembekal lalai tidak boleh dipadam, sila tukar lalai terlebih dahulu",
     "embedder_option_not_found": "Pilihan model vektor tidak wujud atau tiada konsep kunci: {id}",
     "embedder_no_page_key": "Pilihan ini tidak mempunyai kunci halaman: {id}",
-    "missing_base_url": "base_url hilang"
+    "missing_base_url": "base_url hilang",
+    "superadmin_only": "Hanya pentadbir super boleh mencipta/mengurus akaun pentadbir super",
+    "last_superadmin": "Tidak boleh melumpuhkan/menurunkan taraf pentadbir super terakhir"
   },
   "login": {
     "continue": "Log masuk untuk meneruskan",
@@ -266,7 +269,8 @@
     "initial_pw": "Kata laluan awal",
     "initial_pw_ph": "Kata laluan awal (boleh diubah selepas log masuk)",
     "reset_desc": "Tetapkan kata laluan baru untuk '{name}'",
-    "new_pw_ph": "Kata laluan baru"
+    "new_pw_ph": "Kata laluan baru",
+    "superadmin_locked": "Akaun pentadbir super hanya boleh diurus oleh pentadbir super sendiri"
   },
   "apikey": {
     "create": "Buat Key Baru",

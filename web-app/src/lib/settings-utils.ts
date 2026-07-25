@@ -195,13 +195,17 @@ export interface UserLike {
 }
 
 /** 客户端镜像后端"不能禁用/降级最后一个管理员"的不变量，用于前置禁用相关
- * 操作按钮（真正的强制仍在后端，见 kbase/api/main.py update_user）。
- * 判定：目标用户是启用中的 admin，且没有其他启用中的 admin 在场。 */
+ * 操作按钮（真正的强制仍在后端，见 kbase/api/routes/admin.py update_user）。
+ * 超管层级引入后镜像后端不变量：有超管的库护"最后一个启用 superadmin"；
+ * 无超管的存量库退守旧规则（启用 admin 不清零）。函数名保留 Admin 字样
+ * 避免调用点连锁改名，语义为"最后一个启用的最高层级"。 */
 export function isLastEnabledAdmin(users: UserLike[], userId: string): boolean {
   const target = users.find((u) => u.id === userId);
-  if (!target || target.role !== "admin" || target.disabled) return false;
-  const otherEnabledAdmins = users.filter(
-    (u) => u.id !== userId && u.role === "admin" && !u.disabled,
-  );
-  return otherEnabledAdmins.length === 0;
+  if (!target || target.disabled) return false;
+  const othersEnabled = (role: string) => users.filter(
+    (u) => u.id !== userId && u.role === role && !u.disabled).length;
+  if (target.role === "superadmin") return othersEnabled("superadmin") === 0;
+  const hasSuper = users.some((u) => u.role === "superadmin" && !u.disabled);
+  if (!hasSuper && target.role === "admin") return othersEnabled("admin") === 0;
+  return false;
 }

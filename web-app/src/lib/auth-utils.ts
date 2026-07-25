@@ -31,6 +31,7 @@ export function loginRedirectQuery(targetPath: string): Record<string, string> {
 }
 
 const ROLE_LABELS: Record<string, string> = {
+  superadmin: "超级管理员",
   admin: "管理员",
   editor: "编辑者",
   viewer: "查看者",
@@ -41,8 +42,10 @@ export function roleLabel(role: Role): string {
   return ROLE_LABELS[role] ?? role;
 }
 
-/** 角色徽章配色：admin 用强调色突出最高权限，其余角色用中性色。 */
+/** 角色徽章配色：superadmin 反白强调（最高层级醒目），admin 用强调色弱底，
+ * 其余角色用中性色。 */
 export function roleBadgeClass(role: Role): string {
+  if (role === "superadmin") return "bg-[var(--accent)] text-white";
   return role === "admin"
     ? "bg-[var(--accent-weak)] text-[var(--accent-text)]"
     : "bg-[var(--surface-2)] text-[var(--text-2)]";
@@ -51,12 +54,17 @@ export function roleBadgeClass(role: Role): string {
 // ---- 角色门控（M4-1 G6）——纯函数，供各 View/AppShell 按 currentRole 隐藏入口。
 // 后端已用 require_role 强制校验，这里只是前端防呆（隐藏而非真正的访问控制）。
 
-/** 内容管理权限（建库/上传/删除文档/删库/发起生成等）：admin 与 editor。 */
-export function canManageContent(role: Role): boolean {
-  return role === "admin" || role === "editor";
+/** 超级管理员判定：管理体系之外的最高层级（普通 admin 动不了超管账号）。 */
+export function isSuperadmin(role: Role): boolean {
+  return role === "superadmin";
 }
 
-/** 系统管理权限（设置页：Provider/用户管理/API Key/审计）：仅 admin。 */
+/** 内容管理权限（建库/上传/删除文档/删库/发起生成等）：editor 及以上。 */
+export function canManageContent(role: Role): boolean {
+  return role === "superadmin" || role === "admin" || role === "editor";
+}
+
+/** 系统管理权限（设置页：Provider/用户管理/API Key/审计）：admin 及以上。 */
 export function canAdminister(role: Role): boolean {
-  return role === "admin";
+  return role === "superadmin" || role === "admin";
 }

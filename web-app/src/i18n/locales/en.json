@@ -18,7 +18,8 @@
     "role": {
       "admin": "Administrator",
       "editor": "Editor",
-      "viewer": "Viewer"
+      "viewer": "Viewer",
+      "superadmin": "Super Admin"
     }
   },
   "lang": {
@@ -74,7 +75,9 @@
     "default_provider_undeletable": "Default provider cannot be deleted, please switch default first",
     "embedder_option_not_found": "Embedder option not found or no key concept: {id}",
     "embedder_no_page_key": "This option has no page key configured: {id}",
-    "missing_base_url": "Missing base_url"
+    "missing_base_url": "Missing base_url",
+    "superadmin_only": "Only super admins can create/manage super admin accounts",
+    "last_superadmin": "Cannot disable/demote the last super admin"
   },
   "login": {
     "continue": "Log in to continue",
@@ -266,7 +269,8 @@
     "initial_pw": "Initial password",
     "initial_pw_ph": "Initial password (user can change after login)",
     "reset_desc": "Set new password for {name}",
-    "new_pw_ph": "New password"
+    "new_pw_ph": "New password",
+    "superadmin_locked": "Super admin account can only be managed by the super admin themselves"
   },
   "apikey": {
     "create": "Create Key",

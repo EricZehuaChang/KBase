@@ -97,27 +97,31 @@ def test_update_user_change_role(tmp_path, fake_embedder, monkeypatch):
     assert r.json()["role"] == "editor"
 
 
-def test_cannot_disable_last_enabled_admin(tmp_path, fake_embedder, monkeypatch):
+def test_cannot_disable_last_enabled_superadmin(tmp_path, fake_embedder, monkeypatch):
+    """引导账号 admin 现为 superadmin：禁用最后一个启用超管 → 422（防锁死）。"""
     app, c = _login_admin(tmp_path, fake_embedder, monkeypatch)
     users = c.get("/api/users").json()
     admin_id = next(u["id"] for u in users if u["username"] == "admin")
     r = c.put(f"/api/users/{admin_id}", json={"disabled": True})
     assert r.status_code == 422
-    assert r.json()["detail"]["code"] == "error.last_admin"
+    assert r.json()["detail"]["code"] == "error.last_superadmin"
 
 
-def test_cannot_demote_last_enabled_admin(tmp_path, fake_embedder, monkeypatch):
+def test_cannot_demote_last_enabled_superadmin(tmp_path, fake_embedder, monkeypatch):
     app, c = _login_admin(tmp_path, fake_embedder, monkeypatch)
     users = c.get("/api/users").json()
     admin_id = next(u["id"] for u in users if u["username"] == "admin")
     r = c.put(f"/api/users/{admin_id}", json={"role": "editor"})
     assert r.status_code == 422
-    assert r.json()["detail"]["code"] == "error.last_admin"
+    assert r.json()["detail"]["code"] == "error.last_superadmin"
 
 
-def test_can_disable_admin_when_another_admin_remains(tmp_path, fake_embedder, monkeypatch):
+def test_can_disable_superadmin_when_another_remains(tmp_path, fake_embedder, monkeypatch):
+    """有第二个启用超管在场时，第一个可被禁用（不变量只护"最后一个"）。"""
     app, c = _login_admin(tmp_path, fake_embedder, monkeypatch)
-    second = _create_user(c, username="admin2", role="admin", password="pw123456").json()
+    second = _create_user(c, username="root2", role="superadmin",
+                          password="pw123456").json()
+    assert second["role"] == "superadmin"
     users = c.get("/api/users").json()
     first_admin_id = next(u["id"] for u in users if u["username"] == "admin")
     r = c.put(f"/api/users/{first_admin_id}", json={"disabled": True})
@@ -126,10 +130,10 @@ def test_can_disable_admin_when_another_admin_remains(tmp_path, fake_embedder, m
 
 
 def test_create_user_invalid_role_422(tmp_path, fake_embedder, monkeypatch):
-    """伪角色（如 superadmin）应被 pydantic Literal 校验拒为 422——而不是落库后
-    让每个 require_role 请求在 deps 处 500。"""
+    """伪角色（如 root）应被 pydantic Literal 校验拒为 422——而不是落库后
+    让 deps 的 role_rank 把它按 0 处理导致账号无权限。"""
     app, c = _login_admin(tmp_path, fake_embedder, monkeypatch)
-    r = c.post("/api/users", json={"username": "mallory", "role": "superadmin",
+    r = c.post("/api/users", json={"username": "mallory", "role": "root",
                                    "password": "pw123456"})
     assert r.status_code == 422
 

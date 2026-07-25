@@ -14,7 +14,7 @@ def test_ensure_admin_creates_admin_when_users_empty(tmp_path):
         users = s.query(User).all()
         assert len(users) == 1
         assert users[0].username == "admin"
-        assert users[0].role == "admin"
+        assert users[0].role == "superadmin"   # 引导账号=超管（最高层级）
         assert not users[0].disabled
 
 

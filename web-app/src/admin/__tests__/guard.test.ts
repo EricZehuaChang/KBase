@@ -27,7 +27,11 @@ describe("decideAdminLanding — 管理端角色落地矩阵", () => {
     expect(decideAdminLanding({ role: "admin" }, "/settings")).toEqual({ kind: "allow" });
   });
 
+  it("superadmin 放行（最高层级，任意管理端路径）", () => {
+    expect(decideAdminLanding({ role: "superadmin" }, "/settings")).toEqual({ kind: "allow" });
+  });
+
   it("未知角色兜底按无权限处理", () => {
-    expect(decideAdminLanding({ role: "superadmin" }, "/")).toEqual({ kind: "forbidden" });
+    expect(decideAdminLanding({ role: "root" }, "/")).toEqual({ kind: "forbidden" });
   });
 });

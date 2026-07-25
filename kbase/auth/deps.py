@@ -23,8 +23,17 @@ API_KEY_HEADER_PREFIX = "Bearer "
 # off 模式下审计要落的 actor 名——不是真实用户，只是标注"鉴权关闭"。
 ANONYMOUS_ACTOR_NAME = "anonymous"
 
-# 角色序：admin > editor > viewer。数值越大权限越高。
-_ROLE_RANK = {"viewer": 0, "editor": 1, "admin": 2}
+# 角色序：superadmin > admin > editor > viewer。数值越大权限越高。
+# superadmin（超级管理员）在管理体系之外：普通 admin 管不到它（用户管理里
+# 不能建/改/禁超管账号，见 routes/admin.py），它则拥有一切权限——rank 序
+# 保证所有 require_role 检查对超管天然放行，无需新增依赖。
+_ROLE_RANK = {"viewer": 0, "editor": 1, "admin": 2, "superadmin": 3}
+
+
+def role_rank(role: str) -> int:
+    """角色 → 权限序（未知角色按最低权 0 处理，不抛——防御脏数据）。
+    供业务代码做"操作者是否够级"判断（如仅超管可管超管账号）。"""
+    return _ROLE_RANK.get(role, 0)
 
 
 def _unauthorized() -> HTTPException:
@@ -82,7 +91,7 @@ def make_get_current_actor(sf, secret: str):
 
 def make_synthetic_admin_actor_dependency():
     """auth="off" 用的路由级依赖：不做任何凭据校验，直接把 request.state.actor
-    设成一个 rank 最高的合成 actor（name=ANONYMOUS_ACTOR_NAME, role="admin"）。
+    设成一个 rank 最高的合成 actor（name=ANONYMOUS_ACTOR_NAME, role="superadmin"）。
 
     两个目的一次达成：
     - role 矩阵无操作——所有 require_role(min_role) 检查读到 admin rank，
@@ -96,7 +105,9 @@ def make_synthetic_admin_actor_dependency():
         # kbase/conversations.py）在这个模式下天然退化成"只看 NULL 归属的会话"
         # ——因为所有会话都会用这同一个合成 actor 创建，全部落 NULL，过滤条件
         # 因此对既有功能测试/单机免鉴权部署完全透明（大家看到的还是全部会话）。
-        actor = {"name": ANONYMOUS_ACTOR_NAME, "role": "admin", "user_id": None}
+        # role=superadmin：off 模式的合成 actor 必须是 rank 最高的角色，
+        # 否则引入超管层级后本地免鉴权模式反而动不了用户管理（rank 不够）。
+        actor = {"name": ANONYMOUS_ACTOR_NAME, "role": "superadmin", "user_id": None}
         request.state.actor = actor
         return actor
 

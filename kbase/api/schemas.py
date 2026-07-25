@@ -292,10 +292,15 @@ class JobCreate(BaseModel):
     params: dict = {}
 
 
-# 合法角色枚举——pydantic 用它约束请求体的 role 字段，拒绝形如
-# "superadmin"/"root" 的伪角色（否则会被写进 DB，之后每个 require_role 请求都
-# 在 deps.py 的 _ROLE_RANK[actor["role"]] 处以未捕获 KeyError 抛 500）。
+# 合法角色枚举——pydantic 用它约束请求体的 role 字段，拒绝形如 "root" 的
+# 伪角色（否则会被写进 DB，之后 deps.py 的 role_rank 把未知角色按 0 处理，
+# 该账号将失去全部权限）。两档枚举：
+# - Role：普通体系三角色，API Key 只能用它——API Key 无"本人"概念且常驻
+#   服务器/脚本，不给发超管级凭证（最小权限）；
+# - UserRole：含 superadmin（超级管理员，管理体系之外的最高层级）。仅超管
+#   本人能创建/授予 superadmin（见 routes/admin.py 的层级校验）。
 Role = Literal["admin", "editor", "viewer"]
+UserRole = Literal["superadmin", "admin", "editor", "viewer"]
 
 
 class ApiKeyCreate(BaseModel):
@@ -305,14 +310,14 @@ class ApiKeyCreate(BaseModel):
 
 class UserCreate(BaseModel):
     username: str
-    role: Role
+    role: UserRole
     password: str
     email: str | None = None
     advanced_ui: bool | None = None   # viewer 高级界面开关（缺省=关）
 
 
 class UserUpdate(BaseModel):
-    role: Role | None = None
+    role: UserRole | None = None
     disabled: bool | None = None
     password: str | None = None
     email: str | None = None      # 传空串=清除邮箱

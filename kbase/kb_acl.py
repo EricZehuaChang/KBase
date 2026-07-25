@@ -14,7 +14,9 @@ from kbase.models import KbGrant, KnowledgeBase, User
 
 
 def _is_admin(actor: dict) -> bool:
-    return actor.get("role") == "admin"
+    # superadmin 是 admin 的超集：ACL 豁免同样适用（auth=off 的合成 actor
+    # 也已改为 superadmin，见 deps.make_synthetic_admin_actor_dependency）
+    return actor.get("role") in ("admin", "superadmin")
 
 
 def visible_kb_filter(sf, actor: dict):
