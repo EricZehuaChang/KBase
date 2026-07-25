@@ -763,5 +763,8 @@
     "col_resource": "Sumber",
     "col_detail": "Butiran",
     "load_more": "Muatkan {rest} lagi yang lebih awal"
+  },
+  "usermenu": {
+    "open": "Akaun & Tetapan"
   }
 }

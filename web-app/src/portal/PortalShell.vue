@@ -12,15 +12,13 @@
 // 需要跨组件树注入，PortalShell 不必再为它开一个挂载点。
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { KeyRound, LogOut, Sun, Moon } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 import ChangePasswordDialog from "@/components/ChangePasswordDialog.vue";
 import EmailPromptDialog from "@/components/EmailPromptDialog.vue";
-import LanguagePicker from "@/components/LanguagePicker.vue";
+import UserMenu from "@/components/UserMenu.vue";
 import { getSession, logout, type Me } from "@/lib/api";
 import { setLanguage } from "@/i18n";
-import { roleBadgeClass, canManageContent } from "@/lib/auth-utils";
-import { theme, toggleTheme } from "@/lib/theme";
+import { canManageContent } from "@/lib/auth-utils";
 import { kbs, kbId, providers, provider, extraKbIds, ensureTopbarLoaded } from "./topbar-state";
 import {
   Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue,
@@ -185,37 +183,13 @@ function enterWorkbench() {
         >
           {{ t("portal.topbar.workbench") }}
         </button>
-        <LanguagePicker />
-        <button
-          type="button"
-          class="rounded-[var(--radius-ctl)] p-2 text-[var(--text-2)] transition-colors hover:bg-[var(--surface-2)]"
-          :title="t(theme === 'dark' ? 'portal.topbar.to_light' : 'portal.topbar.to_dark')"
-          @click="toggleTheme"
-        >
-          <component :is="theme === 'dark' ? Sun : Moon" class="size-4" />
-        </button>
-        <div v-if="me" class="flex items-center gap-2">
-          <button
-            type="button"
-            class="rounded-[var(--radius-ctl)] p-2 text-[var(--text-2)] transition-colors hover:bg-[var(--surface-2)]"
-            :title="t('portal.topbar.change_pw')"
-            @click="changePwOpen = true"
-          >
-            <KeyRound class="size-4" />
-          </button>
-          <span class="text-sm text-[var(--text)]">{{ me.username }}</span>
-          <span class="w-fit rounded-full px-1.5 py-0.5 text-xs" :class="roleBadgeClass(me.role)">
-            {{ roleText }}
-          </span>
-        </div>
-        <button
-          type="button"
-          class="rounded-[var(--radius-ctl)] p-2 text-[var(--text-2)] transition-colors hover:bg-[var(--surface-2)]"
-          :title="t('portal.topbar.logout')"
-          @click="handleLogout"
-        >
-          <LogOut class="size-4" />
-        </button>
+        <!-- 顶栏只留登录人：语言/主题/改密/登出全部收进用户菜单下拉 -->
+        <UserMenu
+          :me="me"
+          :role-text="roleText"
+          @change-password="changePwOpen = true"
+          @logout="handleLogout"
+        />
       </div>
     </header>
 
