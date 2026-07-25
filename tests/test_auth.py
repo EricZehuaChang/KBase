@@ -30,6 +30,10 @@ def test_login_ok_sets_cookie_and_returns_role(tmp_path, fake_embedder, monkeypa
     assert r.status_code == 200
     assert r.json() == {"username": "admin", "role": "superadmin"}
     assert "kbase_session" in r.cookies
+    # 会话级 Cookie：不带 Max-Age/Expires（关浏览器即清除，重开须重新登录）
+    set_cookie = r.headers["set-cookie"]
+    assert "kbase_session" in set_cookie
+    assert "Max-Age" not in set_cookie and "Expires" not in set_cookie
 
 
 def test_login_bad_password_401(tmp_path, fake_embedder, monkeypatch):

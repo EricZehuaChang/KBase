@@ -15,7 +15,10 @@ from kbase.models import AppSetting
 
 _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-SESSION_TOKEN_TTL_SECONDS = 7 * 24 * 3600
+# 会话策略（Eric 拍板）：Cookie 为"会话级"（不设 max_age，关浏览器即清除
+# →重开必须重新登录），JWT 自身有效期放宽到 30 天兜底——浏览器一直开着的
+# 长工作会话不会中途被登出。两层配合="关浏览器即失效，不关最长 30 天"。
+SESSION_TOKEN_TTL_SECONDS = 30 * 24 * 3600
 ALGORITHM = "HS256"
 
 API_KEY_PREFIX = "kbase_ak_"

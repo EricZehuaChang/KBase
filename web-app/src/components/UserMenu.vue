@@ -43,7 +43,7 @@ const ROW = "flex w-full items-center gap-2 rounded-[var(--radius-ctl)] px-2 "
         <Settings class="size-4 text-[var(--text-2)]" />
       </button>
     </PopoverTrigger>
-    <PopoverContent class="w-56 p-1.5" align="end">
+    <PopoverContent class="w-64 p-1.5" align="end">
       <!-- 身份头：用户名 + 角色徽章（只读） -->
       <div v-if="me" class="flex items-center justify-between gap-2 px-2 py-1.5">
         <span class="truncate text-sm font-medium">{{ me.username }}</span>
@@ -53,9 +53,10 @@ const ROW = "flex w-full items-center gap-2 rounded-[var(--radius-ctl)] px-2 "
       </div>
       <div class="my-1 border-t border-[var(--border)]" />
 
-      <!-- 语言：母语名平铺（复用 LanguagePicker inline 变体） -->
-      <div class="flex items-center justify-between gap-2 px-2 py-1.5">
-        <span class="text-sm text-[var(--text-3)]">{{ t("lang.label") }}</span>
+      <!-- 语言：标签独占一行、语言名横排不换行（挤在同一行会把 CJK 与
+      Bahasa Melayu 挤成竖排换行，真机反馈） -->
+      <div class="px-2 py-1.5">
+        <div class="mb-1 text-xs text-[var(--text-3)]">{{ t("lang.label") }}</div>
         <LanguagePicker inline />
       </div>
 

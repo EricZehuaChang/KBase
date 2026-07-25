@@ -22,10 +22,11 @@ def test_jwt_roundtrip_carries_claims():
     assert payload["role"] == "admin"
 
 
-def test_jwt_expiry_is_7_days():
+def test_jwt_expiry_is_30_days():
+    """会话策略：JWT 30 天兜底（Cookie 为会话级关浏览器即清，见 security 注释）。"""
     token = security.create_session_token("alice", "admin", secret="s3cr3t")
     payload = jwt.decode(token, "s3cr3t", algorithms=["HS256"])
-    assert payload["exp"] - payload["iat"] == 7 * 24 * 3600
+    assert payload["exp"] - payload["iat"] == 30 * 24 * 3600
 
 
 def test_jwt_expired_token_rejected():

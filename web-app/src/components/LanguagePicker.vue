@@ -35,7 +35,7 @@ const currentName = computed(
       <span v-if="i > 0" class="select-none text-[var(--text-3)]">·</span>
       <button
         type="button"
-        class="rounded px-1.5 py-0.5 transition-colors"
+        class="whitespace-nowrap rounded px-1.5 py-0.5 transition-colors"
         :class="locale === l.code
           ? 'font-medium text-[var(--accent-text)]'
           : 'text-[var(--text-3)] hover:text-[var(--text-2)]'"
