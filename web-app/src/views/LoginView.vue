@@ -122,7 +122,7 @@ async function submitReset() {
     才有）。inline 文字行放页脚居中——比角落悬浮地球图标融入页面，且母语自称
     （中文 · English · Bahasa Melayu）对不识中文的访客一眼可认。 -->
     <div class="absolute inset-x-0 bottom-8 flex justify-center">
-      <LanguagePicker inline />
+      <LanguagePicker />
     </div>
     <!-- 登录 -->
     <form
