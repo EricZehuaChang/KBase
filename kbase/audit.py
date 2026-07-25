@@ -92,12 +92,19 @@ def write_query_audit(sf, request: Request, resource: str, question: str) -> Non
                detail=question[:_QUERY_DETAIL_CHARS], ip=ip)
 
 
-def list_audit(sf, limit: int = 50, offset: int = 0) -> dict:
-    """分页读取审计行，按时间倒序（最新的在前）。返回 {items, total}。"""
+def list_audit(sf, limit: int = 50, offset: int = 0,
+               exclude_actors: set[str] | None = None) -> dict:
+    """分页读取审计行，按时间倒序（最新的在前）。返回 {items, total}。
+
+    exclude_actors：按 actor 用户名排除（超管审计分层——普通 admin 的审计
+    视图里不出现超管的操作记录，只有超管本人能看全量，见 routes/admin.py）。
+    过滤在 SQL 层做，count 与分页同一口径，total 对查看者自洽。"""
     with sf() as s:
-        total = s.query(AuditLog).count()
-        rows = (s.query(AuditLog)
-                .order_by(AuditLog.ts.desc())
+        q = s.query(AuditLog)
+        if exclude_actors:
+            q = q.filter(~AuditLog.actor.in_(exclude_actors))
+        total = q.count()
+        rows = (q.order_by(AuditLog.ts.desc())
                 .offset(offset).limit(limit).all())
         items = [{"id": r.id, "ts": r.ts.isoformat(), "actor": r.actor,
                   "action": r.action, "resource": r.resource,

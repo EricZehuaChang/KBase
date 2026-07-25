@@ -18,10 +18,22 @@ from kbase.models import ApiKey, User
 def register(router, svc: Services, deps: RouteDeps) -> None:
     sf = svc.sf
 
+    def _hidden_actors(request: Request) -> set[str] | None:
+        """审计分层：非超管查看者需排除的 actor 集合（=全部超管用户名，按
+        当前角色动态解析）；超管本人返回 None=看全量。审计如实落库不删改，
+        只在读取侧按查看者分层。"""
+        if _actor_is_super(request):
+            return None
+        with sf() as s:
+            return {u.username for u in
+                    s.query(User).filter_by(role="superadmin").all()}
+
     @router.get("/audit", dependencies=[deps.require_admin])
-    def audit_list(limit: int = Query(default=50, ge=1, le=200),
-                  offset: int = Query(default=0, ge=0)):
-        return list_audit(sf, limit=limit, offset=offset)
+    def audit_list(request: Request,
+                   limit: int = Query(default=50, ge=1, le=200),
+                   offset: int = Query(default=0, ge=0)):
+        return list_audit(sf, limit=limit, offset=offset,
+                          exclude_actors=_hidden_actors(request))
 
     # ---- 运营看板（C）：问答量/拒答率 + 无答案问题清单 ----
 
@@ -30,9 +42,12 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         return qa_stats.qa_overview(sf, days=days)
 
     @router.get("/stats/unanswered", dependencies=[deps.require_admin])
-    def stats_unanswered(limit: int = Query(default=50, ge=1, le=200)):
-        """无答案（拒答）问题清单——运营看'用户问了什么答不上'补知识。"""
-        return {"items": qa_stats.unanswered_questions(sf, limit=limit)}
+    def stats_unanswered(request: Request,
+                         limit: int = Query(default=50, ge=1, le=200)):
+        """无答案（拒答）问题清单——运营看'用户问了什么答不上'补知识。
+        清单出自审计表且带 actor，超管行同样按查看者分层过滤。"""
+        return {"items": qa_stats.unanswered_questions(
+            sf, limit=limit, exclude_actors=_hidden_actors(request))}
 
     @router.get("/stats/feedback", dependencies=[deps.require_admin])
     def stats_feedback(limit: int = Query(default=50, ge=1, le=200)):
