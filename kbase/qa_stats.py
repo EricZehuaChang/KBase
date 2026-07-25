@@ -58,11 +58,15 @@ def lifetime_counters(sf) -> dict:
             "login_failed_total": int(login_failed)}
 
 
-def unanswered_questions(sf, limit: int = 50) -> list[dict]:
-    """最近的无答案（拒答）问题清单——知识缺口的直接信号，运营据此补文档。"""
+def unanswered_questions(sf, limit: int = 50,
+                         exclude_actors: set[str] | None = None) -> list[dict]:
+    """最近的无答案（拒答）问题清单——知识缺口的直接信号，运营据此补文档。
+    exclude_actors：与 list_audit 同口径的超管审计分层（该清单同样出自审计
+    表且带 actor 用户名，不过滤会从侧面泄漏超管活动痕迹）。"""
     with sf() as s:
-        rows = (s.query(AuditLog)
-                .filter(AuditLog.action == "query_refused")
-                .order_by(AuditLog.ts.desc()).limit(limit).all())
+        q = s.query(AuditLog).filter(AuditLog.action == "query_refused")
+        if exclude_actors:
+            q = q.filter(~AuditLog.actor.in_(exclude_actors))
+        rows = q.order_by(AuditLog.ts.desc()).limit(limit).all()
         return [{"ts": r.ts.isoformat(), "question": r.detail,
                  "actor": r.actor, "resource": r.resource} for r in rows]

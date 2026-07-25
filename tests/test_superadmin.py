@@ -79,6 +79,26 @@ def test_superadmin_manages_admins_and_full_access(tmp_path, fake_embedder, monk
     assert r.status_code == 200 and r.json()["role"] == "superadmin"
 
 
+def test_superadmin_audit_visible_only_to_superadmin(
+        tmp_path, fake_embedder, monkeypatch):
+    """审计分层：超管的操作记录只有超管自己可见；普通 admin 的审计视图里
+    不出现超管 actor 的行（total 同口径），自己的行照常可见。"""
+    app, superc, adminc = _setup_super_and_admin(tmp_path, fake_embedder, monkeypatch)
+    # superc 建号已产生 actor=admin 的审计行；再让 adminc 产生一行自己的
+    adminc.post("/api/users", json={"username": "aud.viewer", "role": "viewer",
+                                    "password": "pw123456"})
+    admin_view = adminc.get("/api/audit").json()
+    admin_actors = {i["actor"] for i in admin_view["items"]}
+    assert "admin" not in admin_actors            # 超管痕迹被过滤
+    assert "demo.admin" in admin_actors           # 自己的操作可见
+    assert admin_view["total"] == len(admin_view["items"])  # total 同口径
+
+    super_view = superc.get("/api/audit").json()
+    super_actors = {i["actor"] for i in super_view["items"]}
+    assert {"admin", "demo.admin"} <= super_actors  # 超管看全量
+    assert super_view["total"] > admin_view["total"]
+
+
 def test_legacy_db_without_superadmin_keeps_last_admin_guard(
         tmp_path, fake_embedder, monkeypatch):
     """无超管的存量库（迁移遗漏/手工库）退守旧规则：启用 admin 不清零。"""
