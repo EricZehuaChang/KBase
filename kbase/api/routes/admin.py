@@ -84,9 +84,14 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
                 "created_at": u.created_at.isoformat()}
 
     @router.get("/users", dependencies=[deps.require_admin])
-    def list_users():
+    def list_users(request: Request):
         with sf() as s:
             rows = s.query(User).order_by(User.created_at.asc()).all()
+            # 超管在管理体系之外：普通 admin 的用户列表里根本不出现超管
+            # 账号（不可见，而非可见但锁定）——外发演示 admin 无从得知
+            # 系统 owner 账号的存在。
+            if not _actor_is_super(request):
+                rows = [u for u in rows if u.role != "superadmin"]
             return [_user_out(u) for u in rows]
 
     def _actor_is_super(request: Request) -> bool:
@@ -138,11 +143,15 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
             if user is None:
                 raise AppError("error.user_not_found", "用户不存在: {id}", status=404, id=user_id)
 
-            # 超管层级在管理体系之外：普通 admin 对 superadmin 账号的任何
-            # 修改（改密/禁用/降级/改邮箱）一律 403；把别人提为 superadmin
-            # 同样只有超管能做。
-            if ((user.role == "superadmin" or body.role == "superadmin")
-                    and not _actor_is_super(request)):
+            # 超管层级在管理体系之外：超管账号对普通 admin **不可见**（列表
+            # 已过滤），修改也按"不存在"回 404——403 会泄漏"存在但无权"，
+            # 与全仓不泄露存在性的原则一致（同 conv/kb 的 404 语义）。
+            if user.role == "superadmin" and not _actor_is_super(request):
+                raise AppError("error.user_not_found", "用户不存在: {id}",
+                               status=404, id=user_id)
+            # 把（可见的）普通用户提为 superadmin 仍只有超管能做——目标存在
+            # 且可见，这里如实回 403。
+            if body.role == "superadmin" and not _actor_is_super(request):
                 raise AppError("error.superadmin_only",
                                "仅超级管理员可创建/管理超级管理员账号", status=403)
 
