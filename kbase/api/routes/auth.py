@@ -48,9 +48,10 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps, *,
             raise AppError("error.invalid_credentials",
                            "用户名或密码错误，或账号已被禁用", status=401)
         token = security.create_session_token(user.username, user.role, secret=secret)
+        # 会话级 Cookie（不设 max_age/expires）：关浏览器即清除，重开必须重新
+        # 登录；开着期间由 JWT 的 30 天有效期兜底（见 security 模块注释）。
         response.set_cookie(
-            "kbase_session", token, httponly=True, samesite="lax",
-            max_age=security.SESSION_TOKEN_TTL_SECONDS)
+            "kbase_session", token, httponly=True, samesite="lax")
         write_audit(sf, actor=user.username, action="login_success", ip=ip)
         return {"username": user.username, "role": user.role}
 
@@ -193,8 +194,8 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps, *,
         write_audit(sf, actor=username, action="login_success",
                     detail="sso", ip=ip)
         resp = RedirectResponse("/")
-        resp.set_cookie("kbase_session", token, httponly=True, samesite="lax",
-                        max_age=security.SESSION_TOKEN_TTL_SECONDS)
+        # 与密码登录同一会话策略：会话级 Cookie（关浏览器失效），JWT 30 天兜底
+        resp.set_cookie("kbase_session", token, httponly=True, samesite="lax")
         return resp
 
     @router.post("/auth/logout", dependencies=[deps.require_viewer])
