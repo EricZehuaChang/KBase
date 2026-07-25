@@ -317,6 +317,9 @@ class UserCreate(BaseModel):
 
 
 class UserUpdate(BaseModel):
+    # 改账号名=身份级操作，仅超管可做（路由内校验）：改名后该用户旧会话
+    # JWT（sub=旧名）自然失效须重新登录；历史审计保留旧名如实记录。
+    username: str | None = Field(default=None, min_length=1)
     role: UserRole | None = None
     disabled: bool | None = None
     password: str | None = None

@@ -13,7 +13,8 @@ from kbase.auth import security
 from kbase.auth.deps import role_rank
 from kbase.errors import AppError
 from kbase.license import check_license
-from kbase.models import ApiKey, User
+from kbase.models import (ApiKey, Conversation, KbGrant, Message,
+                          MessageFeedback, User)
 
 
 def register(router, svc: Services, deps: RouteDeps) -> None:
@@ -202,6 +203,19 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
                     and _others_enabled("admin") == 0):
                 raise AppError("error.last_admin", "不能禁用/降级最后一个管理员", status=422)
 
+            # 改账号名（仅超管）：JWT sub=用户名，改名后该用户旧会话下一次
+            # 请求即 401 须重新登录；历史审计行保留旧名（如实记录不回写）。
+            if body.username is not None:
+                new_name = body.username.strip()
+                if not _actor_is_super(request):
+                    raise AppError("error.superadmin_required",
+                                   "该操作仅超级管理员可执行", status=403)
+                if new_name and new_name != user.username:
+                    if (s.query(User).filter_by(username=new_name).first()
+                            is not None):
+                        raise AppError("error.username_exists", "用户名已存在: {name}",
+                                       status=409, name=new_name)
+                    user.username = new_name
             if body.role is not None:
                 user.role = body.role
             if body.disabled is not None:
@@ -215,6 +229,50 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
             s.commit()
             s.refresh(user)
             return _user_out(user)
+
+    @router.delete("/users/{user_id}",
+                   dependencies=[deps.require_admin, deps.audit_mutation])
+    def delete_user(user_id: str, request: Request):
+        """删除账号（仅超管；admin 只能禁用=软路径）。连带清理其**私有**数据：
+        会话/消息/消息反馈/库授权行；团队资产（知识库/文档）不随人删——
+        knowledge_bases.owner_id 悬空仅失去 owner 豁免，库按 grants/公开规则
+        照常可用。审计历史保留旧用户名（如实记录）。不变量：不能删除最后
+        一个启用超管（防锁死，与禁用/降级同一条线）。"""
+        if not _actor_is_super(request):
+            raise AppError("error.superadmin_required",
+                           "该操作仅超级管理员可执行", status=403)
+        with sf() as s:
+            user = s.get(User, user_id)
+            if user is None:
+                raise AppError("error.user_not_found", "用户不存在: {id}",
+                               status=404, id=user_id)
+            if user.role == "superadmin" and not user.disabled:
+                others = (s.query(User)
+                          .filter(User.id != user_id, User.role == "superadmin",
+                                  User.disabled == False)  # noqa: E712
+                          .count())
+                if others == 0:
+                    raise AppError("error.last_superadmin",
+                                   "不能禁用/降级最后一个超级管理员", status=422)
+            uid = user.id
+            # 私有数据级联（顺序：反馈→消息→会话→授权行，避免悬挂引用）
+            conv_ids = [c.id for c in
+                        s.query(Conversation).filter_by(user_id=uid).all()]
+            if conv_ids:
+                s.query(MessageFeedback).filter(
+                    MessageFeedback.conv_id.in_(conv_ids)).delete(
+                    synchronize_session=False)
+                s.query(Message).filter(
+                    Message.conv_id.in_(conv_ids)).delete(
+                    synchronize_session=False)
+                s.query(Conversation).filter(
+                    Conversation.user_id == uid).delete(
+                    synchronize_session=False)
+            s.query(KbGrant).filter(KbGrant.user_id == uid).delete(
+                synchronize_session=False)
+            s.delete(user)
+            s.commit()
+        return {"ok": True}
 
     @router.post("/users/{user_id}/invite",
                  dependencies=[deps.require_admin, deps.audit_mutation])

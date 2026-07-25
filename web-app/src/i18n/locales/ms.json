@@ -80,7 +80,8 @@
     "last_superadmin": "Tidak boleh melumpuhkan/menurunkan taraf pentadbir super terakhir",
     "invite_needs_email": "Pengguna ini belum menetapkan e-mel, sila isikan e-mel terlebih dahulu",
     "smtp_unconfigured": "Peti mel keluar belum dikonfigurasi (Tetapan → Sistem → Peti mel keluar)",
-    "invite_send_failed": "E-mel jemputan gagal dihantar: {msg}"
+    "invite_send_failed": "E-mel jemputan gagal dihantar: {msg}",
+    "superadmin_required": "Operasi ini hanya boleh dilaksanakan oleh pentadbir super"
   },
   "login": {
     "continue": "Log masuk untuk meneruskan",
@@ -285,7 +286,14 @@
     "invite_note": "Nota: Menghantar jemputan akan menetapkan semula kata laluan akaun ini (kata laluan lama akan terbatal serta-merta); e-mel akan menggunakan templat Cina atau Inggeris mengikut keutamaan bahasa akaun tersebut.",
     "send_invite": "Hantar e-mel jemputan",
     "invite_sending": "Sedang menghantar…",
-    "invite_sent": "Jemputan telah dihantar ke {email}"
+    "invite_sent": "Jemputan telah dihantar ke {email}",
+    "rename_title": "Tukar nama akaun — {name}",
+    "rename_note": "Selepas menukar nama, log masuk semasa pengguna akan terbatal serta-merta. Pengguna mesti log masuk semula dengan nama akaun baharu; rekod audit lama akan mengekalkan nama lama.",
+    "renamed": "{old} telah ditukar nama kepada {name}",
+    "delete_title": "Padam akaun — {name}",
+    "delete_warn": "Akaun ini, termasuk semua sesi, mesej, maklum balas dan kebenaran repositori, akan dipadam secara kekal dan tidak boleh dipulihkan. Aset pasukan seperti pangkalan pengetahuan dan dokumen tidak akan terjejas; sejarah audit akan dikekalkan.",
+    "delete_confirm_hint": "Masukkan nama pengguna {name} untuk mengesahkan pemadaman",
+    "deleted": "Akaun {name} telah dipadam"
   },
   "apikey": {
     "create": "Buat Key Baru",

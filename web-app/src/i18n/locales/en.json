@@ -80,7 +80,8 @@
     "last_superadmin": "Cannot disable/demote the last super admin",
     "invite_needs_email": "This user has not set an email. Please fill in the email first.",
     "smtp_unconfigured": "Outbox not configured (Settings → System → Outbox)",
-    "invite_send_failed": "Failed to send invitation email: {msg}"
+    "invite_send_failed": "Failed to send invitation email: {msg}",
+    "superadmin_required": "Only superadmin can perform this operation."
   },
   "login": {
     "continue": "Log in to continue",
@@ -285,7 +286,14 @@
     "invite_note": "Note: Sending an invitation will reset the account's password (old password immediately invalid). The email will use Chinese or English template based on the account's language preference.",
     "send_invite": "Send Invitation Email",
     "invite_sending": "Sending…",
-    "invite_sent": "Invitation sent to {email}"
+    "invite_sent": "Invitation sent to {email}",
+    "rename_title": "Rename Account — {name}",
+    "rename_note": "Renaming will immediately invalidate the current session. The user must log in again with the new account name. Audit history keeps the old name.",
+    "renamed": "{old} renamed to {name}",
+    "delete_title": "Delete Account — {name}",
+    "delete_warn": "This will permanently delete the account and all its sessions, messages, feedback, and library authorizations. This action cannot be undone. Team assets such as knowledge bases and documents remain unaffected. Audit history is retained.",
+    "delete_confirm_hint": "Enter username {name} to confirm deletion",
+    "deleted": "Account {name} deleted."
   },
   "apikey": {
     "create": "Create Key",
