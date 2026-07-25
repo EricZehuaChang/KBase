@@ -28,7 +28,7 @@ def test_login_ok_sets_cookie_and_returns_role(tmp_path, fake_embedder, monkeypa
                         monkeypatch=monkeypatch)
     r = c.post("/api/auth/login", json={"username": "admin", "password": "adminpass123"})
     assert r.status_code == 200
-    assert r.json() == {"username": "admin", "role": "admin"}
+    assert r.json() == {"username": "admin", "role": "superadmin"}
     assert "kbase_session" in r.cookies
 
 
@@ -86,7 +86,7 @@ def test_auth_me_returns_username_and_role(tmp_path, fake_embedder, monkeypatch)
     c.post("/api/auth/login", json={"username": "admin", "password": "adminpass123"})
     r = c.get("/api/auth/me")
     assert r.status_code == 200
-    assert r.json() == {"username": "admin", "role": "admin", "email": None,
+    assert r.json() == {"username": "admin", "role": "superadmin", "email": None,
                         "advanced_ui": True, "language": None}
 
 
@@ -179,7 +179,7 @@ def test_bootstrap_admin_created_on_startup(tmp_path, fake_embedder):
         users = s.query(User).all()
         assert len(users) == 1
         assert users[0].username == "admin"
-        assert users[0].role == "admin"
+        assert users[0].role == "superadmin"   # 引导账号=超管（最高层级）
 
 
 def test_bootstrap_env_password_honored(tmp_path, fake_embedder, monkeypatch):

@@ -4,7 +4,7 @@
 // 约定）。"不能禁用/降级最后一个管理员"的真正强制在后端（422 中文 detail，
 // 见 kbase/api/main.py update_user）；isLastEnabledAdmin 只做前置按钮禁用，
 // 减少用户点了才被拒绝的挫败感，不是安全边界。
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { Plus, KeyRound } from "@lucide/vue";
@@ -17,12 +17,21 @@ import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableEmpty,
 } from "@/components/ui/table";
 import UserFormDialogs from "@/components/UserFormDialogs.vue";
-import { listUsers, updateUser, type UserItem } from "@/lib/api";
+import { listUsers, updateUser, currentRole, type UserItem } from "@/lib/api";
+import { isSuperadmin } from "@/lib/auth-utils";
 import { isLastEnabledAdmin } from "@/lib/settings-utils";
 
 const { t } = useI18n();
 
-const ROLES = ["admin", "editor", "viewer"] as const;
+// 超管层级：superadmin 选项只对超管本人出现；超管账号的行对普通 admin
+// 整行锁死（改角色/禁用/重置密码都 403，见后端 admin.py）——前置禁用防呆。
+const iAmSuper = computed(() => isSuperadmin(currentRole.value ?? ""));
+const roleOptions = computed(() =>
+  iAmSuper.value ? ["superadmin", "admin", "editor", "viewer"]
+                 : ["admin", "editor", "viewer"]);
+function rowLocked(u: UserItem): boolean {
+  return u.role === "superadmin" && !iAmSuper.value;
+}
 
 const users = ref<UserItem[]>([]);
 const loading = ref(true);
@@ -109,13 +118,13 @@ async function toggleDisabled(user: UserItem, disabled: boolean) {
           <TableCell>
             <Select
               :model-value="u.role"
-              :disabled="isLastEnabledAdmin(users, u.id)"
+              :disabled="isLastEnabledAdmin(users, u.id) || rowLocked(u)"
               @update:model-value="(v) => changeRole(u, String(v))"
             >
               <SelectTrigger class="w-28"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectGroup>
-                  <SelectItem v-for="r in ROLES" :key="r" :value="r">{{ t(`common.role.${r}`) }}</SelectItem>
+                  <SelectItem v-for="r in roleOptions" :key="r" :value="r">{{ t(`common.role.${r}`) }}</SelectItem>
                 </SelectGroup>
               </SelectContent>
             </Select>
@@ -124,7 +133,7 @@ async function toggleDisabled(user: UserItem, disabled: boolean) {
             <label class="flex items-center gap-2">
               <Switch
                 :model-value="!u.disabled"
-                :disabled="isLastEnabledAdmin(users, u.id)"
+                :disabled="isLastEnabledAdmin(users, u.id) || rowLocked(u)"
                 @update:model-value="(v) => toggleDisabled(u, !v)"
               />
               <span class="text-sm text-[var(--text-2)]">{{ u.disabled ? t("user.disabled_state") : t("user.enabled_state") }}</span>
@@ -141,7 +150,12 @@ async function toggleDisabled(user: UserItem, disabled: boolean) {
             />
           </TableCell>
           <TableCell>
-            <Button variant="ghost" size="sm" @click="resetTarget = u">
+            <Button
+              variant="ghost" size="sm"
+              :disabled="rowLocked(u)"
+              :title="rowLocked(u) ? t('user.superadmin_locked') : undefined"
+              @click="resetTarget = u"
+            >
               <KeyRound class="size-3.5" />
               {{ t("user.reset_pw") }}
             </Button>

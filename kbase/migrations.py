@@ -116,6 +116,16 @@ _CHUNKS_KW_KB_IDX_DDL = (
 )
 
 
+# 超管层级引入（RBAC 升级）：存量库把引导账号 admin 提为 superadmin——
+# 与 bootstrap.ensure_admin 新装为 superadmin 对齐，保证每个库都恰有系统
+# owner 在最高层级；其余 admin（含外发的演示账号）保持普通 admin 不动。
+# 幂等：条件含 role='admin'，已提升的行不再匹配。两方言 SQL 通用。
+_PROMOTE_BOOTSTRAP_SUPERADMIN_SQL = (
+    "UPDATE users SET role = 'superadmin' "
+    "WHERE username = 'admin' AND role = 'admin'"
+)
+
+
 def _run_column_guards(conn, insp) -> None:
     tables = insp.get_table_names()
     for table, column, ddl_type in _COLUMN_MIGRATIONS:
@@ -124,6 +134,8 @@ def _run_column_guards(conn, insp) -> None:
             if column not in cols:
                 conn.execute(text(
                     f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}"))
+    if "users" in tables:
+        conn.execute(text(_PROMOTE_BOOTSTRAP_SUPERADMIN_SQL))
 
 
 def _run_sqlite_migrations(conn, insp) -> None:

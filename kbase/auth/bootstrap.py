@@ -35,11 +35,13 @@ def ensure_admin(sf) -> None:
         else:
             password = _generate_random_password()
             logger.warning(
-                "首启引导：已自动创建管理员账号 admin，随机密码=%s"
+                "首启引导：已自动创建超级管理员账号 admin，随机密码=%s"
                 "（请立即登录后妥善保管；也可通过环境变量 KBASE_ADMIN_PASSWORD 预设）",
                 password)
+        # 引导账号=superadmin（最高层级，管理体系之外）：普通 admin 动不了它，
+        # 它管一切——外部人员拿到 admin 演示账号也无法夺权/锁死系统 owner。
         admin = User(id=str(uuid.uuid4()), username="admin",
                      password_hash=security.hash_password(password),
-                     role="admin", disabled=False)
+                     role="superadmin", disabled=False)
         s.add(admin)
         s.commit()

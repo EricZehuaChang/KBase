@@ -9,6 +9,7 @@ from kbase.api.schemas import ApiKeyCreate, UserCreate, UserUpdate
 from kbase.api.services import Services
 from kbase.audit import list_audit
 from kbase.auth import security
+from kbase.auth.deps import role_rank
 from kbase.errors import AppError
 from kbase.license import check_license
 from kbase.models import ApiKey, User
@@ -88,8 +89,16 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
             rows = s.query(User).order_by(User.created_at.asc()).all()
             return [_user_out(u) for u in rows]
 
+    def _actor_is_super(request: Request) -> bool:
+        actor = getattr(request.state, "actor", None) or {}
+        return role_rank(actor.get("role", "")) >= role_rank("superadmin")
+
     @router.post("/users", dependencies=[deps.require_admin, deps.audit_mutation])
     def create_user(body: UserCreate, request: Request, bg: BackgroundTasks):
+        # 超管层级在管理体系之外：普通 admin 不能创建 superadmin 账号
+        if body.role == "superadmin" and not _actor_is_super(request):
+            raise AppError("error.superadmin_only",
+                           "仅超级管理员可创建/管理超级管理员账号", status=403)
         with sf() as s:
             if s.query(User).filter_by(username=body.username).first() is not None:
                 raise AppError("error.username_exists", "用户名已存在: {name}", status=409, name=body.username)
@@ -123,29 +132,50 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         return out
 
     @router.put("/users/{user_id}", dependencies=[deps.require_admin, deps.audit_mutation])
-    def update_user(user_id: str, body: UserUpdate):
+    def update_user(user_id: str, body: UserUpdate, request: Request):
         with sf() as s:
             user = s.get(User, user_id)
             if user is None:
                 raise AppError("error.user_not_found", "用户不存在: {id}", status=404, id=user_id)
 
-            # 不变量：不能让"启用中的 admin"数量降到 0——无论是禁用最后一个
-            # 启用 admin，还是把最后一个启用 admin 降级成非 admin。用变更后
-            # 的假想状态计算启用 admin 数，而不是分别判断字段，这样两种触发
-            # 路径（disabled=True 或 role=非admin）共用同一条校验。
+            # 超管层级在管理体系之外：普通 admin 对 superadmin 账号的任何
+            # 修改（改密/禁用/降级/改邮箱）一律 403；把别人提为 superadmin
+            # 同样只有超管能做。
+            if ((user.role == "superadmin" or body.role == "superadmin")
+                    and not _actor_is_super(request)):
+                raise AppError("error.superadmin_only",
+                               "仅超级管理员可创建/管理超级管理员账号", status=403)
+
+            # 不变量：不能让"启用中的最高层级"清零，否则系统失去最高管理权。
+            # 用变更后的假想状态计算，disabled=True 与 role 降级两条触发路径
+            # 共用同一条校验。有超管的库守超管数；无超管的存量库退守旧规则
+            # （启用 admin 数不清零），防迁移遗漏时锁死系统。
             would_be_role = body.role if body.role is not None else user.role
             would_be_disabled = (body.disabled if body.disabled is not None
                                  else user.disabled)
+
+            def _others_enabled(role: str) -> int:
+                return (s.query(User)
+                        .filter(User.id != user_id, User.role == role,
+                                User.disabled == False)  # noqa: E712
+                        .count())
+
+            is_super_now = user.role == "superadmin" and not user.disabled
+            would_remain_super = (would_be_role == "superadmin"
+                                  and not would_be_disabled)
+            if is_super_now and not would_remain_super:
+                if _others_enabled("superadmin") == 0:
+                    raise AppError("error.last_superadmin",
+                                   "不能禁用/降级最后一个超级管理员", status=422)
+            has_any_super = (s.query(User)
+                             .filter(User.role == "superadmin",
+                                     User.disabled == False)  # noqa: E712
+                             .count() > 0)
             is_admin_now = user.role == "admin" and not user.disabled
             would_remain_admin = would_be_role == "admin" and not would_be_disabled
-            if is_admin_now and not would_remain_admin:
-                other_enabled_admins = (
-                    s.query(User)
-                    .filter(User.id != user_id, User.role == "admin",
-                           User.disabled == False)  # noqa: E712
-                    .count())
-                if other_enabled_admins == 0:
-                    raise AppError("error.last_admin", "不能禁用/降级最后一个管理员", status=422)
+            if (not has_any_super and is_admin_now and not would_remain_admin
+                    and _others_enabled("admin") == 0):
+                raise AppError("error.last_admin", "不能禁用/降级最后一个管理员", status=422)
 
             if body.role is not None:
                 user.role = body.role

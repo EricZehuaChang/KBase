@@ -213,9 +213,9 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps, *,
             # 账号级语言偏好（P2-4）：前端登录后据此覆盖本地检测。未设置
             # （None）或 API Key 身份 → null，前端跟随 localStorage/浏览器。
             language = user.language if user else None
-            # 高级界面：editor/admin 恒开；viewer 看个人开关（管理员在用户
-            # 管理里配置）。API Key 身份无用户行，按角色默认。
-            advanced = (actor["role"] in ("admin", "editor")
+            # 高级界面：editor 及以上（含 superadmin）恒开；viewer 看个人
+            # 开关（管理员在用户管理里配置）。API Key 身份无用户行，按角色默认。
+            advanced = (actor["role"] in ("superadmin", "admin", "editor")
                         or bool(user.advanced_ui if user else False))
         return {"username": actor["name"], "role": actor["role"],
                 "email": email, "advanced_ui": advanced, "language": language}

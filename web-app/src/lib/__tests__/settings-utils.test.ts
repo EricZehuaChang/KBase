@@ -201,4 +201,25 @@ describe("isLastEnabledAdmin", () => {
       { id: "3", username: "admin2", role: "admin", disabled: true, created_at: "" }];
     expect(isLastEnabledAdmin(withDisabledAdmin, "1")).toBe(true);
   });
+
+  // ---- 超管层级引入后：护"最后一个启用 superadmin"；有超管在场时普通
+  // admin 不再触发锁（后端不变量同步，见 kbase/api/routes/admin.py）
+  const withSuper = [
+    { id: "s1", username: "root", role: "superadmin", disabled: false, created_at: "" },
+    { id: "1", username: "admin", role: "admin", disabled: false, created_at: "" },
+  ];
+
+  it("唯一启用中的 superadmin 判定为 true", () => {
+    expect(isLastEnabledAdmin(withSuper, "s1")).toBe(true);
+  });
+
+  it("有超管在场时，唯一 admin 不再是最后防线——false", () => {
+    expect(isLastEnabledAdmin(withSuper, "1")).toBe(false);
+  });
+
+  it("存在另一个启用中的 superadmin 时判定为 false", () => {
+    const two = [...withSuper,
+      { id: "s2", username: "root2", role: "superadmin", disabled: false, created_at: "" }];
+    expect(isLastEnabledAdmin(two, "s1")).toBe(false);
+  });
 });

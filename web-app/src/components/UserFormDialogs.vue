@@ -2,7 +2,7 @@
 // 新建用户 / 重置密码两个 Dialog，从 UserManagementCard 拆出（>200 行拆分
 // 约定）。用 v-model 双向绑定父组件的 createOpen/resetTarget，成功后 emit
 // changed 让父组件重新拉取列表。
-import { reactive, ref, watch } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { Button } from "@/components/ui/button";
@@ -13,11 +13,16 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
-import { createUser, updateUser, type UserItem } from "@/lib/api";
+import { createUser, updateUser, currentRole, type UserItem } from "@/lib/api";
+import { isSuperadmin } from "@/lib/auth-utils";
 
 const { t } = useI18n();
 
-const ROLES = ["admin", "editor", "viewer"] as const;
+// superadmin 选项仅超管可见（普通 admin 建超管账号后端 403，前置隐藏防呆）
+const ROLES = computed(() =>
+  isSuperadmin(currentRole.value ?? "")
+    ? ["superadmin", "admin", "editor", "viewer"]
+    : ["admin", "editor", "viewer"]);
 
 const props = defineProps<{ createOpen: boolean; resetTarget: UserItem | null }>();
 const emit = defineEmits<{
