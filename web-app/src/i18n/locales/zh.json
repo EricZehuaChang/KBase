@@ -763,5 +763,8 @@
     "col_resource": "资源",
     "col_detail": "详情",
     "load_more": "加载更早的 {rest} 条"
+  },
+  "usermenu": {
+    "open": "账号与设置"
   }
 }

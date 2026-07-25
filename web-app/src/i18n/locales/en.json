@@ -763,5 +763,8 @@
     "col_resource": "Resource",
     "col_detail": "Details",
     "load_more": "Load {rest} more"
+  },
+  "usermenu": {
+    "open": "Account & Settings"
   }
 }

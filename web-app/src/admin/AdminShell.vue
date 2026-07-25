@@ -9,16 +9,15 @@ import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import {
-  Folder, ScanSearch, FileText, Settings, Sun, Moon, LogOut, ArrowLeft,
-  Database, KeyRound, Languages,
+  Folder, ScanSearch, FileText, Settings, ArrowLeft,
+  Database, Languages,
 } from "@lucide/vue";
 import ChangePasswordDialog from "@/components/ChangePasswordDialog.vue";
 import EmailPromptDialog from "@/components/EmailPromptDialog.vue";
-import LanguagePicker from "@/components/LanguagePicker.vue";
-import { theme, toggleTheme } from "@/lib/theme";
+import UserMenu from "@/components/UserMenu.vue";
 import { getSession, logout, getLicense, currentRole, type Me } from "@/lib/api";
 import { setLanguage } from "@/i18n";
-import { roleBadgeClass, canAdminister } from "@/lib/auth-utils";
+import { canAdminister } from "@/lib/auth-utils";
 import { licenseBannerInfo } from "@/lib/settings-utils";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -197,39 +196,13 @@ function backToPortal() {
             <span v-if="currentLabel" class="text-[var(--text-3)]">/</span>
             <span class="font-medium">{{ currentLabel ? t(currentLabel) : "" }}</span>
           </div>
-          <div class="flex items-center gap-2">
-            <LanguagePicker />
-            <button
-              type="button"
-              class="rounded-[var(--radius-ctl)] p-2 text-[var(--text-2)] transition-colors hover:bg-[var(--surface-2)]"
-              :title="t(theme === 'dark' ? 'portal.topbar.to_light' : 'portal.topbar.to_dark')"
-              @click="toggleTheme"
-            >
-              <component :is="theme === 'dark' ? Sun : Moon" class="size-4" />
-            </button>
-            <div v-if="me" class="flex items-center gap-2 border-l border-[var(--border)] pl-3">
-              <button
-                type="button"
-                class="rounded-[var(--radius-ctl)] p-2 text-[var(--text-2)] transition-colors hover:bg-[var(--surface-2)]"
-                :title="t('portal.topbar.change_pw')"
-                @click="changePwOpen = true"
-              >
-                <KeyRound class="size-4" />
-              </button>
-              <span class="text-sm">{{ me.username }}</span>
-              <span class="rounded-full px-1.5 py-0.5 text-xs" :class="roleBadgeClass(me.role)">
-                {{ roleText }}
-              </span>
-              <button
-                type="button"
-                class="rounded-[var(--radius-ctl)] p-2 text-[var(--text-2)] transition-colors hover:bg-[var(--surface-2)]"
-                :title="t('portal.topbar.logout')"
-                @click="handleLogout"
-              >
-                <LogOut class="size-4" />
-              </button>
-            </div>
-          </div>
+          <!-- 顶栏只留登录人：语言/主题/改密/登出全部收进用户菜单下拉 -->
+          <UserMenu
+            :me="me"
+            :role-text="roleText"
+            @change-password="changePwOpen = true"
+            @logout="handleLogout"
+          />
         </header>
 
         <!-- 许可证横幅：trial=提示色、expired/invalid/临近到期=警告色 -->
