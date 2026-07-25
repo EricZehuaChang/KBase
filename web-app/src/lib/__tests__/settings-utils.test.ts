@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   validateParamsJson, paramsSummary, healthDot, licenseBannerInfo, isLastEnabledAdmin,
+  auditDailyCounts, parseAuditTs,
   buildProviderBody, keySource, PROVIDER_PRESETS,
 } from "../settings-utils";
 
@@ -221,5 +222,37 @@ describe("isLastEnabledAdmin", () => {
     const two = [...withSuper,
       { id: "s2", username: "root2", role: "superadmin", disabled: false, created_at: "" }];
     expect(isLastEnabledAdmin(two, "s1")).toBe(false);
+  });
+});
+
+describe("auditDailyCounts / parseAuditTs（审计趋势图）", () => {
+  it("无时区的 UTC 时间戳补 Z 解析", () => {
+    const d = parseAuditTs("2026-07-26T01:30:00.123456");
+    expect(d.getTime()).toBe(Date.parse("2026-07-26T01:30:00.123Z"));
+  });
+
+  it("带时区标记的时间戳原样解析", () => {
+    expect(parseAuditTs("2026-07-26T01:30:00Z").getTime())
+      .toBe(Date.parse("2026-07-26T01:30:00Z"));
+  });
+
+  it("近 N 天逐日归组：窗口固定长度、今天在末位、越界旧行忽略", () => {
+    const now = new Date(2026, 6, 26, 12, 0, 0);   // 本地 2026-07-26 中午
+    const items = [
+      { ts: "2026-07-26T01:00:00" },   // 今天（UTC 早晨→本地同日或前日，见下）
+      { ts: "2026-07-25T23:00:00" },
+      { ts: "2026-07-01T00:00:00" },   // 越界（>14 天前），忽略
+    ];
+    const out = auditDailyCounts(items, 14, now);
+    expect(out).toHaveLength(14);
+    expect(out[13].date).toBe("2026-07-26");
+    const totalCounted = out.reduce((s, d) => s + d.count, 0);
+    expect(totalCounted).toBe(2);      // 只有窗口内两条计入
+  });
+
+  it("空输入返回全零窗口", () => {
+    const out = auditDailyCounts([], 7, new Date(2026, 6, 26));
+    expect(out).toHaveLength(7);
+    expect(out.every((d) => d.count === 0)).toBe(true);
   });
 });

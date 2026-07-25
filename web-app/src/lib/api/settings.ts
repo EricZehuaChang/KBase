@@ -333,3 +333,20 @@ export interface FeedbackStats {
 export function getFeedbackStats(limit = 20): Promise<FeedbackStats> {
   return req(`/api/stats/feedback?limit=${limit}`);
 }
+
+// 审计日志（admin 及以上；后端按查看者分层——超管看全量，普通 admin 的
+// 视图里不出现超管 actor 的行，total 同口径，见 kbase/api/routes/admin.py）
+export interface AuditItem {
+  id: string;
+  ts: string;
+  actor: string;
+  action: string;
+  resource: string | null;
+  detail: string | null;
+  ip: string | null;
+}
+
+export function listAudit(limit = 200, offset = 0):
+    Promise<{ items: AuditItem[]; total: number }> {
+  return req(`/api/audit?limit=${limit}&offset=${offset}`);
+}

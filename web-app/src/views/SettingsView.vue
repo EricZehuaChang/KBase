@@ -23,6 +23,7 @@ import FeishuBotCard from "@/components/FeishuBotCard.vue";
 import SmtpCard from "@/components/SmtpCard.vue";
 import LicenseCard from "@/components/LicenseCard.vue";
 import OpsDashboardCard from "@/components/OpsDashboardCard.vue";
+import AuditLogCard from "@/components/AuditLogCard.vue";
 import {
   settingsListProviders, deleteProvider, setActiveProvider, testProvider, healthz,
   currentRole,
@@ -234,8 +235,10 @@ onMounted(async () => {
         </section>
 
         <!-- 运营看板 -->
-        <section v-else-if="tab === 'ops'">
+        <section v-else-if="tab === 'ops'" class="flex flex-col gap-6">
           <OpsDashboardCard v-if="canAdminister(currentRole ?? '')" />
+          <!-- 审计日志（趋势图+筛选表；后端按查看者分层，超管看全量） -->
+          <AuditLogCard v-if="canAdminister(currentRole ?? '')" />
         </section>
 
         <!-- 系统：状态 + 许可证 + 外观 -->
