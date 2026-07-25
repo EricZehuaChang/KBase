@@ -743,5 +743,25 @@
       "change_pw": "Tukar kata laluan",
       "logout": "Log keluar"
     }
+  },
+  "audit": {
+    "title": "Log Audit",
+    "desc": "Rekod operasi sistem: siapa melakukan apa dan bila. Julat yang anda lihat adalah mengikut peranan anda.",
+    "total": "Jumlah Peristiwa",
+    "today": "Peristiwa Hari Ini",
+    "loaded": "Dimuatkan",
+    "trend_title": "Trend Aktiviti 14 Hari Terkini",
+    "trend_caption": "Berdasarkan {n} peristiwa yang dimuatkan (pemuatan halaman secara kronologi terbalik)",
+    "all_actors": "Semua Pelaku",
+    "action_ph": "Tapis mengikut tindakan (cth. create_user)",
+    "only_me": "Hanya Saya",
+    "showing": "Menunjukkan {shown} daripada {loaded}",
+    "empty": "Tiada rekod audit yang sepadan",
+    "col_time": "Masa",
+    "col_actor": "Pelaku",
+    "col_action": "Tindakan",
+    "col_resource": "Sumber",
+    "col_detail": "Butiran",
+    "load_more": "Muatkan {rest} lagi yang lebih awal"
   }
 }

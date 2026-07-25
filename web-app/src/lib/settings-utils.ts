@@ -209,3 +209,36 @@ export function isLastEnabledAdmin(users: UserLike[], userId: string): boolean {
   if (!hasSuper && target.role === "admin") return othersEnabled("admin") === 0;
   return false;
 }
+
+// ---- 审计日志可视化（AuditLogCard）----
+
+/** 审计时间戳 → Date。后端存 datetime.utcnow() 的 isoformat（无时区标记的
+ * UTC），无 tz 信息时补 "Z" 按 UTC 解析，展示侧再转本地时间。 */
+export function parseAuditTs(ts: string): Date {
+  const hasTz = /Z$|[+-]\d{2}:?\d{2}$/.test(ts);
+  return new Date(hasTz ? ts : `${ts}Z`);
+}
+
+/** 近 N 天逐日事件数（含今天，旧→新排列），供活动趋势条形图。按浏览器
+ * 本地日期归组（用户看到的"今天"与其时区一致）；只统计传入的行（调用方
+ * 已加载的页），越界的旧行忽略。纯函数，vitest 直接单测。 */
+export function auditDailyCounts(
+  items: { ts: string }[], days = 14, now: Date = new Date(),
+): { date: string; count: number }[] {
+  const dayKey = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const buckets = new Map<string, number>();
+  const order: string[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    const key = dayKey(d);
+    buckets.set(key, 0);
+    order.push(key);
+  }
+  for (const it of items) {
+    const key = dayKey(parseAuditTs(it.ts));
+    if (buckets.has(key)) buckets.set(key, (buckets.get(key) ?? 0) + 1);
+  }
+  return order.map((date) => ({ date, count: buckets.get(date) ?? 0 }));
+}

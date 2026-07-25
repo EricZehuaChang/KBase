@@ -743,5 +743,25 @@
       "change_pw": "修改密码",
       "logout": "登出"
     }
+  },
+  "audit": {
+    "title": "审计日志",
+    "desc": "系统操作留痕：谁在什么时间做了什么。你看到的范围与你的角色一致",
+    "total": "事件总数",
+    "today": "今日事件",
+    "loaded": "已加载",
+    "trend_title": "近 14 天活动趋势",
+    "trend_caption": "基于已加载的 {n} 条事件统计（时间倒序分页加载）",
+    "all_actors": "全部操作者",
+    "action_ph": "按动作筛选（如 create_user）",
+    "only_me": "只看我",
+    "showing": "显示 {shown} / {loaded} 条",
+    "empty": "没有匹配的审计记录",
+    "col_time": "时间",
+    "col_actor": "操作者",
+    "col_action": "动作",
+    "col_resource": "资源",
+    "col_detail": "详情",
+    "load_more": "加载更早的 {rest} 条"
   }
 }

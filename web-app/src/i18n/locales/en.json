@@ -743,5 +743,25 @@
       "change_pw": "Change password",
       "logout": "Logout"
     }
+  },
+  "audit": {
+    "title": "Audit Log",
+    "desc": "System operation traces: who did what and when. The scope you see matches your role.",
+    "total": "Total Events",
+    "today": "Today's Events",
+    "loaded": "Loaded",
+    "trend_title": "Activity Trend (Last 14 Days)",
+    "trend_caption": "Based on {n} loaded events (reverse chronological with pagination)",
+    "all_actors": "All Actors",
+    "action_ph": "Filter by action (e.g., create_user)",
+    "only_me": "Only Me",
+    "showing": "Showing {shown} / {loaded}",
+    "empty": "No matching audit records",
+    "col_time": "Time",
+    "col_actor": "Actor",
+    "col_action": "Action",
+    "col_resource": "Resource",
+    "col_detail": "Details",
+    "load_more": "Load {rest} more"
   }
 }
