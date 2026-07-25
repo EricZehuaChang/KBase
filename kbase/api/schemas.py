@@ -324,6 +324,14 @@ class UserUpdate(BaseModel):
     advanced_ui: bool | None = None   # viewer 高级界面开关
 
 
+class InviteBody(BaseModel):
+    """邀请用户（管理端「邮箱与邀请」）：email 可顺带维护（None=用已存邮箱）；
+    password 为本次设置的初始密码（None=随机生成）。旧密码是哈希不可恢复，
+    邀请语义=设置新初始密码 + 发送"登录地址/账号/初始密码"邮件。"""
+    email: str | None = None
+    password: str | None = Field(default=None, min_length=6)
+
+
 class ChangePasswordBody(BaseModel):
     """登录用户自助改密：必须携带旧密码复核（防止离席被人改密顶号）。"""
     old_password: str

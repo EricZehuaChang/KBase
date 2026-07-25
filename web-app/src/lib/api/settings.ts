@@ -239,6 +239,15 @@ export function updateUser(id: string, body: UserUpdateBody): Promise<UserItem> 
   return req(`/api/users/${id}`, jsonInit(body, "PUT"));
 }
 
+/** 邀请用户（「邮箱与邀请」）：可顺带维护邮箱；password 留空=随机生成。
+ * 后端设置新初始密码并**同步**发送"登录地址/账号/初始密码"邮件（按账号
+ * 语言偏好选中/英文模板），发信失败回错误且不动密码。 */
+export function inviteUser(
+  id: string, body: { email?: string; password?: string },
+): Promise<{ ok: boolean; email: string }> {
+  return req(`/api/users/${id}/invite`, jsonInit(body));
+}
+
 // ---- API Key 管理（M4-1 G6，admin）----
 
 export interface ApiKeyItem {

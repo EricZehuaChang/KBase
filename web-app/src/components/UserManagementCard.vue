@@ -7,7 +7,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
-import { Plus, KeyRound } from "@lucide/vue";
+import { Plus, KeyRound, Mail } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -17,6 +17,7 @@ import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableEmpty,
 } from "@/components/ui/table";
 import UserFormDialogs from "@/components/UserFormDialogs.vue";
+import UserInviteDialog from "@/components/UserInviteDialog.vue";
 import { listUsers, updateUser, currentRole, type UserItem } from "@/lib/api";
 import { isSuperadmin } from "@/lib/auth-utils";
 import { isLastEnabledAdmin } from "@/lib/settings-utils";
@@ -51,6 +52,8 @@ onMounted(load);
 
 const createOpen = ref(false);
 const resetTarget = ref<UserItem | null>(null);
+// 「邮箱与邀请」对话框目标（维护邮箱/发凭据邮件），超管行对普通 admin 锁定
+const inviteTarget = ref<UserItem | null>(null);
 
 async function changeRole(user: UserItem, role: string) {
   if (role === user.role) return;
@@ -150,15 +153,27 @@ async function toggleDisabled(user: UserItem, disabled: boolean) {
             />
           </TableCell>
           <TableCell>
-            <Button
-              variant="ghost" size="sm"
-              :disabled="rowLocked(u)"
-              :title="rowLocked(u) ? t('user.superadmin_locked') : undefined"
-              @click="resetTarget = u"
-            >
-              <KeyRound class="size-3.5" />
-              {{ t("user.reset_pw") }}
-            </Button>
+            <div class="flex items-center gap-1">
+              <Button
+                variant="ghost" size="sm"
+                :disabled="rowLocked(u)"
+                :title="rowLocked(u) ? t('user.superadmin_locked') : undefined"
+                @click="resetTarget = u"
+              >
+                <KeyRound class="size-3.5" />
+                {{ t("user.reset_pw") }}
+              </Button>
+              <!-- 邮箱与邀请：维护邮箱 + 发送凭据邮件（地址/账号/初始密码） -->
+              <Button
+                variant="ghost" size="sm"
+                :disabled="rowLocked(u)"
+                :title="rowLocked(u) ? t('user.superadmin_locked') : undefined"
+                @click="inviteTarget = u"
+              >
+                <Mail class="size-3.5" />
+                {{ t("user.invite_btn") }}
+              </Button>
+            </div>
           </TableCell>
         </TableRow>
       </TableBody>
@@ -170,4 +185,5 @@ async function toggleDisabled(user: UserItem, disabled: boolean) {
     v-model:reset-target="resetTarget"
     @changed="load"
   />
+  <UserInviteDialog v-model:target="inviteTarget" @changed="load" />
 </template>
