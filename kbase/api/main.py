@@ -116,10 +116,12 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
     # admin：settings/*（Provider 等）与审计查询。
     # mutating 请求审计钩子挂在 require_role 之后（Depends 按声明顺序解析），
     # 保证 403 被拒绝的请求不落审计行。
+    # sf 注入 require_role：自定义角色需查 roles 表解析权限集合（内置角色
+    # 走常量 rank，不碰 DB，行为不变）
     deps = RouteDeps(
-        require_viewer=Depends(require_role("viewer")),
-        require_editor=Depends(require_role("editor")),
-        require_admin=Depends(require_role("admin")),
+        require_viewer=Depends(require_role("viewer", svc.sf)),
+        require_editor=Depends(require_role("editor", svc.sf)),
+        require_admin=Depends(require_role("admin", svc.sf)),
         audit_mutation=Depends(make_mutation_audit_dependency(svc.sf)),
     )
 

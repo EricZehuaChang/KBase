@@ -1,4 +1,5 @@
-"""管理域路由：用户管理、API Key、审计查询、许可证状态（spec §3/§5，G3）。"""
+"""管理域路由：用户管理、自定义角色、API Key、审计查询、许可证状态（spec §3/§5，G3）。"""
+import json
 import secrets as _secrets
 import uuid
 
@@ -6,15 +7,17 @@ from fastapi import BackgroundTasks, Query, Request
 
 from kbase import qa_stats
 from kbase.api.routes import RouteDeps
-from kbase.api.schemas import ApiKeyCreate, InviteBody, UserCreate, UserUpdate
+from kbase.api.schemas import (ApiKeyCreate, InviteBody, RoleCreate, RoleUpdate,
+                               UserCreate, UserUpdate)
 from kbase.api.services import Services
 from kbase.audit import list_audit
 from kbase.auth import security
 from kbase.auth.deps import role_rank
 from kbase.errors import AppError
 from kbase.license import check_license
+from kbase.auth import roles as auth_roles
 from kbase.models import (ApiKey, Conversation, KbGrant, Message,
-                          MessageFeedback, User)
+                          MessageFeedback, RoleDef, User)
 
 
 def register(router, svc: Services, deps: RouteDeps) -> None:
@@ -115,12 +118,109 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         actor = getattr(request.state, "actor", None) or {}
         return role_rank(actor.get("role", "")) >= role_rank("superadmin")
 
+    def _validate_role(role: str) -> None:
+        """角色必须是内置四角色或已存在的自定义角色（UserRole 放开为 str 后，
+        由这里兜住非法值——否则用户会挂上一个谁也没定义的角色而失去权限）。"""
+        if role in auth_roles.BUILTIN_ROLES:
+            return
+        with sf() as s:
+            if s.get(RoleDef, role) is None:
+                raise AppError("error.role_not_found", "角色不存在: {name}",
+                               status=422, name=role)
+
+    # ---- 自定义角色（仅超管）----
+
+    @router.get("/roles", dependencies=[deps.require_admin])
+    def list_roles():
+        """角色清单：内置四角色（builtin=true，权限只读）+ 自定义角色。
+        前端角色下拉与角色管理卡片共用。"""
+        out = [{"name": name, "label": "", "builtin": True,
+                "permissions": sorted(perms)}
+               for name, perms in auth_roles.BUILTIN_ROLE_PERMS.items()]
+        with sf() as s:
+            for r in s.query(RoleDef).order_by(RoleDef.created_at.asc()).all():
+                try:
+                    perms = sorted(p for p in json.loads(r.permissions)
+                                   if p in auth_roles.PERMISSIONS)
+                except ValueError:
+                    perms = []
+                out.append({"name": r.name, "label": r.label, "builtin": False,
+                            "permissions": perms})
+        return {"roles": out, "permissions": sorted(auth_roles.PERMISSIONS)}
+
+    @router.post("/roles", dependencies=[deps.require_admin, deps.audit_mutation])
+    def create_role(body: RoleCreate, request: Request):
+        if not _actor_is_super(request):
+            raise AppError("error.superadmin_required",
+                           "该操作仅超级管理员可执行", status=403)
+        if body.name in auth_roles.BUILTIN_ROLES:
+            raise AppError("error.role_builtin", "内置角色不可创建/修改/删除",
+                           status=422)
+        perms = [p for p in body.permissions if p in auth_roles.PERMISSIONS]
+        with sf() as s:
+            if s.get(RoleDef, body.name) is not None:
+                raise AppError("error.role_exists", "角色已存在: {name}",
+                               status=409, name=body.name)
+            s.add(RoleDef(name=body.name, label=body.label.strip(),
+                          permissions=json.dumps(perms)))
+            s.commit()
+        return {"name": body.name, "label": body.label.strip(),
+                "builtin": False, "permissions": sorted(perms)}
+
+    @router.put("/roles/{name}", dependencies=[deps.require_admin, deps.audit_mutation])
+    def update_role(name: str, body: RoleUpdate, request: Request):
+        if not _actor_is_super(request):
+            raise AppError("error.superadmin_required",
+                           "该操作仅超级管理员可执行", status=403)
+        if name in auth_roles.BUILTIN_ROLES:
+            raise AppError("error.role_builtin", "内置角色不可创建/修改/删除",
+                           status=422)
+        with sf() as s:
+            row = s.get(RoleDef, name)
+            if row is None:
+                raise AppError("error.role_not_found", "角色不存在: {name}",
+                               status=404, name=name)
+            if body.label is not None:
+                row.label = body.label.strip()
+            if body.permissions is not None:
+                row.permissions = json.dumps(
+                    [p for p in body.permissions if p in auth_roles.PERMISSIONS])
+            s.commit()
+            return {"name": row.name, "label": row.label, "builtin": False,
+                    "permissions": sorted(json.loads(row.permissions))}
+
+    @router.delete("/roles/{name}",
+                   dependencies=[deps.require_admin, deps.audit_mutation])
+    def delete_role(name: str, request: Request):
+        """删除自定义角色：仍在使用该角色的用户会失去全部权限（只剩问答），
+        故有用户在用时拒绝删除，先改派再删。"""
+        if not _actor_is_super(request):
+            raise AppError("error.superadmin_required",
+                           "该操作仅超级管理员可执行", status=403)
+        if name in auth_roles.BUILTIN_ROLES:
+            raise AppError("error.role_builtin", "内置角色不可创建/修改/删除",
+                           status=422)
+        with sf() as s:
+            row = s.get(RoleDef, name)
+            if row is None:
+                raise AppError("error.role_not_found", "角色不存在: {name}",
+                               status=404, name=name)
+            in_use = s.query(User).filter_by(role=name).count()
+            if in_use:
+                raise AppError("error.role_in_use",
+                               "仍有 {n} 个用户在使用该角色，请先改派",
+                               status=422, n=in_use)
+            s.delete(row)
+            s.commit()
+        return {"ok": True}
+
     @router.post("/users", dependencies=[deps.require_admin, deps.audit_mutation])
     def create_user(body: UserCreate, request: Request, bg: BackgroundTasks):
         # 超管层级在管理体系之外：普通 admin 不能创建 superadmin 账号
         if body.role == "superadmin" and not _actor_is_super(request):
             raise AppError("error.superadmin_only",
                            "仅超级管理员可创建/管理超级管理员账号", status=403)
+        _validate_role(body.role)      # 自定义角色须已存在（UserRole 已放开为 str）
         with sf() as s:
             if s.query(User).filter_by(username=body.username).first() is not None:
                 raise AppError("error.username_exists", "用户名已存在: {name}", status=409, name=body.username)
@@ -217,6 +317,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
                                        status=409, name=new_name)
                     user.username = new_name
             if body.role is not None:
+                _validate_role(body.role)
                 user.role = body.role
             if body.disabled is not None:
                 user.disabled = body.disabled
