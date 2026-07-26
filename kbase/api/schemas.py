@@ -300,7 +300,27 @@ class JobCreate(BaseModel):
 # - UserRole：含 superadmin（超级管理员，管理体系之外的最高层级）。仅超管
 #   本人能创建/授予 superadmin（见 routes/admin.py 的层级校验）。
 Role = Literal["admin", "editor", "viewer"]
-UserRole = Literal["superadmin", "admin", "editor", "viewer"]
+# 用户角色：内置四角色 + 自定义角色名（roles 表）。不再用 Literal 封闭枚举
+# ——自定义角色由超管创建，值在运行期才知道；路由层校验"该角色必须存在"
+# （见 routes/admin.py _validate_role），非法值仍被拒，只是错误从 422 变
+# 成语义更准的 404/422 业务错误。
+UserRole = str
+
+
+class RoleCreate(BaseModel):
+    """自定义角色（仅超管）：name 为角色标识（users.role 存的值，不可与内置
+    角色重名）；label 展示名；permissions 为权限词表子集（见 auth/roles.py）。"""
+    name: str = Field(min_length=1, max_length=50,
+                      pattern=r"^[a-zA-Z][a-zA-Z0-9_.-]*$")
+    label: str = ""
+    permissions: list[str] = []
+
+
+class RoleUpdate(BaseModel):
+    """改自定义角色：label/permissions 可选更新（name 是主键不可改，
+    要改名=新建+迁移用户）。"""
+    label: str | None = None
+    permissions: list[str] | None = None
 
 
 class ApiKeyCreate(BaseModel):

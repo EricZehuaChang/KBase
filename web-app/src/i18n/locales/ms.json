@@ -81,7 +81,11 @@
     "invite_needs_email": "Pengguna ini belum menetapkan e-mel, sila isikan e-mel terlebih dahulu",
     "smtp_unconfigured": "Peti mel keluar belum dikonfigurasi (Tetapan → Sistem → Peti mel keluar)",
     "invite_send_failed": "E-mel jemputan gagal dihantar: {msg}",
-    "superadmin_required": "Operasi ini hanya boleh dilaksanakan oleh pentadbir super"
+    "superadmin_required": "Operasi ini hanya boleh dilaksanakan oleh pentadbir super",
+    "role_not_found": "Peranan tidak wujud: {name}",
+    "role_exists": "Peranan sudah wujud: {name}",
+    "role_builtin": "Peranan terbina tidak boleh dicipta/diubah/dipadam",
+    "role_in_use": "Masih terdapat {n} pengguna menggunakan peranan ini, sila tukar tugasan dahulu"
   },
   "login": {
     "continue": "Log masuk untuk meneruskan",
@@ -789,5 +793,44 @@
   },
   "usermenu": {
     "open": "Akaun & Tetapan"
+  },
+  "role": {
+    "title": "Peranan & Keizinan",
+    "desc": "Keizinan peranan terbina adalah tetap; anda boleh cipta peranan tersuai dan pilih keizinan, kemudian tugaskan peranan kepada ahli dalam senarai pengguna",
+    "new": "Peranan Baharu",
+    "builtin": "Terbina",
+    "empty": "Belum ada peranan tersuai",
+    "no_perm": "Tiada keizinan tambahan (hanya soal jawab)",
+    "edit_title": "Sunting Peranan — {name}",
+    "dialog_desc": "ID peranan untuk rekod dalaman sistem, nama paparan untuk dilihat orang; keizinan yang dipilih menentukan apa yang peranan boleh lakukan",
+    "name_label": "ID peranan (bermula dengan huruf, tidak boleh diubah selepas dicipta)",
+    "label_label": "Nama paparan",
+    "label_ph": "Cth: Juruaudit",
+    "perms_label": "Keizinan",
+    "created": "Peranan {name} telah dicipta",
+    "updated": "Peranan {name} telah dikemas kini",
+    "deleted": "Peranan {name} telah dipadam",
+    "perm": {
+      "content": {
+        "manage": "Pengurusan Kandungan"
+      },
+      "system": {
+        "admin": "Pentadbiran Sistem"
+      },
+      "audit": {
+        "view": "Audit & Papan Pemuka"
+      }
+    },
+    "perm_desc": {
+      "content": {
+        "manage": "Cipta pangkalan, muat naik dokumen, penyambung, pautan perkongsian, penjanaan & penilaian"
+      },
+      "system": {
+        "admin": "Perkhidmatan model, pengguna & keizinan, Kunci API, Peti Keluar, Feishu, lesen dan tetapan lain"
+      },
+      "audit": {
+        "view": "Lihat log audit dan papan pemuka operasi"
+      }
+    }
   }
 }

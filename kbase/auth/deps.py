@@ -114,14 +114,27 @@ def make_synthetic_admin_actor_dependency():
     return _set_synthetic_actor
 
 
-def require_role(min_role: str):
-    """工厂：返回一个依赖，要求 request.state.actor 的角色 >= min_role
-    （admin>editor>viewer）。403 detail 用中文，前端可直接展示。
+def require_role(min_role: str, sf=None):
+    """工厂：返回一个依赖，要求 request.state.actor 的角色满足 min_role
+    对应的门槛。403 detail 用中文，前端可直接展示。
+
+    两条判定路径（自定义角色 RBAC）：
+    - **内置角色**（viewer/editor/admin/superadmin）走原 rank 序比较，行为与
+      引入自定义角色前逐字节一致（零回归）；
+    - **自定义角色**（users.role 存的是 roles 表里的角色名）走权限集合：
+      min_role=editor 要 content.manage、admin 要 system.admin、viewer 只需
+      登录。sf 为空（未注入 session factory）时自定义角色一律拒绝——宁可
+      拒绝也不误放行。
 
     依赖 request.state.actor 已由路由级的 get_current_actor（auth="on"）
     或 synthetic_admin_actor（auth="off"）写入——require_role 本身不发起
-    鉴权，只做角色序比较，因此可以在两种模式下用同一套路由级声明。"""
+    鉴权，因此可以在两种模式下用同一套路由级声明。"""
+    from kbase.auth import roles as _roles
+
     min_rank = _ROLE_RANK[min_role]
+    # 门槛 → 所需权限（viewer=登录即可，无需权限）
+    needed_perm = {"editor": _roles.PERM_CONTENT,
+                   "admin": _roles.PERM_SYSTEM}.get(min_role)
 
     def _check(request: Request) -> dict:
         actor = getattr(request.state, "actor", None)
@@ -129,13 +142,26 @@ def require_role(min_role: str):
             # 理论上不会发生：路由级鉴权依赖总是先于 require_role 执行并
             # 写好 request.state.actor；保留此分支只是防御性兜底。
             raise _unauthorized()
-        # 未知角色（_ROLE_RANK 缺失）按 rank -1（低于任何合法角色）处理，一律
-        # 拒绝为 403，而不是让 dict 下标以未捕获 KeyError 冒泡成 500。请求体的
-        # role 已在 API 层用 Literal 严格校验（见 api/main.py Role），这里是纵深
-        # 防御：兜住那些在校验加固之前就已落库的伪角色 actor。
-        actor_rank = _ROLE_RANK.get(actor["role"], -1)
-        if actor_rank < min_rank:
-            raise HTTPException(status_code=403, detail="权限不足：当前角色无法执行此操作")
+        role = actor["role"]
+        if role in _ROLE_RANK:
+            # 内置角色：原 rank 语义不变
+            if _ROLE_RANK[role] < min_rank:
+                raise HTTPException(status_code=403,
+                                    detail="权限不足：当前角色无法执行此操作")
+            return actor
+        # 自定义角色：必须**确实存在**于 roles 表，再看权限集合。
+        # 角色不存在（伪角色脏数据/已删除的角色）一律 403，连 viewer 门槛也
+        # 不放行——纵深防御，与引入自定义角色前"未知角色 rank=-1 全拒"一致；
+        # 零权限但已定义的角色则可过 viewer 门槛（问答），二者语义不同。
+        # sf 未注入时无从查证，同样拒绝（不误放行）。
+        if sf is None or not _roles.role_exists(sf, role):
+            raise HTTPException(status_code=403,
+                                detail="权限不足：当前角色无法执行此操作")
+        if needed_perm is None:
+            return actor          # viewer 门槛：角色已定义即可（含零权限角色）
+        if needed_perm not in _roles.resolve_permissions(sf, role):
+            raise HTTPException(status_code=403,
+                                detail="权限不足：当前角色无法执行此操作")
         return actor
 
     return _check

@@ -81,7 +81,11 @@
     "invite_needs_email": "This user has not set an email. Please fill in the email first.",
     "smtp_unconfigured": "Outbox not configured (Settings → System → Outbox)",
     "invite_send_failed": "Failed to send invitation email: {msg}",
-    "superadmin_required": "Only superadmin can perform this operation."
+    "superadmin_required": "Only superadmin can perform this operation.",
+    "role_not_found": "Role not found: {name}",
+    "role_exists": "Role already exists: {name}",
+    "role_builtin": "Built-in roles cannot be created, modified, or deleted",
+    "role_in_use": "Still {n} user(s) using this role, please reassign first"
   },
   "login": {
     "continue": "Log in to continue",
@@ -789,5 +793,44 @@
   },
   "usermenu": {
     "open": "Account & Settings"
+  },
+  "role": {
+    "title": "Roles & Permissions",
+    "desc": "Built-in roles have fixed permissions; you can create custom roles with selected permissions, then assign them to members in the user list.",
+    "new": "New Role",
+    "builtin": "Built-in",
+    "empty": "No custom roles yet",
+    "no_perm": "No additional permissions (Q&A only)",
+    "edit_title": "Edit Role — {name}",
+    "dialog_desc": "The role ID is for internal records; the display name is visible to users. Selected permissions determine what the role can do.",
+    "name_label": "Role ID (starts with a letter, cannot be changed after creation)",
+    "label_label": "Display Name",
+    "label_ph": "e.g., Auditor",
+    "perms_label": "Permissions",
+    "created": "Role {name} created",
+    "updated": "Role {name} updated",
+    "deleted": "Role {name} deleted",
+    "perm": {
+      "content": {
+        "manage": "Content Management"
+      },
+      "system": {
+        "admin": "System Administration"
+      },
+      "audit": {
+        "view": "Audit & Dashboard"
+      }
+    },
+    "perm_desc": {
+      "content": {
+        "manage": "Create knowledge bases, upload documents, connectors, share links, generation and evaluation"
+      },
+      "system": {
+        "admin": "Model services, users & permissions, API keys, outbox, Feishu, license and other settings"
+      },
+      "audit": {
+        "view": "View audit logs and operation dashboard"
+      }
+    }
   }
 }

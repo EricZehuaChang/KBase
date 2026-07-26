@@ -147,6 +147,18 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class RoleDef(Base):
+    """自定义角色（仅超管可维护）：name 即角色名（users.role 存的值），
+    permissions 存权限词表子集的 JSON 数组（词表见 kbase/auth/roles.py）。
+    内置角色 viewer/editor/admin/superadmin **不落库**——它们的权限是常量，
+    避免"改内置角色权限"把系统改锁死。"""
+    __tablename__ = "roles"
+    name: Mapped[str] = mapped_column(String(50), primary_key=True)
+    label: Mapped[str] = mapped_column(String(100), default="")   # 展示名（可中文）
+    permissions: Mapped[str] = mapped_column(Text, default="[]")  # JSON 数组
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class ShareLink(Base):
     """知识库免登录分享链接（对标 Dify WebApp/FastGPT 免登录窗模式）：
     token 即授权——持有链接者可对绑定库匿名问答；模型在建链接侧绑定

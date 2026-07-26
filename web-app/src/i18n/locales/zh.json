@@ -81,7 +81,11 @@
     "invite_needs_email": "该用户未设置邮箱，请先填写邮箱",
     "smtp_unconfigured": "发件箱未配置（设置 → 系统 → 发件箱）",
     "invite_send_failed": "邀请邮件发送失败：{msg}",
-    "superadmin_required": "该操作仅超级管理员可执行"
+    "superadmin_required": "该操作仅超级管理员可执行",
+    "role_not_found": "角色不存在: {name}",
+    "role_exists": "角色已存在: {name}",
+    "role_builtin": "内置角色不可创建/修改/删除",
+    "role_in_use": "仍有 {n} 个用户在使用该角色，请先改派"
   },
   "login": {
     "continue": "登录以继续",
@@ -789,5 +793,32 @@
   },
   "usermenu": {
     "open": "账号与设置"
+  },
+  "role": {
+    "title": "角色与权限",
+    "desc": "内置角色权限固定；可创建自定义角色并勾选权限，再在用户列表把角色指派给成员",
+    "new": "新建角色",
+    "builtin": "内置",
+    "empty": "还没有自定义角色",
+    "no_perm": "无附加权限（仅问答）",
+    "edit_title": "编辑角色 — {name}",
+    "dialog_desc": "角色标识用于系统内部记录，展示名给人看；勾选的权限决定该角色能做什么",
+    "name_label": "角色标识（字母开头，创建后不可改）",
+    "label_label": "展示名",
+    "label_ph": "如：审计员",
+    "perms_label": "权限",
+    "created": "角色 {name} 已创建",
+    "updated": "角色 {name} 已更新",
+    "deleted": "角色 {name} 已删除",
+    "perm": {
+      "content.manage": "内容管理",
+      "system.admin": "系统管理",
+      "audit.view": "审计与看板"
+    },
+    "perm_desc": {
+      "content.manage": "建库、上传文档、连接器、分享链接、生成与评测",
+      "system.admin": "模型服务、用户与权限、API Key、发件箱、飞书、许可证等设置",
+      "audit.view": "查看审计日志与运营看板"
+    }
   }
 }

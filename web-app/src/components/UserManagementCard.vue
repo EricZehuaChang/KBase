@@ -19,7 +19,8 @@ import {
 import UserFormDialogs from "@/components/UserFormDialogs.vue";
 import UserInviteDialog from "@/components/UserInviteDialog.vue";
 import UserDangerDialogs from "@/components/UserDangerDialogs.vue";
-import { listUsers, updateUser, currentRole, type UserItem } from "@/lib/api";
+import { listUsers, updateUser, listRoles, currentRole,
+         type UserItem, type RoleItem } from "@/lib/api";
 import { isSuperadmin } from "@/lib/auth-utils";
 import { isLastEnabledAdmin } from "@/lib/settings-utils";
 
@@ -28,9 +29,26 @@ const { t } = useI18n();
 // 超管层级：superadmin 选项只对超管本人出现；超管账号的行对普通 admin
 // 整行锁死（改角色/禁用/重置密码都 403，见后端 admin.py）——前置禁用防呆。
 const iAmSuper = computed(() => isSuperadmin(currentRole.value ?? ""));
-const roleOptions = computed(() =>
-  iAmSuper.value ? ["superadmin", "admin", "editor", "viewer"]
-                 : ["admin", "editor", "viewer"]);
+// 角色选项 = 后端角色清单（内置 + 自定义）；superadmin 仅超管可见
+const allRoles = ref<RoleItem[]>([]);
+const roleOptions = computed(() => allRoles.value
+  .filter((r) => r.name !== "superadmin" || iAmSuper.value)
+  .map((r) => r.name));
+/** 角色显示名：内置走 i18n（common.role.*），自定义用其 label（无则用 name）。 */
+function roleText(name: string): string {
+  const def = allRoles.value.find((r) => r.name === name);
+  if (!def || def.builtin) {
+    const key = `common.role.${name}`;
+    const translated = t(key);
+    return translated !== key ? translated : name;
+  }
+  return def.label || def.name;
+}
+async function loadRoles() {
+  try {
+    allRoles.value = (await listRoles()).roles;
+  } catch { /* 拉不到角色清单时下拉为空，不阻塞用户列表展示 */ }
+}
 function rowLocked(u: UserItem): boolean {
   return u.role === "superadmin" && !iAmSuper.value;
 }
@@ -49,7 +67,7 @@ async function load() {
   }
 }
 
-onMounted(load);
+onMounted(() => { void load(); void loadRoles(); });
 
 const createOpen = ref(false);
 const resetTarget = ref<UserItem | null>(null);
@@ -63,7 +81,7 @@ async function changeRole(user: UserItem, role: string) {
   if (role === user.role) return;
   try {
     await updateUser(user.id, { role });
-    toast.success(t("user.role_changed", { name: user.username, role: t(`common.role.${role}`) }));
+    toast.success(t("user.role_changed", { name: user.username, role: roleText(role) }));
   } catch (err) {
     toast.error(err instanceof Error ? err.message : String(err));
   } finally {
@@ -145,7 +163,7 @@ async function toggleDisabled(user: UserItem, disabled: boolean) {
               <SelectTrigger class="w-28"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectGroup>
-                  <SelectItem v-for="r in roleOptions" :key="r" :value="r">{{ t(`common.role.${r}`) }}</SelectItem>
+                  <SelectItem v-for="r in roleOptions" :key="r" :value="r">{{ roleText(r) }}</SelectItem>
                 </SelectGroup>
               </SelectContent>
             </Select>

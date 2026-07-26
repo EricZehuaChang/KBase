@@ -246,6 +246,36 @@ export function deleteUser(id: string): Promise<{ ok: boolean }> {
   return req(`/api/users/${id}`, { method: "DELETE" });
 }
 
+// ---- 自定义角色（清单 admin 可读；增改删仅超管）----
+
+export interface RoleItem {
+  name: string;
+  label: string;
+  builtin: boolean;         // 内置四角色：权限只读、不可改删
+  permissions: string[];    // 权限词表子集
+}
+
+export function listRoles(): Promise<{ roles: RoleItem[]; permissions: string[] }> {
+  return req("/api/roles");
+}
+
+export function createRole(body: {
+  name: string; label?: string; permissions?: string[];
+}): Promise<RoleItem> {
+  return req("/api/roles", jsonInit(body));
+}
+
+export function updateRole(name: string, body: {
+  label?: string; permissions?: string[];
+}): Promise<RoleItem> {
+  return req(`/api/roles/${name}`, jsonInit(body, "PUT"));
+}
+
+/** 删除自定义角色：仍有用户在用时后端 422（先改派再删）。 */
+export function deleteRole(name: string): Promise<{ ok: boolean }> {
+  return req(`/api/roles/${name}`, { method: "DELETE" });
+}
+
 /** 邀请用户（「邮箱与邀请」）：可顺带维护邮箱；password 留空=随机生成。
  * 后端设置新初始密码并**同步**发送"登录地址/账号/初始密码"邮件（按账号
  * 语言偏好选中/英文模板），发信失败回错误且不动密码。 */

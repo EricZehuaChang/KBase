@@ -16,6 +16,7 @@ import PageHeader from "@/components/PageHeader.vue";
 import ProviderCard from "@/components/ProviderCard.vue";
 import ProviderFormDialog from "@/components/ProviderFormDialog.vue";
 import UserManagementCard from "@/components/UserManagementCard.vue";
+import RoleManagementCard from "@/components/RoleManagementCard.vue";
 import ApiKeyCard from "@/components/ApiKeyCard.vue";
 import EmbedderKeysCard from "@/components/EmbedderKeysCard.vue";
 import FeishuCard from "@/components/FeishuCard.vue";
@@ -30,7 +31,7 @@ import {
   type Provider, type HealthzResponse,
 } from "@/lib/api";
 import { healthDot, type ProviderTestState } from "@/lib/settings-utils";
-import { canAdminister } from "@/lib/auth-utils";
+import { canAdminister, isSuperadmin } from "@/lib/auth-utils";
 import { theme, setTheme } from "@/lib/theme";
 
 const { t } = useI18n();
@@ -58,6 +59,10 @@ watch(tab, (v) => {
   router.replace({ query: { ...route.query, tab: v } });
 });
 const currentSection = computed(() => SECTIONS.find((s) => s.id === tab.value)!);
+
+// 角色定义版本号：角色管理卡片改动后 ++，用作 UserManagementCard 的 :key
+// 触发重挂，让用户表的角色下拉立刻反映新增/改名/删除的自定义角色
+const roleVersion = ref(0);
 
 const providers = ref<Provider[]>([]);
 const active = ref<string | null>(null);
@@ -221,7 +226,13 @@ onMounted(async () => {
         <!-- 用户与权限（admin；后端 require_admin 强制，v-if 仅 UX 防呆） -->
         <section v-else-if="tab === 'access'" class="flex flex-col gap-4">
           <template v-if="canAdminister(currentRole ?? '')">
-            <UserManagementCard />
+            <UserManagementCard :key="roleVersion" />
+            <!-- 角色管理（自定义角色，入口仅超管）：改动后 bump roleVersion
+            让用户卡片重挂以刷新角色下拉 -->
+            <RoleManagementCard
+              v-if="isSuperadmin(currentRole ?? '')"
+              @changed="roleVersion++"
+            />
             <ApiKeyCard />
           </template>
         </section>
