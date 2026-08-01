@@ -832,5 +832,80 @@
         "view": "View audit logs and operation dashboard"
       }
     }
+  },
+  "tour": {
+    "ui": {
+      "open": "Product Tour",
+      "badge": "Product Tour",
+      "prev": "Previous",
+      "next": "Next",
+      "finish": "Finish",
+      "minimize": "Collapse (Esc)",
+      "exit": "Exit Tour"
+    },
+    "welcome": {
+      "title": "Welcome to KBase 👋",
+      "desc": "Self-hosted enterprise knowledge base: your data stays on your own server. This tour uses 'Next' to walk you through the core features. Cards won't block operations—press Esc to collapse or click × to exit anytime."
+    },
+    "ask": {
+      "title": "Select a Knowledge Base to Ask",
+      "desc": "Select a knowledge base from the left side of the top bar, then type a natural-language question in the input box below. Answers are generated in real-time streaming.",
+      "action": "Now select a knowledge base and try asking a question."
+    },
+    "citations": {
+      "title": "Citations & Images (Key to Trustworthy Answers)",
+      "desc": "The superscripts (1)(2) in the answer are clickable: view the source paragraph, relevance, page preview, and download the original. When a hit includes an image section, the original image is automatically attached below the answer—never letting the model describe images from thin air.",
+      "action": "Click a superscript, then click 'Preview Original File'."
+    },
+    "models": {
+      "title": "Multiple Models & Cross-Base Search",
+      "desc": "The model dropdown at the top-right lets you switch anytime (GLM / Qwen / DeepSeek / OpenAI / Kimi). With '+ Cross-Search', select multiple knowledge bases to search simultaneously; citations indicate the source base.",
+      "action": "Switch a model, or enable cross-search and ask a question."
+    },
+    "sessions": {
+      "title": "Session Management",
+      "desc": "The left sidebar saves historical sessions by time; you can rename/delete them. Within a session, follow-up questions are understood with context."
+    },
+    "workbench": {
+      "title": "Workbench · Knowledge Base Management",
+      "desc": "This is where you manage all knowledge bases. Create a new base, upload files, import from Feishu, schedule sync, and share without login—all from each base's detail page."
+    },
+    "upload": {
+      "title": "Upload & Parsing (How Knowledge Comes In)",
+      "desc": "Enter any knowledge base and drag PDF / Word / Excel / scanned files into the dashed box. Parsing automatically preserves heading structure and tables (cross-page split tables are reassembled). Scanned documents go through OCR, and complex images have optional deep recognition. Once the status becomes 'Ready', you can ask questions.",
+      "action": "Enter a knowledge base and drag a file to upload."
+    },
+    "sync_share": {
+      "title": "Sync & Sharing (Getting Knowledge Out)",
+      "desc": "In the library detail page: 'Import from Feishu' preserves hierarchy; 'Connectors' run scheduled incremental sync—when the source changes, the library updates automatically; 'Share' generates a login-free Q&A link—can bind multiple libraries, embed in websites, and revoke anytime."
+    },
+    "analysis": {
+      "title": "Retrieval Analytics (Quality You Can See)",
+      "desc": "Run retrieval only without generating answers: inspect recall and scores for semantic/keyword routes, and diagnose 'why answers are poor.' The evaluation tab uses hit@k / MRR for quality regression."
+    },
+    "generate": {
+      "title": "Content Generation",
+      "desc": "Generate compilations, outlines, and more from selected documents, exportable to Word/Markdown—draft from facts, not from a blank page."
+    },
+    "providers": {
+      "title": "Model Services",
+      "desc": "Connect any OpenAI-compatible vendor: configure API keys on the page (masked display), one-click connectivity test; vector models can be selected per knowledge base and rebuilt with guidance."
+    },
+    "users": {
+      "title": "Users & Permissions",
+      "desc": "Create accounts, assign roles (custom roles with permission checkboxes), and authorize access per knowledge base. 'Invite' sends a one-click email with the login URL, account, and initial password in the recipient's language."
+    },
+    "translations": {
+      "title": "Multilingual Management",
+      "desc": "UI strings in Chinese/English/Malay can be edited one by one; changes take effect immediately without redeployment. Each account remembers its own language preference."
+    },
+    "ops": {
+      "title": "Operations & Audit",
+      "desc": "Dashboards for Q&A volume, rejection rate, and feedback. The 'No-Answer List' is a knowledge-gap checklist—use it to add documents. Audit logs come with activity trend charts and filters."
+    },
+    "finish": {
+      "title": "Tour Complete 🎉",
+      "desc": "Core features covered: knowledge in (upload/sync), answers out (cite/share), quality managed, permissions governed. Restart this tour anytime from the user menu at the top right."
+    }
   }
 }

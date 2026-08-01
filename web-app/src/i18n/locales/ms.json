@@ -832,5 +832,80 @@
         "view": "Lihat log audit dan papan pemuka operasi"
       }
     }
+  },
+  "tour": {
+    "ui": {
+      "open": "Panduan Produk",
+      "badge": "Panduan Produk",
+      "prev": "Sebelumnya",
+      "next": "Seterusnya",
+      "finish": "Selesai",
+      "minimize": "Kecilkan (Esc)",
+      "exit": "Keluar Panduan"
+    },
+    "welcome": {
+      "title": "Selamat Datang ke KBase 👋",
+      "desc": "Pangkalan pengetahuan perusahaan yang digunakan secara persendirian: data kekal hanya dalam pelayan sendiri. Panduan ini menggunakan 'Seterusnya' untuk membawa anda melalui ciri teras; kad tidak menghalang operasi, boleh dikecilkan bila-bila dengan Esc, dan klik × untuk keluar."
+    },
+    "ask": {
+      "title": "Pilih Pangkalan untuk Bertanya",
+      "desc": "Pilih pangkalan pengetahuan di sebelah kiri bar atas, tanya soalan dalam bahasa semula jadi di kotak input di bawah, jawapan dijana secara strim masa nyata.",
+      "action": "Sekarang pilih satu pangkalan dan cuba tanya soalan"
+    },
+    "citations": {
+      "title": "Petikan dan Ilustrasi (Kunci Jawapan Boleh Dipercayai)",
+      "desc": "Superskrip (1)(2) dalam jawapan boleh diklik: lihat perenggan sumber, skor kaitan, pratonton per halaman, dan muat turun dokumen asal. Jika bab yang mengandungi imej dipadankan, imej asal akan dilekatkan di bawah jawapan secara automatik — model tidak akan pernah menerangkan imej tanpa rujukan.",
+      "action": "Klik pada satu superskrip, kemudian klik 'Pratonton Fail Asal'"
+    },
+    "models": {
+      "title": "Pelbagai Model dan Carian Merentas Pangkalan",
+      "desc": "Menu lungsur model di penjuru kanan atas boleh ditukar pada bila-bila masa (GLM / Qwen / DeepSeek / OpenAI / Kimi); '+ Carian Bersama' membolehkan anda memilih beberapa pangkalan untuk disearch serentak, dan petikan akan menyatakan pangkalan sumber.",
+      "action": "Tukar model, atau pilih carian bersama dan tanya satu soalan"
+    },
+    "sessions": {
+      "title": "Pengurusan Sesi",
+      "desc": "Bar sisi kiri menyimpan sesi sejarah mengikut masa, boleh dinamakan semula/dipadam; sistem memahami soalan susulan dalam konteks sesi yang sama."
+    },
+    "workbench": {
+      "title": "Meja Kerja · Pengurusan Pangkalan Pengetahuan",
+      "desc": "Di sini anda mengurus semua pangkalan pengetahuan. Membuat pangkalan baru, memuat naik dokumen, import dari Feishu, penyegerakan berjadual, dan perkongsian tanpa log masuk, semuanya terdapat dalam halaman butiran setiap pangkalan."
+    },
+    "upload": {
+      "title": "Muat Naik dan Analisis (Bagaimana Pengetahuan Masuk)",
+      "desc": "Masuk ke mana-mana pangkalan, seret PDF / Word / Excel / fail imbasan ke dalam kotak putus-putus. Analisis secara automatik mengekalkan struktur tajuk dan jadual (jadual yang terputus merentas halaman akan digabungkan semula), fail imbasan melalui OCR, imej kompleks boleh memilih pengecaman mendalam; apabila status menjadi 'Sedia', anda boleh bertanya.",
+      "action": "Klik ke dalam pangkalan pengetahuan, seret satu fail untuk memuat naik"
+    },
+    "sync_share": {
+      "title": "Penyegerakan dan Perkongsian (Bagaimana Pengetahuan Keluar)",
+      "desc": "Dalam halaman butiran pangkalan: 'Import dari Feishu' mengekalkan hierarki; 'Penyambung' melakukan penyegerakan tambahan berjadual, jika sumber berubah, pangkalan akan mengikuti secara automatik; 'Kongsi' menjana pautan soal jawab tanpa log masuk — boleh mengikat pelbagai pangkalan, boleh dibenamkan dalam laman web, dan boleh dibatalkan pada bila-bila masa."
+    },
+    "analysis": {
+      "title": "Analisis Carian (Kualiti Terlihat)",
+      "desc": "Hanya jalankan carian tanpa menjana jawapan: lihat hasil dan skor untuk semantik/kata kunci, mendiagnosis 'mengapa jawapan kurang baik'; tab penilaian menggunakan hit@k / MRR untuk regresi kualiti."
+    },
+    "generate": {
+      "title": "Penjanaan Kandungan",
+      "desc": "Berdasarkan dokumen yang dipilih, jana kompilasi, rangka, dan hasil lain, boleh dieksport ke Word / Markdown — bermula daripada fakta, bukan dari kertas kosong."
+    },
+    "providers": {
+      "title": "Perkhidmatan Model",
+      "desc": "Sambungkan mana-mana vendor yang serasi OpenAI: konfigurasikan kunci pada halaman (paparan dengan sebahagian disembunyikan), ujian sambungan satu klik; model vektor boleh dipilih mengikut pangkalan dan dipandu untuk membina semula."
+    },
+    "users": {
+      "title": "Pengguna dan Kebenaran",
+      "desc": "Buat akaun, berikan peranan (sokong peranan tersuai dengan menandakan kebenaran), berikan akses mengikut pangkalan; 'Jemput' akan menghantar e-mel dengan alamat log masuk, akaun, dan kata laluan awal dalam bahasa penerima dengan satu klik."
+    },
+    "translations": {
+      "title": "Pengurusan Pelbagai Bahasa",
+      "desc": "Antara muka boleh disunting item demi item dalam tiga bahasa (Cina/Inggeris/Melayu), perubahan berkuat kuasa serta-merta selepas disimpan, tanpa perlu melancarkan semula aplikasi; setiap akaun mengingati keutamaan bahasanya."
+    },
+    "ops": {
+      "title": "Operasi dan Audit",
+      "desc": "Panel untuk jumlah Q&A/kadar tiada jawapan/maklum balas; 'Senarai Tanpa Jawapan' ialah senarai jurang pengetahuan, gunakan untuk menambah dokumen; log audit disertakan dengan carta trend aktiviti dan penapis."
+    },
+    "finish": {
+      "title": "Panduan Selesai 🎉",
+      "desc": "Fungsi teras telah dilengkapkan: pengetahuan masuk (muat naik/segerak), jawapan keluar (rujukan/kongsi), kualiti diurus, kebenaran ditadbir. Anda boleh memulakan semula lawatan ini dari menu pengguna di penjuru kanan atas."
+    }
   }
 }

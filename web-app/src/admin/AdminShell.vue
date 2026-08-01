@@ -15,6 +15,7 @@ import {
 import ChangePasswordDialog from "@/components/ChangePasswordDialog.vue";
 import EmailPromptDialog from "@/components/EmailPromptDialog.vue";
 import UserMenu from "@/components/UserMenu.vue";
+import DemoTour from "@/components/DemoTour.vue";
 import { getSession, logout, getLicense, currentRole, type Me } from "@/lib/api";
 import { setLanguage } from "@/i18n";
 import { canAdminister } from "@/lib/auth-utils";
@@ -230,6 +231,7 @@ function backToPortal() {
       </div>
     </div>
   </template>
+  <DemoTour app="admin" />
   <ChangePasswordDialog v-model:open="changePwOpen" />
   <EmailPromptDialog v-model:open="emailPromptOpen" @saved="handleEmailSaved" />
   <Toaster />

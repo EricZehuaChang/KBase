@@ -9,10 +9,11 @@ import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   Check, ChevronLeft, ChevronRight, KeyRound, Languages, LogOut, Moon,
-  Settings, Sun,
+  Play, Settings, Sun,
 } from "@lucide/vue";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { setLanguage } from "@/i18n";
+import { startTour } from "@/lib/demo-tour";
 import { LANGUAGES } from "@/i18n/languages";
 import { theme, toggleTheme } from "@/lib/theme";
 import { roleBadgeClass } from "@/lib/auth-utils";
@@ -77,6 +78,12 @@ const ROW = "flex w-full items-center gap-2 rounded-[var(--radius-ctl)] px-2 "
           <span class="flex-1 text-left">{{ t("lang.label") }}</span>
           <span class="text-xs text-[var(--text-3)]">{{ currentLangName }}</span>
           <ChevronRight class="size-3.5 text-[var(--text-3)]" />
+        </button>
+
+        <!-- 产品导览：下一步式功能巡礼（录屏/伙伴自学两用） -->
+        <button type="button" :class="ROW" @click="open = false; startTour()">
+          <Play class="size-4 text-[var(--text-2)]" />
+          {{ t("tour.ui.open") }}
         </button>
 
         <!-- 主题切换 -->
