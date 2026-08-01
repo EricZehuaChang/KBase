@@ -85,6 +85,9 @@ export interface Me {
   // 账号级界面语言偏好（P2-4，zh|en|ms）：登录后据此覆盖本地检测（两 Shell
   // 调 setLanguage）。null=未设置，跟随 localStorage/浏览器；API Key 身份亦为 null。
   language?: string | null;
+  // 产品导览入口白名单（演示者专属）：超管恒 true，其余看 AppSetting
+  // tour_allowed_users——按账号控制，普通 admin 同事不见导览入口
+  tour_enabled?: boolean;
 }
 
 export function login(username: string, password: string): Promise<Me> {

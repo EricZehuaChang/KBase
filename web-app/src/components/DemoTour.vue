@@ -13,7 +13,7 @@ import {
   stepHref, stopTour, tourActive, tourStep,
 } from "@/lib/demo-tour";
 
-const props = defineProps<{ app: "portal" | "admin" }>();
+const props = defineProps<{ app: "portal" | "admin"; enabled?: boolean }>();
 const route = useRoute();
 const router = useRouter();
 const { t } = useI18n();
@@ -69,7 +69,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
 </script>
 
 <template>
-  <template v-if="tourActive && cur.app === props.app">
+  <template v-if="tourActive && props.enabled && cur.app === props.app">
     <!-- 最小化胶囊（右侧竖排） -->
     <button
       v-if="minimized"

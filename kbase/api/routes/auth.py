@@ -218,8 +218,20 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps, *,
             # 开关（管理员在用户管理里配置）。API Key 身份无用户行，按角色默认。
             advanced = (actor["role"] in ("superadmin", "admin", "editor")
                         or bool(user.advanced_ui if user else False))
+            # 产品导览入口白名单（演示者专属）：超管恒可见；其余账号看
+            # AppSetting KV `tour_allowed_users`（JSON 用户名数组）——按账号
+            # 而非角色控制，普通 admin 同事不会误入导览。
+            tour_enabled = actor["role"] == "superadmin"
+            if not tour_enabled:
+                row = s.get(AppSetting, "tour_allowed_users")
+                if row is not None:
+                    try:
+                        tour_enabled = actor["name"] in json.loads(row.value)
+                    except ValueError:
+                        pass    # 脏 JSON 当作无白名单
         return {"username": actor["name"], "role": actor["role"],
-                "email": email, "advanced_ui": advanced, "language": language}
+                "email": email, "advanced_ui": advanced, "language": language,
+                "tour_enabled": tour_enabled}
 
     @router.put("/auth/profile",
                 dependencies=[deps.require_viewer, deps.audit_mutation])

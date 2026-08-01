@@ -198,7 +198,7 @@ function enterWorkbench() {
       <router-view />
     </main>
   </div>
-  <DemoTour app="portal" />
+  <DemoTour app="portal" :enabled="me?.tour_enabled === true" />
   <ChangePasswordDialog v-model:open="changePwOpen" />
   <EmailPromptDialog v-model:open="emailPromptOpen" @saved="handleEmailSaved" />
   <Toaster />

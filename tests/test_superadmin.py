@@ -213,3 +213,23 @@ def test_migration_promotes_bootstrap_admin_only(tmp_path):
     rows = dict(con.execute("SELECT username, role FROM users").fetchall())
     con.close()
     assert rows == {"admin": "superadmin", "partner": "admin"}
+
+
+def test_tour_whitelist(tmp_path, fake_embedder, monkeypatch):
+    """产品导览白名单：超管恒 True；普通 admin 默认 False；进 AppSetting
+    `tour_allowed_users` 白名单后 True——按账号控制，不随角色。"""
+    import json as _json
+
+    from kbase.db import make_session_factory
+    from kbase.models import AppSetting
+
+    app, superc, adminc = _setup_super_and_admin(tmp_path, fake_embedder, monkeypatch)
+    assert superc.get("/api/auth/me").json()["tour_enabled"] is True
+    assert adminc.get("/api/auth/me").json()["tour_enabled"] is False
+
+    sf = make_session_factory(f"sqlite:///{tmp_path}/data/kbase.sqlite")
+    with sf() as s:
+        s.add(AppSetting(key="tour_allowed_users",
+                         value=_json.dumps(["demo.admin"])))
+        s.commit()
+    assert adminc.get("/api/auth/me").json()["tour_enabled"] is True
