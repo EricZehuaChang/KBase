@@ -841,7 +841,9 @@
       "next": "Seterusnya",
       "finish": "Selesai",
       "minimize": "Kecilkan (Esc)",
-      "exit": "Keluar Panduan"
+      "exit": "Keluar Panduan",
+      "drag": "Tahan di sini untuk menyeret kad",
+      "replay": "Tunjukkan sekali lagi"
     },
     "welcome": {
       "title": "Selamat Datang ke KBase 👋",
@@ -850,7 +852,8 @@
     "ask": {
       "title": "Pilih Pangkalan untuk Bertanya",
       "desc": "Pilih pangkalan pengetahuan di sebelah kiri bar atas, tanya soalan dalam bahasa semula jadi di kotak input di bawah, jawapan dijana secara strim masa nyata.",
-      "action": "Sekarang pilih satu pangkalan dan cuba tanya soalan"
+      "action": "Soalan contoh diisi secara automatik ke dalam kotak input (taip sendiri jika tidak muncul) — klik Hantar di sebelah kanan untuk melihat jawapan strim, atau ubah kepada soalan anda sendiri",
+      "sample": "Apakah perkara utama dalam dokumen ini? Sila berikan rujukan."
     },
     "citations": {
       "title": "Petikan dan Ilustrasi (Kunci Jawapan Boleh Dipercayai)",
@@ -873,7 +876,7 @@
     "upload": {
       "title": "Muat Naik dan Analisis (Bagaimana Pengetahuan Masuk)",
       "desc": "Masuk ke mana-mana pangkalan, seret PDF / Word / Excel / fail imbasan ke dalam kotak putus-putus. Analisis secara automatik mengekalkan struktur tajuk dan jadual (jadual yang terputus merentas halaman akan digabungkan semula), fail imbasan melalui OCR, imej kompleks boleh memilih pengecaman mendalam; apabila status menjadi 'Sedia', anda boleh bertanya.",
-      "action": "Klik ke dalam pangkalan pengetahuan, seret satu fail untuk memuat naik"
+      "action": "Panduan membuka satu pangkalan pengetahuan untuk anda (jika masih di senarai, klik mana-mana pangkalan) — cuba seret fail PDF / Word ke dalam kotak putus-putus"
     },
     "sync_share": {
       "title": "Penyegerakan dan Perkongsian (Bagaimana Pengetahuan Keluar)",
@@ -881,7 +884,8 @@
     },
     "analysis": {
       "title": "Analisis Carian (Kualiti Terlihat)",
-      "desc": "Hanya jalankan carian tanpa menjana jawapan: lihat hasil dan skor untuk semantik/kata kunci, mendiagnosis 'mengapa jawapan kurang baik'; tab penilaian menggunakan hit@k / MRR untuk regresi kualiti."
+      "desc": "Hanya jalankan carian tanpa menjana jawapan: lihat hasil dan skor untuk semantik/kata kunci, mendiagnosis 'mengapa jawapan kurang baik'; tab penilaian menggunakan hit{'@'}k / MRR untuk regresi kualiti.",
+      "sample": "kadar tuntutan"
     },
     "generate": {
       "title": "Penjanaan Kandungan",
@@ -897,7 +901,8 @@
     },
     "translations": {
       "title": "Pengurusan Pelbagai Bahasa",
-      "desc": "Antara muka boleh disunting item demi item dalam tiga bahasa (Cina/Inggeris/Melayu), perubahan berkuat kuasa serta-merta selepas disimpan, tanpa perlu melancarkan semula aplikasi; setiap akaun mengingati keutamaan bahasanya."
+      "desc": "Antara muka boleh disunting item demi item dalam tiga bahasa (Cina/Inggeris/Melayu), perubahan berkuat kuasa serta-merta selepas disimpan, tanpa perlu melancarkan semula aplikasi; setiap akaun mengingati keutamaan bahasanya.",
+      "sample": "tour"
     },
     "ops": {
       "title": "Operasi dan Audit",

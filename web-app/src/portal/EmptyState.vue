@@ -57,6 +57,7 @@ watch(kbId, buildQuestions);
         v-for="q in questions"
         :key="q"
         type="button"
+        data-tour="empty-question"
         class="rounded-[var(--radius-ctl)] border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 text-left text-sm text-[var(--text-2)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text)]"
         @click="emit('pick', q)"
       >

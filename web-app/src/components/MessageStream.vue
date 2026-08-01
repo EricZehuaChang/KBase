@@ -125,6 +125,7 @@ function reask(index: number) {
                 <PopoverTrigger as-child>
                   <button
                     type="button"
+                    data-tour="citation-marker"
                     class="inline-flex size-4 items-center justify-center rounded-full bg-[var(--accent-weak)] text-[10px] font-medium text-[var(--accent-text)] hover:bg-[var(--accent)] hover:text-[var(--surface)]"
                     :aria-label="t('msg.view_citation', { n: seg.index })"
                   >

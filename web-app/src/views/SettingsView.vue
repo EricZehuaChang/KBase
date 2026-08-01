@@ -58,6 +58,14 @@ const tab = ref<SectionId>(
 watch(tab, (v) => {
   router.replace({ query: { ...route.query, tab: v } });
 });
+// 反向同步：仅 query 变化的导航会复用本组件实例（不重挂），tab 不跟着改
+// 的话页面停在旧组——产品导览在 providers/access/ops 步之间 push ?tab=
+// 就踩中（同 AnalysisView 对 query.q 的处理）。相等守卫防与上面互触发。
+watch(() => route.query.tab, (v) => {
+  if (typeof v === "string" && validIds.has(v as SectionId) && v !== tab.value) {
+    tab.value = v as SectionId;
+  }
+});
 const currentSection = computed(() => SECTIONS.find((s) => s.id === tab.value)!);
 
 // 角色定义版本号：角色管理卡片改动后 ++，用作 UserManagementCard 的 :key
@@ -161,7 +169,7 @@ onMounted(async () => {
   <div class="p-6">
     <PageHeader :title="t('admin.nav_settings')" :subtitle="t('settings.subtitle')">
       <template #actions>
-        <Button v-if="tab === 'providers'" size="sm" @click="openCreateDialog">
+        <Button v-if="tab === 'providers'" size="sm" data-tour="add-provider" @click="openCreateDialog">
           <Plus class="size-3.5" />
           {{ t("settings.add_provider") }}
         </Button>
@@ -224,7 +232,7 @@ onMounted(async () => {
         </section>
 
         <!-- 用户与权限（admin；后端 require_admin 强制，v-if 仅 UX 防呆） -->
-        <section v-else-if="tab === 'access'" class="flex flex-col gap-4">
+        <section v-else-if="tab === 'access'" data-tour="settings-access" class="flex flex-col gap-4">
           <template v-if="canAdminister(currentRole ?? '')">
             <UserManagementCard :key="roleVersion" />
             <!-- 角色管理（自定义角色，入口仅超管）：改动后 bump roleVersion
@@ -246,7 +254,7 @@ onMounted(async () => {
         </section>
 
         <!-- 运营看板 -->
-        <section v-else-if="tab === 'ops'" class="flex flex-col gap-6">
+        <section v-else-if="tab === 'ops'" data-tour="settings-ops" class="flex flex-col gap-6">
           <OpsDashboardCard v-if="canAdminister(currentRole ?? '')" />
           <!-- 审计日志（趋势图+筛选表；后端按查看者分层，超管看全量） -->
           <AuditLogCard v-if="canAdminister(currentRole ?? '')" />

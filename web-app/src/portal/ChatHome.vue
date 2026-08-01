@@ -189,6 +189,7 @@ if (typeof route.query.q === "string" && route.query.q) {
             <textarea
               v-model="inputText"
               rows="1"
+              data-tour="chat-input"
               :disabled="!kbId"
               :placeholder="t('portal.chat.input_placeholder')"
               class="max-h-40 flex-1 resize-none bg-transparent px-2 py-1.5 text-[15px] leading-[1.7] text-[var(--text)] outline-none disabled:opacity-60"
@@ -209,6 +210,7 @@ if (typeof route.query.q === "string" && route.query.q) {
               v-else
               size="sm"
               class="shrink-0 rounded-xl"
+              data-tour="send"
               :disabled="!inputText.trim() || !kbId"
               :aria-label="t('portal.chat.send')"
               @click="handleSend()"
