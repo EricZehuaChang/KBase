@@ -16,6 +16,7 @@ import { useI18n } from "vue-i18n";
 import ChangePasswordDialog from "@/components/ChangePasswordDialog.vue";
 import EmailPromptDialog from "@/components/EmailPromptDialog.vue";
 import UserMenu from "@/components/UserMenu.vue";
+import DemoTour from "@/components/DemoTour.vue";
 import { getSession, logout, type Me } from "@/lib/api";
 import { setLanguage } from "@/i18n";
 import { canManageContent } from "@/lib/auth-utils";
@@ -197,6 +198,7 @@ function enterWorkbench() {
       <router-view />
     </main>
   </div>
+  <DemoTour app="portal" />
   <ChangePasswordDialog v-model:open="changePwOpen" />
   <EmailPromptDialog v-model:open="emailPromptOpen" @saved="handleEmailSaved" />
   <Toaster />
