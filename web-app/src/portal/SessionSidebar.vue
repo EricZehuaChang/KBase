@@ -91,6 +91,7 @@ const isEmpty = computed(() => props.groups.every((g) => g.items.length === 0));
   >
     <button
       type="button"
+      data-tour="session-expand"
       class="rounded-[var(--radius-ctl)] p-2 text-[var(--text-2)] transition-colors hover:bg-[var(--surface-2)]"
       :aria-label="t('portal.session.expand')"
       @click="emit('update:collapsed', false)"
@@ -101,6 +102,7 @@ const isEmpty = computed(() => props.groups.every((g) => g.items.length === 0));
 
   <aside
     v-else
+    data-tour="session-sidebar"
     class="flex w-[220px] shrink-0 flex-col overflow-hidden border-r border-[var(--border)] bg-[var(--surface)]"
     :aria-label="t('portal.session.list')"
   >

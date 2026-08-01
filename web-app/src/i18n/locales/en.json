@@ -841,7 +841,9 @@
       "next": "Next",
       "finish": "Finish",
       "minimize": "Collapse (Esc)",
-      "exit": "Exit Tour"
+      "exit": "Exit Tour",
+      "drag": "Hold here to drag the card",
+      "replay": "Show me again"
     },
     "welcome": {
       "title": "Welcome to KBase 👋",
@@ -850,7 +852,8 @@
     "ask": {
       "title": "Select a Knowledge Base to Ask",
       "desc": "Select a knowledge base from the left side of the top bar, then type a natural-language question in the input box below. Answers are generated in real-time streaming.",
-      "action": "Now select a knowledge base and try asking a question."
+      "action": "A sample question is auto-filled into the input box (type one yourself if it didn't appear)—click Send on the right to see the streaming answer, or edit it into your own question.",
+      "sample": "What are the key points of these documents? Please cite sources."
     },
     "citations": {
       "title": "Citations & Images (Key to Trustworthy Answers)",
@@ -873,7 +876,7 @@
     "upload": {
       "title": "Upload & Parsing (How Knowledge Comes In)",
       "desc": "Enter any knowledge base and drag PDF / Word / Excel / scanned files into the dashed box. Parsing automatically preserves heading structure and tables (cross-page split tables are reassembled). Scanned documents go through OCR, and complex images have optional deep recognition. Once the status becomes 'Ready', you can ask questions.",
-      "action": "Enter a knowledge base and drag a file to upload."
+      "action": "The tour opens a knowledge base for you (if you still see the list, click into any base)—try dragging a PDF / Word file into the dashed box."
     },
     "sync_share": {
       "title": "Sync & Sharing (Getting Knowledge Out)",
@@ -881,7 +884,8 @@
     },
     "analysis": {
       "title": "Retrieval Analytics (Quality You Can See)",
-      "desc": "Run retrieval only without generating answers: inspect recall and scores for semantic/keyword routes, and diagnose 'why answers are poor.' The evaluation tab uses hit@k / MRR for quality regression."
+      "desc": "Run retrieval only without generating answers: inspect recall and scores for semantic/keyword routes, and diagnose 'why answers are poor.' The evaluation tab uses hit{'@'}k / MRR for quality regression.",
+      "sample": "reimbursement rate"
     },
     "generate": {
       "title": "Content Generation",
@@ -897,7 +901,8 @@
     },
     "translations": {
       "title": "Multilingual Management",
-      "desc": "UI strings in Chinese/English/Malay can be edited one by one; changes take effect immediately without redeployment. Each account remembers its own language preference."
+      "desc": "UI strings in Chinese/English/Malay can be edited one by one; changes take effect immediately without redeployment. Each account remembers its own language preference.",
+      "sample": "tour"
     },
     "ops": {
       "title": "Operations & Audit",

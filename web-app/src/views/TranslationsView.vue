@@ -137,7 +137,7 @@ const filteredKeys = computed(() => {
     <div class="mb-3 flex flex-wrap items-center gap-2">
       <div class="relative">
         <Search class="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--text-3)]" />
-        <Input v-model="search" class="w-64 pl-8" :placeholder="t('translations.search_ph')" />
+        <Input v-model="search" data-tour="translations-search" class="w-64 pl-8" :placeholder="t('translations.search_ph')" />
       </div>
       <select
         v-model="domain"

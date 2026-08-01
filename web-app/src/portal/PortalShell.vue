@@ -127,7 +127,7 @@ function enterWorkbench() {
       <div class="flex items-center gap-4">
         <div class="text-lg font-semibold tracking-tight">KBase</div>
         <Select v-model="kbId">
-          <SelectTrigger class="w-44"><SelectValue :placeholder="t('portal.topbar.select_kb')" /></SelectTrigger>
+          <SelectTrigger class="w-44" data-tour="kb-select"><SelectValue :placeholder="t('portal.topbar.select_kb')" /></SelectTrigger>
           <SelectContent>
             <SelectGroup>
               <SelectItem v-for="kb in kbs" :key="kb.id" :value="kb.id">{{ kb.name }}</SelectItem>
@@ -139,6 +139,7 @@ function enterWorkbench() {
           <PopoverTrigger as-child>
             <button
               type="button"
+              data-tour="joint-search"
               class="rounded-[var(--radius-ctl)] border px-2.5 py-1.5 text-sm transition-colors"
               :class="extraKbIds.length
                 ? 'border-[var(--accent)] text-[var(--accent-text)]'
@@ -167,7 +168,7 @@ function enterWorkbench() {
           </PopoverContent>
         </Popover>
         <Select v-if="showAdvanced" v-model="provider">
-          <SelectTrigger class="w-44"><SelectValue :placeholder="t('portal.topbar.select_model')" /></SelectTrigger>
+          <SelectTrigger class="w-44" data-tour="model-select"><SelectValue :placeholder="t('portal.topbar.select_model')" /></SelectTrigger>
           <SelectContent>
             <SelectGroup>
               <SelectItem v-for="p in providers" :key="p" :value="p">{{ p }}</SelectItem>

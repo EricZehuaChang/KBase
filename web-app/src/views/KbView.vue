@@ -295,6 +295,7 @@ onMounted(loadKbs);
           :key="kb.id"
           role="button"
           tabindex="0"
+          data-tour="kb-card"
           class="group relative rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-4 text-left transition-all duration-150 hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-md"
           @click="openKb(kb.id)"
           @keydown.enter="openKb(kb.id)"
@@ -350,12 +351,12 @@ onMounted(loadKbs);
     <template v-else>
       <div class="mb-4 flex items-center justify-between">
         <div>
-          <button type="button" class="text-sm text-[var(--text-3)] hover:text-[var(--text)]" @click="backToGrid">
+          <button type="button" data-tour="kb-back" class="text-sm text-[var(--text-3)] hover:text-[var(--text)]" @click="backToGrid">
             ← {{ t("kb.back_to_list") }}
           </button>
           <h1 class="text-xl font-semibold tracking-tight">{{ currentKb?.name ?? kbId }}</h1>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2" data-tour="kb-actions">
           <Button
             v-if="canManage && hasPendingOcr(docs)"
             variant="outline"
@@ -392,7 +393,7 @@ onMounted(loadKbs);
           </SelectContent>
         </Select>
       </div>
-      <UploadZone v-if="canManage" class="mb-4" @files-selected="handleFilesSelected" />
+      <UploadZone v-if="canManage" class="mb-4" data-tour="upload-zone" @files-selected="handleFilesSelected" />
 
       <!-- M6-7 URL 导入：内网 wiki/门户页面直接进库 -->
       <div v-if="canManage" class="mb-4 flex items-center gap-2">

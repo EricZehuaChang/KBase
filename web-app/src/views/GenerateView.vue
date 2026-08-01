@@ -89,7 +89,7 @@ const currentKbName = computed(() => kbs.value.find((k) => k.id === kbId.value)?
 
       <template v-else>
         <Tabs v-model="tab">
-          <TabsList>
+          <TabsList data-tour="generate-panel">
             <TabsTrigger value="proposal">{{ t("generate.tab_proposal") }}</TabsTrigger>
             <TabsTrigger value="digest">{{ t("generate.tab_digest") }}</TabsTrigger>
           </TabsList>

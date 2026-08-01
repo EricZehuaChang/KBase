@@ -148,6 +148,7 @@ watch(() => route.query.q, async (q) => {
       <template v-if="tab === 'search'">
         <Input
           v-model="query"
+          data-tour="analysis-query"
           :placeholder="t('analysis.query_placeholder')"
           class="max-w-md flex-1"
           :aria-label="t('analysis.query_label')"
@@ -172,7 +173,7 @@ watch(() => route.query.q, async (q) => {
           </SelectContent>
         </Select>
 
-        <Button :disabled="loading || !kbId || !query.trim()" @click="runSearch">
+        <Button data-tour="analysis-run" :disabled="loading || !kbId || !query.trim()" @click="runSearch">
           <Search class="size-3.5" />
           {{ t("analysis.run") }}
         </Button>
