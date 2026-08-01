@@ -91,7 +91,8 @@ def test_auth_me_returns_username_and_role(tmp_path, fake_embedder, monkeypatch)
     r = c.get("/api/auth/me")
     assert r.status_code == 200
     assert r.json() == {"username": "admin", "role": "superadmin", "email": None,
-                        "advanced_ui": True, "language": None}
+                        "advanced_ui": True, "language": None,
+                        "tour_enabled": True}   # 超管恒可见导览入口
 
 
 def test_origin_mismatch_403_on_mutating_request(tmp_path, fake_embedder, monkeypatch):

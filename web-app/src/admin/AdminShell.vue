@@ -231,7 +231,7 @@ function backToPortal() {
       </div>
     </div>
   </template>
-  <DemoTour app="admin" />
+  <DemoTour app="admin" :enabled="me?.tour_enabled === true" />
   <ChangePasswordDialog v-model:open="changePwOpen" />
   <EmailPromptDialog v-model:open="emailPromptOpen" @saved="handleEmailSaved" />
   <Toaster />

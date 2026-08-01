@@ -80,8 +80,13 @@ const ROW = "flex w-full items-center gap-2 rounded-[var(--radius-ctl)] px-2 "
           <ChevronRight class="size-3.5 text-[var(--text-3)]" />
         </button>
 
-        <!-- 产品导览：下一步式功能巡礼（录屏/伙伴自学两用） -->
-        <button type="button" :class="ROW" @click="open = false; startTour()">
+        <!-- 产品导览：仅白名单账号可见（me.tour_enabled，超管恒真）——
+        演示者专属入口，普通同事不见 -->
+        <button
+          v-if="me?.tour_enabled"
+          type="button" :class="ROW"
+          @click="open = false; startTour()"
+        >
           <Play class="size-4 text-[var(--text-2)]" />
           {{ t("tour.ui.open") }}
         </button>
