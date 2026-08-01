@@ -27,6 +27,13 @@ const router = createRouter({
 // 进入。角色相关的强制拦截只存在于管理端（src/admin/guard.ts）。
 router.beforeEach(async (to) => {
   if (to.path === "/login" || to.path.startsWith("/share/")) return true;
+  // 邮件重置链接兼容：老格式落根路径 "/?reset_token=..."，若按普通未登录
+  // 流程会被重定向成 /login?redirect=...，token 被裹进 redirect 参数，
+  // 重置表单读不到（真机踩中）。此处把 reset_token 原样转交 /login
+  // （守卫豁免页），LoginView 据它直接进"设置新密码"模式。
+  if (typeof to.query.reset_token === "string" && to.query.reset_token) {
+    return { path: "/login", query: { reset_token: to.query.reset_token } };
+  }
   const session = await getSession();
   if (session) return true;
   return { path: "/login", query: loginRedirectQuery(to.fullPath) };

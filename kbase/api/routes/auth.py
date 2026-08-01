@@ -88,8 +88,12 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps, *,
 
                 def _send():
                     try:
+                        # 链接必须指 /login（守卫豁免路径，query 原样保留）——
+                        # 指根路径 "/" 会被未登录守卫重定向成 /login?redirect=...，
+                        # reset_token 被裹进 redirect 参数，重置表单读不到（真机
+                        # 踩中：用户点开只见普通登录页）。
                         subject, text, html_body = email_templates.password_reset(
-                            user_name, f"{login_url}/?reset_token={token}")
+                            user_name, f"{login_url}/login?reset_token={token}")
                         mailer.send_mail(sf, to_addr, subject, text,
                                          html=html_body)
                     except Exception:

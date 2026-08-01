@@ -131,6 +131,9 @@ def test_forgot_reset_flow(app_on, monkeypatch):
     r = anon.post("/api/auth/forgot", json={"account": "zhao.liu@corp.example"})
     assert r.status_code == 200
     assert len(sent) == 1 and sent[0][0] == "zhao.liu@corp.example"
+    # 链接必须指 /login（守卫豁免，query 保留）——指 "/" 会被守卫重定向
+    # 致重置表单读不到 token（真机踩中）
+    assert "/login?reset_token=" in sent[0][1]
     token = re.search(r"reset_token=([\w\-]+)", sent[0][1]).group(1)
 
     # 坏 token → 400；真 token 重置成功
