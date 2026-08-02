@@ -63,3 +63,20 @@ def test_send_mail_multipart(tmp_path, monkeypatch):
 
     mailer.send_mail(sf, "a@b.c", "主题", "只有纯文本")
     assert "multipart" not in FakeSMTP.sent[-1]["msg"]
+
+
+def test_templates_english_variants():
+    """三款模板 + 邀请别名的英文版：lang=='en' 切英文主题与正文（语言由
+    mailer.email_language 在调用点裁决，模板只认显式 lang）。"""
+    s, t, h = email_templates.account_created("amy", "Pw@1", "http://kb", lang="en")
+    assert s == "Your KBase account is ready"
+    assert "Initial password" in t and "Pw@1" in h
+    s, t, h = email_templates.password_reset(
+        "amy", "http://kb/login?reset_token=x", lang="en")
+    assert s == "Reset your KBase password"
+    assert "30 minutes" in t and 'href="http://kb/login?reset_token=x"' in h
+    s, _, _ = email_templates.smtp_test(lang="en")
+    assert s == "KBase outbox test"
+    # 邀请与开通同构：英文收编后 account_invite 是薄别名
+    assert email_templates.account_invite(
+        "amy", "Pw@1", "http://kb", lang="en")[0] == "Your KBase account is ready"

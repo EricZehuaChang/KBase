@@ -224,7 +224,11 @@
     "test": "Test Email Settings",
     "password_required": "SMTP password/authorization code required on first setup",
     "saved": "Outbox saved; it is recommended to send a test email to confirm connectivity",
-    "test_sent": "Test email sent to {to}, please check (including spam)"
+    "test_sent": "Test email sent to {to}, please check (including spam)",
+    "language": "System email language",
+    "lang_auto": "Auto (follow recipient's account language)",
+    "lang_zh": "中文 (Chinese)",
+    "lang_en": "English"
   },
   "ops": {
     "title": "Operations Dashboard (Last 7 Days)",

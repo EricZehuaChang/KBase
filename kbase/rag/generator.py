@@ -4,11 +4,32 @@ from typing import AsyncIterator
 from kbase.rag.retriever import ContextBlock
 
 REFUSAL = "知识库中未找到依据，无法回答该问题。请尝试换个问法，或确认相关文档已导入。"
+REFUSAL_EN = ("No supporting evidence was found in the knowledge base. "
+              "Please try rephrasing the question, or make sure the relevant "
+              "documents have been imported.")
+
+
+def refusal_for(question: str) -> str:
+    """拒答文案语言跟随提问语言。拒答不经 LLM（零依据直接短路），没法靠
+    模型自己选语言，只能在这里裁决——轻量启发式：含 CJK 字符即中文，
+    否则英文（马来语提问也给英文，比中文近；拒答检测是结构性的
+    usable_blocks 为空判定，与文案内容无关，换语言不影响运营统计口径）。"""
+    if any("一" <= ch <= "鿿" for ch in question):
+        return REFUSAL
+    return REFUSAL_EN
+
 
 SYSTEM_PROMPT = (
     "你是一个严谨的知识库问答助手。只依据提供的资料回答问题，"
     "禁止编造资料中不存在的内容。回答中引用资料时标注编号，如[1][2]。"
-    "如果资料不足以回答问题，明确说明。使用简体中文回答。"
+    "如果资料不足以回答问题，明确说明。"
+    # 回答语言跟随提问语言（资料语言≠回答语言：英文问中文/马来文档也用英文答）。
+    # 必须点破"资料语言不同≠资料不足"——弱模型会把中文资料+英文提问误判成
+    # 无法回答（qwen-plus 真机踩中："未提供该问题的英文描述"）。
+    "回答语言始终与用户提问的语言保持一致（英文提问用英文回答，马来文提问用"
+    "马来文回答）；资料是其他语言时，把资料要点用提问的语言转述作答——"
+    "资料语言与提问语言不同不构成资料不足。"
+    "若用户在提问中明确要求使用某种语言回答，则以用户要求为准。"
     # 插图标记引导：资料里的"（图：X）"是导入时落的插图占位（图片本体
     # 不进对话——零幻觉设计，但会随回答自动展示给用户）。没有这句时，
     # 用户问"架构图长什么样"模型会答"资料不足以回答"，而那张图恰好就
@@ -76,7 +97,7 @@ class Generator:
                             history: list[dict] | None = None) -> AsyncIterator[str]:
         usable = self.usable_blocks(blocks)
         if not usable:
-            yield REFUSAL
+            yield refusal_for(question)
             return
         # 直接 async for 委托：客户端断开时 GeneratorExit 沿链传播，
         # LLM provider 的信号量随之释放（勿改为手动驱动 __anext__）。

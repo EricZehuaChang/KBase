@@ -23,6 +23,8 @@ _KEYS = {
     "password": "smtp_password",
     "from_addr": "smtp_from_addr",
     "from_name": "smtp_from_name",
+    # 系统邮件语言：auto=跟随收件人账号语言 / zh / en（发件箱页配置）
+    "language": "smtp_language",
 }
 
 
@@ -37,10 +39,12 @@ def get_settings(sf) -> dict:
 
 
 def set_settings(sf, *, host: str, port: int, user: str,
-                 password: str | None, from_addr: str, from_name: str) -> None:
+                 password: str | None, from_addr: str, from_name: str,
+                 language: str = "auto") -> None:
     """password 为 None = 保留旧密码（编辑表单不回显密码的惯例）。"""
     values = {"host": host, "port": str(port), "user": user,
-              "from_addr": from_addr, "from_name": from_name}
+              "from_addr": from_addr, "from_name": from_name,
+              "language": language}
     if password is not None:
         values["password"] = password
     with sf() as s:
@@ -61,7 +65,18 @@ def status(sf) -> dict:
             "host": cfg["host"], "port": int(cfg["port"] or 465),
             "user": cfg["user"], "from_addr": cfg["from_addr"],
             "from_name": cfg["from_name"],
-            "has_password": bool(cfg["password"])}
+            "has_password": bool(cfg["password"]),
+            "language": cfg["language"] or "auto"}
+
+
+def email_language(sf, account_lang: str | None = None) -> str:
+    """系统邮件语言裁决：发件箱页设置 zh/en 时强制；auto（默认/未设置）跟随
+    收件人账号语言——en/ms 账号给英文（国际伙伴场景，马来语用户英文比中文近），
+    其余中文。所有发信调用点统一走这里，不各自判断。"""
+    setting = get_settings(sf).get("language")
+    if setting in ("zh", "en"):
+        return setting
+    return "en" if account_lang in ("en", "ms") else "zh"
 
 
 def send_mail(sf, to: str, subject: str, body: str,

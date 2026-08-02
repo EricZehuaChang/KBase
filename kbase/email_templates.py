@@ -144,9 +144,32 @@ def _render(*, title: str, paragraphs: list[str], blocks: str = "") -> str:
 </html>"""
 
 
-def account_created(username: str, password: str, login_url: str
-                    ) -> tuple[str, str, str]:
-    """账号开通通知：凭据卡片 + 登录按钮 + 首登改密提示。"""
+def account_created(username: str, password: str, login_url: str,
+                    lang: str | None = None) -> tuple[str, str, str]:
+    """账号开通通知：凭据卡片 + 登录按钮 + 首登改密提示。lang=="en" 用英文版
+    （语言由调用方经 mailer.email_language 裁决：后台强制或跟随账号偏好）。"""
+    if lang == "en":
+        subject = "Your KBase account is ready"
+        text = (f"Hello {username},\n\n"
+                f"An administrator has set up your KBase account.\n\n"
+                f"Login URL: {login_url}\nUsername: {username}\n"
+                f"Initial password: {password}\n\n"
+                f"Please change your password after your first login "
+                f"(top-right menu). You can switch the interface language "
+                f"at the bottom of the login page.")
+        html = _render(
+            title="Your KBase account is ready",
+            paragraphs=[f"Hello, <b>{_esc(username)}</b>. An administrator has "
+                        "set up your KBase account. Your credentials:"],
+            blocks=(_fields([("Login URL", login_url), ("Username", username),
+                             ("Initial password", password)])
+                    + _button("Open KBase", login_url)
+                    + _note("Please change your password after your first login "
+                            "(top-right menu) and bind your email when prompted. "
+                            "You can switch the interface language (English / "
+                            "Bahasa Melayu / 中文) at the bottom of the login page.")
+                    + _link_fallback(login_url)))
+        return subject, text, html
     subject = "KBase 账号已开通"
     text = (f"您的 KBase 知识库账号已创建：\n\n"
             f"登录地址：{login_url}\n用户名：{username}\n"
@@ -164,8 +187,33 @@ def account_created(username: str, password: str, login_url: str
     return subject, text, html
 
 
-def password_reset(username: str, reset_url: str) -> tuple[str, str, str]:
+def password_reset(username: str, reset_url: str,
+                   lang: str | None = None) -> tuple[str, str, str]:
     """密码重置：重置按钮 + 30 分钟一次性提示 + 非本人操作免责。"""
+    if lang == "en":
+        subject = "Reset your KBase password"
+        text = (f"A password reset was requested for the KBase account "
+                f"{username}.\n\n"
+                f"Open the link below within 30 minutes to set a new "
+                f"password:\n{reset_url}\n\n"
+                f"If you did not request this, you can safely ignore this "
+                f"email — your password will not change.")
+        html = _render(
+            title="Reset your password",
+            paragraphs=[f"We received a request to reset the password for "
+                        f"account <b>{_esc(username)}</b>. Click the button "
+                        "below to set a new password:"],
+            blocks=(_button("Set new password", reset_url)
+                    + _note("The link is valid for 30 minutes and can only "
+                            "be used once.")
+                    + _link_fallback(reset_url)
+                    + f"""
+      <tr><td style="padding:0;font-family:{_FONT};font-size:13px;
+                     line-height:1.7;color:{TEXT_3};">
+        If you did not request this, you can safely ignore this email —
+        your password will not change.
+      </td></tr>"""))
+        return subject, text, html
     subject = "KBase 密码重置"
     text = (f"你（或他人）请求重置 KBase 账号 {username} 的密码。\n\n"
             f"请在 30 分钟内打开以下链接设置新密码：\n{reset_url}\n\n"
@@ -185,8 +233,21 @@ def password_reset(username: str, reset_url: str) -> tuple[str, str, str]:
     return subject, text, html
 
 
-def smtp_test() -> tuple[str, str, str]:
+def smtp_test(lang: str | None = None) -> tuple[str, str, str]:
     """发件箱连通测试：收到即配置正确。"""
+    if lang == "en":
+        subject = "KBase outbox test"
+        text = ("This is a test email from KBase. Receiving it means the "
+                "outbox (SMTP) is configured correctly.")
+        html = _render(
+            title="Outbox configured 🎉",
+            paragraphs=["This is a test email from KBase. If you can see this "
+                        "message, the outbox (SMTP) is configured correctly — "
+                        "account notifications and password-reset emails will "
+                        "be delivered normally."],
+            blocks=_note("This email only verifies the sending configuration. "
+                         "No action is needed."))
+        return subject, text, html
     subject = "KBase 发件箱测试"
     text = "这是一封来自 KBase 的测试邮件。收到即说明发件箱配置正确。"
     html = _render(
@@ -200,29 +261,7 @@ def smtp_test() -> tuple[str, str, str]:
 
 def account_invite(username: str, password: str, login_url: str,
                    lang: str | None = None) -> tuple[str, str, str]:
-    """邀请邮件（管理端「发送邀请」）：内容=登录地址+账号+初始密码。按账号
-    语言偏好选文案——lang=="en" 用英文版（马来/国际伙伴场景），其余复用中文
-    开通通知模板（account_created）。"""
-    if lang != "en":
-        return account_created(username, password, login_url)
-    subject = "Your KBase account is ready"
-    text = (f"Hello {username},\n\n"
-            f"An administrator has set up your KBase account.\n\n"
-            f"Login URL: {login_url}\nUsername: {username}\n"
-            f"Initial password: {password}\n\n"
-            f"Please change your password after your first login "
-            f"(top-right menu). You can switch the interface language "
-            f"at the bottom of the login page.")
-    html = _render(
-        title="Your KBase account is ready",
-        paragraphs=[f"Hello, <b>{_esc(username)}</b>. An administrator has "
-                    "set up your KBase account. Your credentials:"],
-        blocks=(_fields([("Login URL", login_url), ("Username", username),
-                         ("Initial password", password)])
-                + _button("Open KBase", login_url)
-                + _note("Please change your password after your first login "
-                        "(top-right menu) and bind your email when prompted. "
-                        "You can switch the interface language (English / "
-                        "Bahasa Melayu / 中文) at the bottom of the login page.")
-                + _link_fallback(login_url)))
-    return subject, text, html
+    """邀请邮件（管理端「发送邀请」）：内容=登录地址+账号+初始密码，与开通
+    通知同构——英文版收编进 account_created(lang="en") 后本函数只是薄别名，
+    保留是为了调用点语义（invite vs 建号自动发）与既有测试不破。"""
+    return account_created(username, password, login_url, lang=lang)

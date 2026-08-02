@@ -242,3 +242,28 @@ export function auditDailyCounts(
   }
   return order.map((date) => ({ date, count: buckets.get(date) ?? 0 }));
 }
+
+/** 厂商标识（Provider 卡片 logo 徽章）。私有化部署不能依赖外网 logo 资源，
+ * 用"品牌色圆角块 + 厂商缩写"的内置徽章按 base_url 域名识别厂商；未知
+ * 域名（企业自有 OpenAI 兼容平台）给中性 API 徽章。纯函数，vitest 单测。 */
+export interface VendorBadge {
+  /** 厂商全名（tooltip/无障碍标签） */ label: string;
+  /** 徽章内缩写（1~4 字符） */ short: string;
+  /** 品牌底色（徽章背景） */ color: string;
+}
+
+const VENDORS: [RegExp, VendorBadge][] = [
+  [/bigmodel\.cn/i, { label: "智谱 GLM", short: "GLM", color: "#3859FF" }],
+  [/dashscope|aliyuncs\.com/i, { label: "阿里云通义", short: "QW", color: "#615CED" }],
+  [/deepseek\.com/i, { label: "DeepSeek", short: "DS", color: "#4D6BFE" }],
+  [/openai\.com/i, { label: "OpenAI", short: "GPT", color: "#10A37F" }],
+  [/moonshot\.cn/i, { label: "Moonshot Kimi", short: "K", color: "#16191E" }],
+  [/siliconflow\.cn/i, { label: "硅基流动", short: "SF", color: "#7C3AED" }],
+];
+
+export function vendorBadge(baseUrl: string): VendorBadge {
+  for (const [re, v] of VENDORS) {
+    if (re.test(baseUrl)) return v;
+  }
+  return { label: "", short: "API", color: "#64748B" };
+}

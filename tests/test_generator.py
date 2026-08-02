@@ -73,3 +73,19 @@ async def test_citations_use_usable_blocks_only():
     assert len(cits) == 2
     assert [c["index"] for c in cits] == [1, 2]
     assert cits[0]["doc_name"] == "补贴办法.docx"
+
+
+async def test_refusal_language_follows_question():
+    """拒答文案语言跟随提问语言（拒答不经 LLM，refusal_for 启发式裁决）。"""
+    gen = Generator(FakeLLM())
+    en = [c async for c in gen.answer_stream("What is the policy?", [])]
+    assert "No supporting evidence" in "".join(en)
+    zh = [c async for c in gen.answer_stream("政策是什么", [])]
+    assert "未找到依据" in "".join(zh)
+
+
+def test_system_prompt_language_follows_question():
+    """系统提示不再钉死简体中文：回答语言跟随提问语言（英文问马来文档也用英文答）。"""
+    from kbase.rag.generator import SYSTEM_PROMPT
+    assert "简体中文" not in SYSTEM_PROMPT
+    assert "提问的语言保持一致" in SYSTEM_PROMPT

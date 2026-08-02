@@ -8,12 +8,16 @@ import { toast } from "vue-sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import {
+  Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { getSmtpSettings, putSmtpSettings, testSmtp } from "@/lib/api";
 
 const { t } = useI18n();
 
 const form = reactive({ host: "", port: 465, user: "", password: "",
-                        from_addr: "", from_name: "KBase" });
+                        from_addr: "", from_name: "KBase",
+                        language: "auto" as "auto" | "zh" | "en" });
 const configured = ref(false);
 const hasPassword = ref(false);
 const busy = ref(false);
@@ -30,6 +34,7 @@ async function refresh() {
     form.user = st.user ?? "";
     form.from_addr = st.from_addr ?? "";
     form.from_name = st.from_name ?? "KBase";
+    form.language = st.language ?? "auto";
     form.password = "";
   } catch (err) {
     toast.error(err instanceof Error ? err.message : String(err));
@@ -52,6 +57,7 @@ async function save() {
       password: form.password || null,        // 留空=保留旧密码
       from_addr: form.from_addr.trim() || form.user.trim(),
       from_name: form.from_name.trim() || "KBase",
+      language: form.language,
     });
     toast.success(t("smtp.saved"));
     await refresh();
@@ -116,6 +122,20 @@ async function sendTest() {
       <label class="flex flex-col gap-1">
         <span class="text-sm text-[var(--text-2)]">{{ t("smtp.from_name") }}</span>
         <Input v-model="form.from_name" :placeholder="t('smtp.from_name_ph')" />
+      </label>
+      <!-- 系统邮件语言：auto=跟随收件人账号语言（en/ms 账号发英文），zh/en=强制 -->
+      <label class="flex flex-col gap-1">
+        <span class="text-sm text-[var(--text-2)]">{{ t("smtp.language") }}</span>
+        <Select v-model="form.language">
+          <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              <SelectItem value="auto">{{ t("smtp.lang_auto") }}</SelectItem>
+              <SelectItem value="zh">{{ t("smtp.lang_zh") }}</SelectItem>
+              <SelectItem value="en">{{ t("smtp.lang_en") }}</SelectItem>
+            </SelectGroup>
+          </SelectContent>
+        </Select>
       </label>
     </div>
 
