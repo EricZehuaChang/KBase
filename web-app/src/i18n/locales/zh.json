@@ -532,7 +532,14 @@
     "desc": "对照左侧原图核对右侧识别文本（可直接修改），确认后才会向量化入库",
     "loading": "加载识别结果…",
     "later": "稍后处理",
-    "approve": "确认入库"
+    "approve": "确认入库",
+    "pane_image": "原图",
+    "pane_markdown": "识别结果（可直接编辑）",
+    "zoom_fit": "适应窗口",
+    "zoom_in": "放大",
+    "zoom_out": "缩小",
+    "drag_divider": "拖拽调整左右比例",
+    "resize": "拖拽调整窗口大小"
   },
   "grants": {
     "saved_public": "已设为公开（所有人可访问）",
