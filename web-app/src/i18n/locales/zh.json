@@ -224,7 +224,11 @@
     "test": "测试邮件设置",
     "password_required": "首次配置需填写 SMTP 密码/授权码",
     "saved": "发件箱已保存，建议发一封测试邮件确认连通",
-    "test_sent": "测试邮件已发送至 {to}，请查收（含垃圾箱）"
+    "test_sent": "测试邮件已发送至 {to}，请查收（含垃圾箱）",
+    "language": "系统邮件语言",
+    "lang_auto": "自动（跟随收件人账号语言）",
+    "lang_zh": "中文",
+    "lang_en": "English"
   },
   "ops": {
     "title": "运营看板（近 7 天）",

@@ -92,3 +92,25 @@ def test_create_user_sends_notification(client):
     client.post("/api/users", json={"username": "no.mail", "role": "viewer",
                                     "password": "init123456"})
     assert len(FakeSMTP.sent) == before
+
+
+def _last_subject() -> str:
+    """FakeSMTP 最后一封信的主题（mailer 无条件 RFC2047 编码，需解码断言）。"""
+    from email import message_from_string
+    from email.header import decode_header, make_header
+    msg = message_from_string(FakeSMTP.sent[-1]["msg"])
+    return str(make_header(decode_header(msg["Subject"])))
+
+
+def test_email_language_setting_roundtrip_and_forcing(client):
+    """系统邮件语言配置：默认 auto；强制 en 后系统邮件用英文主题，切回 zh
+    恢复中文——语言裁决统一走 mailer.email_language。"""
+    assert client.get("/api/settings/smtp").json()["language"] == "auto"
+    client.put("/api/settings/smtp", json={**SMTP_BODY, "language": "en"})
+    assert client.get("/api/settings/smtp").json()["language"] == "en"
+    client.post("/api/settings/smtp/test", json={"to": "me@corp.example"})
+    assert _last_subject() == "KBase outbox test"
+
+    client.put("/api/settings/smtp", json={**SMTP_BODY, "language": "zh"})
+    client.post("/api/settings/smtp/test", json={"to": "me@corp.example"})
+    assert _last_subject() == "KBase 发件箱测试"

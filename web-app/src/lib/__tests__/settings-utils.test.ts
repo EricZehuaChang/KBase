@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   validateParamsJson, paramsSummary, healthDot, licenseBannerInfo, isLastEnabledAdmin,
   auditDailyCounts, parseAuditTs,
-  buildProviderBody, keySource, PROVIDER_PRESETS,
+  buildProviderBody, keySource, PROVIDER_PRESETS, vendorBadge,
 } from "../settings-utils";
 
 describe("buildProviderBody（M5-2 密钥字段规则）", () => {
@@ -254,5 +254,21 @@ describe("auditDailyCounts / parseAuditTs（审计趋势图）", () => {
     const out = auditDailyCounts([], 7, new Date(2026, 6, 26));
     expect(out).toHaveLength(7);
     expect(out.every((d) => d.count === 0)).toBe(true);
+  });
+});
+
+describe("vendorBadge 厂商徽章识别", () => {
+  it("按 base_url 域名识别主流厂商", () => {
+    expect(vendorBadge("https://open.bigmodel.cn/api/paas/v4").short).toBe("GLM");
+    expect(vendorBadge("https://dashscope.aliyuncs.com/compatible-mode/v1").short).toBe("QW");
+    expect(vendorBadge("https://api.deepseek.com/v1").short).toBe("DS");
+    expect(vendorBadge("https://api.openai.com/v1").short).toBe("GPT");
+    expect(vendorBadge("https://api.moonshot.cn/v1").short).toBe("K");
+  });
+
+  it("未知域名（企业自有兼容平台）回落中性 API 徽章", () => {
+    const v = vendorBadge("https://llm.internal.corp/v1");
+    expect(v.short).toBe("API");
+    expect(v.color).toBeTruthy();
   });
 });

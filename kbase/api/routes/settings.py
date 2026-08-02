@@ -113,7 +113,8 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         mailer.set_settings(sf, host=body.host.strip(), port=body.port,
                             user=body.user.strip(), password=body.password,
                             from_addr=body.from_addr.strip(),
-                            from_name=body.from_name.strip() or "KBase")
+                            from_name=body.from_name.strip() or "KBase",
+                            language=body.language)
         return {"ok": True}
 
     @router.post("/settings/smtp/test",
@@ -122,7 +123,8 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         """发一封测试邮件验证配置连通（同步等结果，失败给可读原因）。"""
         from kbase import email_templates, mailer
         try:
-            subject, text, html_body = email_templates.smtp_test()
+            subject, text, html_body = email_templates.smtp_test(
+                lang=mailer.email_language(sf))
             mailer.send_mail(sf, body.to.strip(), subject, text, html=html_body)
         except Exception as e:  # noqa: BLE001 —— SMTP 侧错误转可读信息
             raise HTTPException(502, f"发送失败: {e}") from e

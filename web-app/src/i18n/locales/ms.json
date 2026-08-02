@@ -224,7 +224,11 @@
     "test": "Ujian tetapan e-mel",
     "password_required": "Kali pertama konfigurasi perlu isi kata laluan SMTP/kod kebenaran",
     "saved": "Peti keluar telah disimpan, disarankan hantar e-mel ujian untuk mengesahkan sambungan",
-    "test_sent": "E-mel ujian telah dihantar ke {to}, sila semak (termasuk spam)"
+    "test_sent": "E-mel ujian telah dihantar ke {to}, sila semak (termasuk spam)",
+    "language": "Bahasa e-mel sistem",
+    "lang_auto": "Auto (ikut bahasa akaun penerima)",
+    "lang_zh": "中文 (Cina)",
+    "lang_en": "English"
   },
   "ops": {
     "title": "Papan pemuka operasi (7 hari terkini)",

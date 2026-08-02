@@ -85,6 +85,7 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps, *,
                 login_url = str(request.base_url).rstrip("/")
                 to_addr = user.email
                 user_name = user.username
+                mail_lang = mailer.email_language(sf, user.language)
 
                 def _send():
                     try:
@@ -93,7 +94,8 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps, *,
                         # reset_token 被裹进 redirect 参数，重置表单读不到（真机
                         # 踩中：用户点开只见普通登录页）。
                         subject, text, html_body = email_templates.password_reset(
-                            user_name, f"{login_url}/login?reset_token={token}")
+                            user_name, f"{login_url}/login?reset_token={token}",
+                            lang=mail_lang)
                         mailer.send_mail(sf, to_addr, subject, text,
                                          html=html_body)
                     except Exception:

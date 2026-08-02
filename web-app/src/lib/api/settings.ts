@@ -137,6 +137,8 @@ export interface SmtpStatus {
   from_addr: string | null;
   from_name: string | null;
   has_password: boolean;
+  /** 系统邮件语言：auto=跟随收件人账号语言，zh/en=强制 */
+  language: "auto" | "zh" | "en";
 }
 
 export function getSmtpSettings(): Promise<SmtpStatus> {
@@ -146,6 +148,7 @@ export function getSmtpSettings(): Promise<SmtpStatus> {
 export function putSmtpSettings(body: {
   host: string; port: number; user: string;
   password?: string | null; from_addr: string; from_name: string;
+  language?: "auto" | "zh" | "en";
 }): Promise<{ ok: boolean }> {
   return req("/api/settings/smtp", jsonInit(body, "PUT"));
 }

@@ -244,8 +244,12 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
                             password=body.password, url=login_url):
                     import logging as _logging
                     try:
+                        # 新建账号还没有语言偏好（language=NULL），auto 档
+                        # 回落中文；后台强制 zh/en 时按强制值
                         subject, text, html_body = \
-                            email_templates.account_created(username, password, url)
+                            email_templates.account_created(
+                                username, password, url,
+                                lang=mailer.email_language(sf, None))
                         mailer.send_mail(sf, to, subject, text, html=html_body)
                     except Exception as e:  # noqa: BLE001
                         _logging.getLogger(__name__).warning(
@@ -403,7 +407,8 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         password = (body.password or "").strip() or _secrets.token_urlsafe(9)
         login_url = str(request.base_url).rstrip("/")
         subject, text, html_body = email_templates.account_invite(
-            username, password, login_url, lang=lang)
+            username, password, login_url,
+            lang=mailer.email_language(sf, lang))
         try:
             mailer.send_mail(sf, email, subject, text, html=html_body)
         except Exception as e:  # noqa: BLE001
