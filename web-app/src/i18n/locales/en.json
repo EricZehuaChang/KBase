@@ -532,7 +532,14 @@
     "desc": "Compare the original image on the left with the recognized text on the right (editable). Vectorization occurs only after confirmation.",
     "loading": "Loading recognition results...",
     "later": "Process later",
-    "approve": "Confirm and add to library"
+    "approve": "Confirm and add to library",
+    "pane_image": "Original image",
+    "pane_markdown": "Recognized text (editable)",
+    "zoom_fit": "Fit to window",
+    "zoom_in": "Zoom in",
+    "zoom_out": "Zoom out",
+    "drag_divider": "Drag to adjust split",
+    "resize": "Drag to resize window"
   },
   "grants": {
     "saved_public": "Set to public (accessible to everyone)",

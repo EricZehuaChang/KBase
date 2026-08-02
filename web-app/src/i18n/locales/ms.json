@@ -532,7 +532,14 @@
     "desc": "Bandingkan imej asal di kiri dengan teks pengecaman di kanan (boleh diubah terus); hanya akan di-vektor dan dimasukkan ke pangkalan data selepas pengesahan",
     "loading": "Memuatkan hasil pengecaman...",
     "later": "Proses kemudian",
-    "approve": "Sahkan masuk"
+    "approve": "Sahkan masuk",
+    "pane_image": "Imej asal",
+    "pane_markdown": "Teks pengecaman (boleh disunting)",
+    "zoom_fit": "Muat ke tetingkap",
+    "zoom_in": "Zum masuk",
+    "zoom_out": "Zum keluar",
+    "drag_divider": "Seret untuk melaraskan bahagian",
+    "resize": "Seret untuk mengubah saiz tetingkap"
   },
   "grants": {
     "saved_public": "Ditetapkan sebagai awam (semua orang boleh akses)",
