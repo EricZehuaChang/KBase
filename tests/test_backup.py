@@ -52,3 +52,19 @@ def test_backup_then_restore_roundtrip(tmp_path):
     db = sqlite3.connect(str(pre[0] / "kbase.sqlite"))
     assert db.execute("SELECT v FROM t").fetchone()[0] == "corrupted"
     db.close()
+
+
+def test_backup_excludes_backups_dir(tmp_path):
+    """备份产物目录不进备份：--out 惯例指到 data/backups，历史备份被再打包
+    会几何级膨胀（演示机 1.1G→8.7G 四连翻真机踩中）。"""
+    import tarfile
+
+    repo, data, cfg = _make_env(tmp_path)
+    out = data / "backups"
+    out.mkdir()
+    (out / "historical.tar.gz").write_bytes(b"x" * 1024)   # 仿真历史备份
+    do_backup(cfg, out)
+    archive = next(out.glob("kbase-*.tar.gz"))
+    names = tarfile.open(archive).getnames()
+    assert not any("backups" in n for n in names), names
+    assert any(n.endswith("files/a.pdf") for n in names)

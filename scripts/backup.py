@@ -71,6 +71,11 @@ def do_backup(config_path: str, out_dir: str) -> None:
         for item in data_dir.iterdir():
             if item.name == SQLITE_NAME:
                 continue
+            # 备份产物目录不进备份：--out 惯例指到 data/backups，不排除的话
+            # 历史备份会被再次打包，体积几何级膨胀（演示机真机踩中：
+            # 1.1G→2.1G→4.3G→8.7G 四连翻）
+            if item.name == "backups" or item.resolve() == out.resolve():
+                continue
             target = snapshot / item.name
             if item.is_dir():
                 shutil.copytree(item, target)
