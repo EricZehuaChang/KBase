@@ -257,17 +257,34 @@ describe("auditDailyCounts / parseAuditTs（审计趋势图）", () => {
   });
 });
 
-describe("vendorBadge 厂商徽章识别", () => {
-  it("按 base_url 域名识别主流厂商", () => {
-    expect(vendorBadge("https://open.bigmodel.cn/api/paas/v4").short).toBe("GLM");
-    expect(vendorBadge("https://dashscope.aliyuncs.com/compatible-mode/v1").short).toBe("QW");
-    expect(vendorBadge("https://api.deepseek.com/v1").short).toBe("DS");
-    expect(vendorBadge("https://api.openai.com/v1").short).toBe("GPT");
-    expect(vendorBadge("https://api.moonshot.cn/v1").short).toBe("K");
+describe("vendorBadge 厂商识别", () => {
+  it("按 base_url 域名识别主流厂商并给官方 logo 资产名", () => {
+    expect(vendorBadge("https://open.bigmodel.cn/api/paas/v4").icon).toBe("zhipu");
+    expect(vendorBadge("https://dashscope.aliyuncs.com/compatible-mode/v1").icon).toBe("qwen");
+    expect(vendorBadge("https://api.deepseek.com/v1").icon).toBe("deepseek");
+    expect(vendorBadge("https://api.openai.com/v1").icon).toBe("openai");
+    expect(vendorBadge("https://api.moonshot.cn/v1").icon).toBe("kimi");
+    expect(vendorBadge("https://api.siliconflow.cn/v1").icon).toBe("siliconcloud");
   });
 
-  it("未知域名（企业自有兼容平台）回落中性 API 徽章", () => {
+  it("icon 资产名与 assets/vendors 实际文件一一对应（拦资产漂移）", () => {
+    const files = Object.keys(import.meta.glob("../../assets/vendors/*.svg"))
+      .map((p) => p.split("/").pop()!.replace(/(-color)?\.svg$/, ""));
+    for (const url of [
+      "https://open.bigmodel.cn/api/paas/v4",
+      "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "https://api.deepseek.com/v1",
+      "https://api.openai.com/v1",
+      "https://api.moonshot.cn/v1",
+      "https://api.siliconflow.cn/v1",
+    ]) {
+      expect(files, url).toContain(vendorBadge(url).icon);
+    }
+  });
+
+  it("未知域名（企业自有兼容平台）无 icon，回落中性 API 徽章", () => {
     const v = vendorBadge("https://llm.internal.corp/v1");
+    expect(v.icon).toBeUndefined();
     expect(v.short).toBe("API");
     expect(v.color).toBeTruthy();
   });
