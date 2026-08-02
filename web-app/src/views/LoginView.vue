@@ -140,43 +140,52 @@ async function submitReset() {
     京沪讲业务版图）+ 玻璃拟态特性轮播卡。面板内局部覆写文字色 CSS 变量，
     轮播组件无需感知自己在深色面板上。 -->
     <aside
-      class="relative hidden w-[46%] shrink-0 flex-col justify-between overflow-hidden bg-[#0b0d16] text-white lg:flex"
+      class="relative hidden w-[55%] shrink-0 grid-rows-[auto_1fr_auto_1.2fr_auto] overflow-hidden bg-[#0a0b14] px-12 pb-12 pt-10 text-white lg:grid"
       style="--text: #fff; --text-2: rgba(255,255,255,0.72); --text-3: rgba(255,255,255,0.5); --border-strong: rgba(255,255,255,0.28); --surface-2: rgba(255,255,255,0.08)"
     >
+      <!-- 辉光只取 accent 同色相两档，避免多色相混浊 -->
       <div
         class="pointer-events-none absolute inset-0"
         style="background:
-          radial-gradient(60% 50% at 12% 0%, rgba(96,84,220,0.38), transparent 62%),
-          radial-gradient(50% 42% at 88% 18%, rgba(56,89,255,0.2), transparent 62%),
-          radial-gradient(72% 58% at 50% 112%, rgba(83,74,183,0.3), transparent 62%)"
+          radial-gradient(56% 48% at 8% 0%, rgba(101,92,255,0.3), transparent 62%),
+          radial-gradient(64% 56% at 108% 60%, rgba(56,89,255,0.14), transparent 62%)"
       />
-      <!-- 地球：右下溢出裁切（landing 页经典构图，留白给文案） -->
-      <div class="absolute -bottom-[24%] -right-[16%] aspect-square w-[82%] opacity-90">
+      <!-- 签名构图：地球在右缘垂直居中破边，弧形剪影框住左侧文案 -->
+      <div class="absolute -right-[30%] top-1/2 aspect-square w-[76%] -translate-y-1/2 opacity-90">
         <HeroGlobe />
       </div>
 
-      <div class="login-rise relative z-10 px-10 pt-10">
-        <div class="flex items-center gap-2.5">
-          <span class="flex size-9 items-center justify-center rounded-xl bg-[var(--accent)] text-lg font-bold text-white shadow-lg shadow-indigo-900/40">K</span>
-          <span class="text-xl font-semibold tracking-tight">KBase</span>
-        </div>
+      <div class="login-rise relative z-10 flex items-center gap-2.5">
+        <span class="flex size-9 items-center justify-center rounded-xl bg-[var(--accent)] text-lg font-bold text-white shadow-lg shadow-indigo-950/50">K</span>
+        <span class="text-xl font-semibold tracking-tight">KBase</span>
       </div>
 
-      <div class="login-rise relative z-10 max-w-[26rem] px-10 pb-12" style="animation-delay: 0.15s">
-        <h2 class="bg-gradient-to-r from-white via-indigo-100 to-indigo-300 bg-clip-text text-[22px] font-semibold leading-snug text-transparent">
-          {{ t("login.tagline") }}
+      <div />
+
+      <div class="login-rise relative z-10 max-w-[24rem]" style="animation-delay: 0.12s">
+        <h2
+          class="bg-gradient-to-r from-white to-[#A7B0FF] bg-clip-text text-[30px] font-semibold leading-[1.3] tracking-tight text-transparent"
+          style="text-wrap: balance"
+        >
+          {{ t("login.hero_title") }}
         </h2>
-        <!-- 玻璃拟态轮播卡：backdrop-blur 压住地球边缘，层次分明 -->
-        <div class="mt-6 rounded-2xl border border-white/10 bg-white/[0.06] p-5 backdrop-blur-md">
-          <FeatureCarousel />
-        </div>
+        <p class="mt-4 text-sm leading-[1.75] text-white/65">
+          {{ t("login.tagline") }}
+        </p>
+      </div>
+
+      <div />
+
+      <!-- 玻璃拟态轮播卡：backdrop-blur 压住地球边缘，层次分明 -->
+      <div class="login-rise relative z-10 max-w-[24rem] rounded-2xl border border-white/10 bg-white/[0.06] p-5 backdrop-blur-md" style="animation-delay: 0.22s">
+        <FeatureCarousel />
       </div>
     </aside>
 
-    <!-- 右：表单区（跟随应用主题；氛围用极淡 accent 径向渐变） -->
+    <!-- 右：表单区（跟随应用主题；无框表单直接落在页面地色上，不再卡片悬浮虚空） -->
     <div class="relative flex min-w-0 flex-1 items-center justify-center">
       <div
-        class="pointer-events-none absolute inset-0 opacity-[0.08]"
+        class="pointer-events-none absolute inset-0 opacity-[0.05]"
         style="background: radial-gradient(48% 42% at 72% 16%, var(--accent), transparent 65%)"
       />
     <!-- 登录前也能切语言：马来/英文客户第一屏即可选母语（顶栏切换器要登录后
@@ -185,15 +194,19 @@ async function submitReset() {
     <div class="absolute inset-x-0 bottom-8 flex justify-center">
       <LanguagePicker />
     </div>
-    <!-- 登录 -->
+    <!-- 登录（无框表单：输入框自带边界，砍掉"卡片浮虚空"的双重框） -->
     <form
       v-if="mode === 'login'"
-      class="flex w-[344px] max-w-[calc(100vw-2rem)] flex-col gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-7 shadow-[var(--shadow-drawer)]"
+      class="login-rise relative z-10 flex w-[360px] max-w-[calc(100vw-2.5rem)] flex-col gap-4"
       @submit.prevent="submit"
     >
-      <div class="text-center">
-        <h1 class="text-lg font-semibold">KBase</h1>
-        <p class="mt-1 text-sm text-[var(--text-2)]">{{ t("login.continue") }}</p>
+      <div class="mb-2">
+        <div class="mb-5 flex items-center gap-2 lg:hidden">
+          <span class="flex size-8 items-center justify-center rounded-lg bg-[var(--accent)] text-base font-bold text-white">K</span>
+          <span class="text-lg font-semibold tracking-tight">KBase</span>
+        </div>
+        <h1 class="text-[22px] font-semibold tracking-tight">{{ t("login.welcome") }}</h1>
+        <p class="mt-1.5 text-[13px] text-[var(--text-3)]">{{ t("login.continue") }}</p>
       </div>
 
       <label class="flex flex-col gap-1">
@@ -206,42 +219,51 @@ async function submitReset() {
         <Input v-model="password" type="password" :placeholder="t('login.password')" autocomplete="current-password" />
       </label>
 
-      <!-- 记住登录：勾选=30 天持久 Cookie；默认关浏览器即失效（共享电脑安全默认） -->
-      <label class="flex cursor-pointer items-center gap-2 text-sm text-[var(--text-2)]">
-        <input v-model="remember" type="checkbox" class="accent-[var(--accent)]" />
-        {{ t("login.remember") }}
-      </label>
+      <!-- 记住登录（勾=30 天持久 Cookie，默认关浏览器即失效）与忘记密码同行：
+      辅助动作各归一侧，不再让找回入口沉底居中 -->
+      <div class="flex items-center justify-between">
+        <label class="flex cursor-pointer items-center gap-2 text-[13px] text-[var(--text-2)]">
+          <input v-model="remember" type="checkbox" class="accent-[var(--accent)]" />
+          {{ t("login.remember") }}
+        </label>
+        <button
+          type="button"
+          class="text-[13px] text-[var(--text-3)] underline-offset-2 hover:text-[var(--accent-text)] hover:underline"
+          @click="switchMode('forgot')"
+        >
+          {{ t("login.forgot") }}
+        </button>
+      </div>
 
       <p v-if="error" class="rounded-[var(--radius-ctl)] bg-[var(--err-weak)] px-3 py-2 text-sm text-[var(--err)]">
         {{ error }}
       </p>
 
-      <Button type="submit" :disabled="submitting" class="mt-1">
+      <Button type="submit" :disabled="submitting" class="mt-1 h-10 text-[15px]">
         {{ submitting ? t("login.logging_in") : t("login.login") }}
       </Button>
 
-      <Button v-if="ssoEnabled" type="button" variant="outline" @click="ssoLogin">
-        {{ t("login.sso") }}
-      </Button>
-
-      <button
-        type="button"
-        class="self-center text-xs text-[var(--text-3)] underline-offset-2 hover:text-[var(--text-2)] hover:underline"
-        @click="switchMode('forgot')"
-      >
-        {{ t("login.forgot") }}
-      </button>
+      <template v-if="ssoEnabled">
+        <div class="flex items-center gap-3 text-xs text-[var(--text-3)]">
+          <span class="h-px flex-1 bg-[var(--border)]" />
+          {{ t("login.or") }}
+          <span class="h-px flex-1 bg-[var(--border)]" />
+        </div>
+        <Button type="button" variant="outline" @click="ssoLogin">
+          {{ t("login.sso") }}
+        </Button>
+      </template>
     </form>
 
     <!-- 忘记密码 -->
     <form
       v-else-if="mode === 'forgot'"
-      class="flex w-[344px] max-w-[calc(100vw-2rem)] flex-col gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-7 shadow-[var(--shadow-drawer)]"
+      class="login-rise relative z-10 flex w-[360px] max-w-[calc(100vw-2.5rem)] flex-col gap-4"
       @submit.prevent="submitForgot"
     >
-      <div class="text-center">
-        <h1 class="text-lg font-semibold">{{ t("login.forgot_title") }}</h1>
-        <p class="mt-1 text-sm text-[var(--text-2)]">{{ t("login.forgot_hint") }}</p>
+      <div class="mb-2">
+        <h1 class="text-[22px] font-semibold tracking-tight">{{ t("login.forgot_title") }}</h1>
+        <p class="mt-1.5 text-[13px] text-[var(--text-3)]">{{ t("login.forgot_hint") }}</p>
       </div>
 
       <template v-if="!forgotSent">
@@ -275,12 +297,12 @@ async function submitReset() {
     <!-- 重置密码（邮件链接落地） -->
     <form
       v-else
-      class="flex w-[344px] max-w-[calc(100vw-2rem)] flex-col gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-7 shadow-[var(--shadow-drawer)]"
+      class="login-rise relative z-10 flex w-[360px] max-w-[calc(100vw-2.5rem)] flex-col gap-4"
       @submit.prevent="submitReset"
     >
-      <div class="text-center">
-        <h1 class="text-lg font-semibold">{{ t("login.reset_title") }}</h1>
-        <p class="mt-1 text-sm text-[var(--text-2)]">{{ t("login.reset_hint") }}</p>
+      <div class="mb-2">
+        <h1 class="text-[22px] font-semibold tracking-tight">{{ t("login.reset_title") }}</h1>
+        <p class="mt-1.5 text-[13px] text-[var(--text-3)]">{{ t("login.reset_hint") }}</p>
       </div>
 
       <template v-if="!resetDone">
