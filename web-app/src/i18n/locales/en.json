@@ -112,7 +112,15 @@
     "reset_done": "Password has been reset, please log in with the new password",
     "go_login": "Go to login",
     "pwd_min": "New password must be at least 6 characters",
-    "pwd_mismatch": "The two entered passwords do not match"
+    "pwd_mismatch": "The two entered passwords do not match",
+    "remember": "Keep me signed in for 30 days (avoid on shared computers)",
+    "tagline": "Self-hosted enterprise knowledge base: your data stays on your own server, and every answer is traceable to its source.",
+    "slide1_title": "Answers with traceable citations",
+    "slide1_desc": "Every answer carries citations — preview the source, jump to the page, and see document images inline. Nothing is made up.",
+    "slide2_title": "Knowledge in, answers out",
+    "slide2_desc": "Drag-and-drop upload, Feishu import, scheduled connector sync; share login-free Q&A links with your team and clients.",
+    "slide3_title": "Governance & multilingual",
+    "slide3_desc": "Roles and per-base access, audit dashboards; UI in Chinese / English / Malay with per-account language preference."
   },
   "msg": {
     "list_label": "Chat message list",

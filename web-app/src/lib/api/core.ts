@@ -90,10 +90,14 @@ export interface Me {
   tour_enabled?: boolean;
 }
 
-export function login(username: string, password: string): Promise<Me> {
+export function login(
+  username: string, password: string, remember = false,
+): Promise<Me> {
   // skipAuthRedirect：登录失败也是 401，但那是"密码错"不是"会话过期"，不该
   // 触发全局跳转 /login（本来就在 /login 页）——由 LoginView 捕获异常自己展示。
-  return req("/api/auth/login", jsonInit({ username, password }), { skipAuthRedirect: true });
+  // remember=true 时后端发 30 天持久 Cookie，默认会话级（关浏览器即失效）。
+  return req("/api/auth/login", jsonInit({ username, password, remember }),
+             { skipAuthRedirect: true });
 }
 
 export async function logout(): Promise<{ ok: boolean }> {

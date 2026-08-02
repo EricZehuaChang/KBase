@@ -112,7 +112,15 @@
     "reset_done": "Kata laluan telah diset semula, sila log masuk dengan kata laluan baru",
     "go_login": "Pergi ke log masuk",
     "pwd_min": "Kata laluan baru mesti sekurang-kurangnya 6 aksara",
-    "pwd_mismatch": "Kata laluan baru yang dimasukkan dua kali tidak sepadan"
+    "pwd_mismatch": "Kata laluan baru yang dimasukkan dua kali tidak sepadan",
+    "remember": "Kekalkan log masuk selama 30 hari (elakkan pada komputer kongsi)",
+    "tagline": "Pangkalan pengetahuan perusahaan swadaya: data kekal dalam pelayan sendiri, setiap jawapan boleh dijejaki ke sumbernya.",
+    "slide1_title": "Jawapan dengan petikan boleh dijejak",
+    "slide1_desc": "Setiap jawapan disertakan petikan — pratonton sumber, lompat ke halaman, dan lihat imej dokumen. Tiada rekaan.",
+    "slide2_title": "Pengetahuan masuk, jawapan keluar",
+    "slide2_desc": "Muat naik seret-lepas, import Feishu, penyegerakan penyambung berjadual; kongsi pautan soal jawab tanpa log masuk.",
+    "slide3_title": "Tadbir urus & pelbagai bahasa",
+    "slide3_desc": "Peranan dan akses per pangkalan, papan audit; antara muka Cina / Inggeris / Melayu dengan keutamaan bahasa per akaun."
   },
   "msg": {
     "list_label": "Senarai mesej perbualan",

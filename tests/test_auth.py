@@ -35,6 +35,14 @@ def test_login_ok_sets_cookie_and_returns_role(tmp_path, fake_embedder, monkeypa
     assert "kbase_session" in set_cookie
     assert "Max-Age" not in set_cookie and "Expires" not in set_cookie
 
+    # 勾选"记住登录"：持久 Cookie，时长与 JWT 有效期对齐（30 天）
+    r = c.post("/api/auth/login", json={"username": "admin",
+                                        "password": "adminpass123",
+                                        "remember": True})
+    assert r.status_code == 200
+    from kbase.auth.security import SESSION_TOKEN_TTL_SECONDS
+    assert f"Max-Age={SESSION_TOKEN_TTL_SECONDS}" in r.headers["set-cookie"]
+
 
 def test_login_bad_password_401(tmp_path, fake_embedder, monkeypatch):
     app, c = _client_on(tmp_path, fake_embedder, admin_password="adminpass123",

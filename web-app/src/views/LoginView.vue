@@ -10,8 +10,11 @@ import { useI18n } from "vue-i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import LanguagePicker from "@/components/LanguagePicker.vue";
+import HeroGlobe from "@/components/HeroGlobe.vue";
+import FeatureCarousel from "@/components/FeatureCarousel.vue";
 import {
-  login, clearSessionCache, getSsoStatus, forgotPassword, resetPassword,
+  login, clearSessionCache, getSession, getSsoStatus, forgotPassword,
+  resetPassword,
 } from "@/lib/api";
 import { redirectTarget } from "@/lib/auth-utils";
 
@@ -26,12 +29,25 @@ const mode = ref<Mode>(resetToken ? "reset" : "login");
 
 const username = ref("");
 const password = ref("");
+const remember = ref(false);
 const error = ref<string | null>(null);
 const submitting = ref(false);
 
 // M6-8 企业 SSO：后端启用 OIDC 时显示企业账号入口（整页跳转到 IdP）
 const ssoEnabled = ref(false);
 onMounted(async () => {
+  // 已登录访客直接跳走（带着有效会话打开 /login 没有意义；重置密码模式
+  // 例外——邮件链接落地是明确意图，哪怕登录着也让人把密码改完）
+  if (mode.value === "login") {
+    try {
+      if (await getSession()) {
+        await router.replace(redirectTarget(route));
+        return;
+      }
+    } catch {
+      // 探测失败当作未登录，正常展示登录表单
+    }
+  }
   try {
     ssoEnabled.value = (await getSsoStatus()).enabled;
   } catch {
@@ -51,7 +67,7 @@ async function submit() {
   submitting.value = true;
   error.value = null;
   try {
-    await login(username.value.trim(), password.value);
+    await login(username.value.trim(), password.value, remember.value);
     clearSessionCache(); // 登录成功后旧的"无会话"缓存已失效，下次探测重新取
     await router.replace(redirectTarget(route));
   } catch (err) {
@@ -117,7 +133,52 @@ async function submitReset() {
 </script>
 
 <template>
-  <div class="relative flex h-screen w-full items-center justify-center bg-[var(--bg)] text-[var(--text)]">
+  <div class="relative flex h-screen w-full overflow-hidden bg-[var(--bg)] text-[var(--text)]">
+    <!-- 左：品牌 hero 面板（lg+ 显示；窄屏隐藏退化为居中卡片，响应式零妥协）。
+    固定深色高级质感（不随主题翻转，Linear/Vercel 登录页范式）：aurora 渐变
+    氛围 + cobe 3D 地球右下裁切构图（可拖拽旋转，标记吉隆坡/新加坡/槟城/
+    京沪讲业务版图）+ 玻璃拟态特性轮播卡。面板内局部覆写文字色 CSS 变量，
+    轮播组件无需感知自己在深色面板上。 -->
+    <aside
+      class="relative hidden w-[46%] shrink-0 flex-col justify-between overflow-hidden bg-[#0b0d16] text-white lg:flex"
+      style="--text: #fff; --text-2: rgba(255,255,255,0.72); --text-3: rgba(255,255,255,0.5); --border-strong: rgba(255,255,255,0.28); --surface-2: rgba(255,255,255,0.08)"
+    >
+      <div
+        class="pointer-events-none absolute inset-0"
+        style="background:
+          radial-gradient(60% 50% at 12% 0%, rgba(96,84,220,0.38), transparent 62%),
+          radial-gradient(50% 42% at 88% 18%, rgba(56,89,255,0.2), transparent 62%),
+          radial-gradient(72% 58% at 50% 112%, rgba(83,74,183,0.3), transparent 62%)"
+      />
+      <!-- 地球：右下溢出裁切（landing 页经典构图，留白给文案） -->
+      <div class="absolute -bottom-[24%] -right-[16%] aspect-square w-[82%] opacity-90">
+        <HeroGlobe />
+      </div>
+
+      <div class="login-rise relative z-10 px-10 pt-10">
+        <div class="flex items-center gap-2.5">
+          <span class="flex size-9 items-center justify-center rounded-xl bg-[var(--accent)] text-lg font-bold text-white shadow-lg shadow-indigo-900/40">K</span>
+          <span class="text-xl font-semibold tracking-tight">KBase</span>
+        </div>
+      </div>
+
+      <div class="login-rise relative z-10 max-w-[26rem] px-10 pb-12" style="animation-delay: 0.15s">
+        <h2 class="bg-gradient-to-r from-white via-indigo-100 to-indigo-300 bg-clip-text text-[22px] font-semibold leading-snug text-transparent">
+          {{ t("login.tagline") }}
+        </h2>
+        <!-- 玻璃拟态轮播卡：backdrop-blur 压住地球边缘，层次分明 -->
+        <div class="mt-6 rounded-2xl border border-white/10 bg-white/[0.06] p-5 backdrop-blur-md">
+          <FeatureCarousel />
+        </div>
+      </div>
+    </aside>
+
+    <!-- 右：表单区（跟随应用主题；氛围用极淡 accent 径向渐变） -->
+    <div class="relative flex min-w-0 flex-1 items-center justify-center">
+      <div
+        class="pointer-events-none absolute inset-0 opacity-[0.08]"
+        style="background: radial-gradient(48% 42% at 72% 16%, var(--accent), transparent 65%)"
+      />
     <!-- 登录前也能切语言：马来/英文客户第一屏即可选母语（顶栏切换器要登录后
     才有）。inline 文字行放页脚居中——比角落悬浮地球图标融入页面，且母语自称
     （中文 · English · Bahasa Melayu）对不识中文的访客一眼可认。 -->
@@ -127,7 +188,7 @@ async function submitReset() {
     <!-- 登录 -->
     <form
       v-if="mode === 'login'"
-      class="flex w-[320px] flex-col gap-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-6 shadow-[var(--shadow-drawer)]"
+      class="flex w-[344px] max-w-[calc(100vw-2rem)] flex-col gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-7 shadow-[var(--shadow-drawer)]"
       @submit.prevent="submit"
     >
       <div class="text-center">
@@ -143,6 +204,12 @@ async function submitReset() {
       <label class="flex flex-col gap-1">
         <span class="text-sm text-[var(--text-2)]">{{ t("login.password") }}</span>
         <Input v-model="password" type="password" :placeholder="t('login.password')" autocomplete="current-password" />
+      </label>
+
+      <!-- 记住登录：勾选=30 天持久 Cookie；默认关浏览器即失效（共享电脑安全默认） -->
+      <label class="flex cursor-pointer items-center gap-2 text-sm text-[var(--text-2)]">
+        <input v-model="remember" type="checkbox" class="accent-[var(--accent)]" />
+        {{ t("login.remember") }}
       </label>
 
       <p v-if="error" class="rounded-[var(--radius-ctl)] bg-[var(--err-weak)] px-3 py-2 text-sm text-[var(--err)]">
@@ -169,7 +236,7 @@ async function submitReset() {
     <!-- 忘记密码 -->
     <form
       v-else-if="mode === 'forgot'"
-      class="flex w-[320px] flex-col gap-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-6 shadow-[var(--shadow-drawer)]"
+      class="flex w-[344px] max-w-[calc(100vw-2rem)] flex-col gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-7 shadow-[var(--shadow-drawer)]"
       @submit.prevent="submitForgot"
     >
       <div class="text-center">
@@ -208,7 +275,7 @@ async function submitReset() {
     <!-- 重置密码（邮件链接落地） -->
     <form
       v-else
-      class="flex w-[320px] flex-col gap-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-6 shadow-[var(--shadow-drawer)]"
+      class="flex w-[344px] max-w-[calc(100vw-2rem)] flex-col gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-7 shadow-[var(--shadow-drawer)]"
       @submit.prevent="submitReset"
     >
       <div class="text-center">
@@ -243,5 +310,30 @@ async function submitReset() {
         <Button type="button" @click="switchMode('login')">{{ t("login.go_login") }}</Button>
       </template>
     </form>
+    </div>
   </div>
 </template>
+
+<style scoped>
+/* 入场动效：品牌面板与表单卡片淡入上移（动效敏感用户直接呈现终态） */
+.login-rise,
+form {
+  animation: login-rise 0.5s ease-out both;
+}
+@keyframes login-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .login-rise,
+  form {
+    animation: none;
+  }
+}
+</style>
