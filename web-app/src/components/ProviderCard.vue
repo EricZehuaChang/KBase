@@ -9,7 +9,8 @@ import { Loader2, Pencil, Trash2 } from "@lucide/vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
-import { keySource, paramsSummary, vendorBadge, type ProviderTestState } from "@/lib/settings-utils";
+import { keySource, paramsSummary, type ProviderTestState } from "@/lib/settings-utils";
+import VendorLogo from "@/components/VendorLogo.vue";
 import type { Provider } from "@/lib/api";
 
 defineProps<{ provider: Provider; isActive: boolean; testState?: ProviderTestState }>();
@@ -31,14 +32,8 @@ function keyLabel(p: Provider): string {
     >
       <div class="flex items-center justify-between gap-2">
         <div class="flex min-w-0 items-center gap-2">
-          <!-- 厂商徽章：品牌色+缩写按 base_url 识别（内置离线，见 vendorBadge） -->
-          <span
-            class="flex size-7 shrink-0 items-center justify-center rounded-lg text-[10px] font-bold text-white"
-            :style="{ backgroundColor: vendorBadge(provider.base_url).color }"
-            :title="vendorBadge(provider.base_url).label"
-          >
-            {{ vendorBadge(provider.base_url).short }}
-          </span>
+          <!-- 厂商官方 logo（按 base_url 识别，内置离线，见 VendorLogo/vendorBadge） -->
+          <VendorLogo :base-url="provider.base_url" />
           <div class="truncate font-medium">{{ provider.name }}</div>
         </div>
         <Badge v-if="isActive" class="bg-[var(--accent-weak)] text-[var(--accent-text)]">{{ t("provider.default_badge") }}</Badge>
