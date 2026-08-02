@@ -10,6 +10,9 @@ from pydantic import BaseModel, Field, StrictBool, StrictInt, model_validator
 class LoginBody(BaseModel):
     username: str
     password: str
+    # 记住登录：勾选=持久 Cookie（与 JWT 有效期同 30 天）；默认关=会话级
+    # Cookie，关浏览器即失效（deploy43 拍板的默认策略不变，记住是可选增强）
+    remember: bool = False
 
 
 class KBCreate(BaseModel):

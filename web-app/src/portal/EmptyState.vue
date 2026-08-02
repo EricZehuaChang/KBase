@@ -8,6 +8,7 @@
 import { onMounted, ref, watch } from "vue";
 import { MessageSquare } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
+import KnowledgeGlobe from "@/components/KnowledgeGlobe.vue";
 import { listDocs } from "@/lib/api";
 import { kbId } from "./topbar-state";
 
@@ -43,8 +44,10 @@ watch(kbId, buildQuestions);
 </script>
 
 <template>
-  <div class="flex h-full flex-col items-center justify-center gap-6 px-6 text-center">
-    <div class="flex flex-col items-center gap-2">
+  <div class="relative flex h-full flex-col items-center justify-center gap-6 px-6 text-center">
+    <!-- 3D 知识星球氛围层：低密度低透明度，不抢快捷问题的注意力 -->
+    <KnowledgeGlobe :density="0.75" :opacity="0.5" />
+    <div class="empty-rise relative z-10 flex flex-col items-center gap-2">
       <MessageSquare class="size-8 text-[var(--text-3)]" />
       <h2 class="text-lg font-medium text-[var(--text)]">{{ t("portal.empty.title") }}</h2>
       <p class="text-sm text-[var(--text-3)]">
@@ -52,13 +55,14 @@ watch(kbId, buildQuestions);
       </p>
     </div>
 
-    <div v-if="questions.length" class="flex w-full max-w-lg flex-col gap-2">
+    <div v-if="questions.length" class="relative z-10 flex w-full max-w-lg flex-col gap-2">
       <button
-        v-for="q in questions"
+        v-for="(q, i) in questions"
         :key="q"
         type="button"
         data-tour="empty-question"
-        class="rounded-[var(--radius-ctl)] border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 text-left text-sm text-[var(--text-2)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text)]"
+        class="empty-rise rounded-[var(--radius-ctl)] border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 text-left text-sm text-[var(--text-2)] transition-all hover:-translate-y-0.5 hover:border-[var(--accent)] hover:text-[var(--text)] hover:shadow-sm"
+        :style="{ animationDelay: `${0.08 * (i + 1)}s` }"
         @click="emit('pick', q)"
       >
         {{ q }}
@@ -66,3 +70,25 @@ watch(kbId, buildQuestions);
     </div>
   </div>
 </template>
+
+<style scoped>
+/* 入场动效：标题与快捷问题依次淡入上移（动效敏感用户直接呈现终态） */
+.empty-rise {
+  animation: empty-rise 0.45s ease-out both;
+}
+@keyframes empty-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .empty-rise {
+    animation: none;
+  }
+}
+</style>
