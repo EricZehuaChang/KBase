@@ -133,29 +133,34 @@ async function submitReset() {
 </script>
 
 <template>
-  <div class="relative flex h-screen w-full overflow-hidden bg-[var(--bg)] text-[var(--text)]">
-    <!-- 左：品牌 hero 面板（lg+ 显示；窄屏隐藏退化为居中卡片，响应式零妥协）。
-    固定深色高级质感（不随主题翻转，Linear/Vercel 登录页范式）：aurora 渐变
-    氛围 + cobe 3D 地球右下裁切构图（可拖拽旋转，标记吉隆坡/新加坡/槟城/
-    京沪讲业务版图）+ 玻璃拟态特性轮播卡。面板内局部覆写文字色 CSS 变量，
-    轮播组件无需感知自己在深色面板上。 -->
-    <aside
-      class="relative hidden w-[55%] shrink-0 grid-rows-[auto_1fr_auto_1.2fr_auto] overflow-hidden bg-[#0a0b14] px-12 pb-12 pt-10 text-white lg:grid"
-      style="--text: #fff; --text-2: rgba(255,255,255,0.72); --text-3: rgba(255,255,255,0.5); --border-strong: rgba(255,255,255,0.28); --surface-2: rgba(255,255,255,0.08)"
-    >
-      <!-- 辉光只取 accent 同色相两档，避免多色相混浊 -->
-      <div
-        class="pointer-events-none absolute inset-0"
-        style="background:
-          radial-gradient(56% 48% at 8% 0%, rgba(101,92,255,0.3), transparent 62%),
-          radial-gradient(64% 56% at 108% 60%, rgba(56,89,255,0.14), transparent 62%)"
-      />
-      <!-- 签名构图：地球在右缘垂直居中破边，弧形剪影框住左侧文案 -->
-      <div class="absolute -right-[30%] top-1/2 aspect-square w-[76%] -translate-y-1/2 opacity-90">
-        <HeroGlobe />
-      </div>
+  <!-- 登录页=单一深色世界（有意的单主题承诺：登录后才进应用的浅/暗双主题）。
+  整页共用一套暗色令牌覆写——Input/Button/LanguagePicker 全部经由令牌别名链
+  （--input: var(--border) 等）原生暗色化，组件零改动。消灭旧版"左黑右白
+  断崖"：地球弧移到表单背后，玻璃卡浮在地球上，两个世界合为一个。 -->
+  <div
+    class="relative flex h-screen w-full overflow-hidden bg-[#0a0b14] text-white"
+    style="--bg: #0a0b14; --surface: rgba(255,255,255,0.06); --surface-2: rgba(255,255,255,0.09);
+           --border: rgba(255,255,255,0.14); --border-strong: rgba(255,255,255,0.28);
+           --text: #fff; --text-2: rgba(255,255,255,0.72); --text-3: rgba(255,255,255,0.5);
+           --accent-weak: rgba(101,92,255,0.22); --accent-text: #A7B0FF;
+           --err: #f87171; --err-weak: rgba(248,113,113,0.12);
+           --ok: #4ade80; --ok-weak: rgba(74,222,128,0.12)"
+  >
+    <!-- 全页辉光：accent 同色相两档（左上主光 + 表单区背光） -->
+    <div
+      class="pointer-events-none absolute inset-0"
+      style="background:
+        radial-gradient(50% 44% at 8% 0%, rgba(101,92,255,0.28), transparent 62%),
+        radial-gradient(44% 52% at 82% 55%, rgba(56,89,255,0.16), transparent 62%)"
+    />
+    <!-- 签名构图：地球移到表单背后，玻璃卡浮在地球弧上 -->
+    <div class="absolute right-[2%] top-1/2 aspect-square w-[46%] min-w-[26rem] -translate-y-1/2 opacity-80">
+      <HeroGlobe />
+    </div>
 
-      <div class="login-rise relative z-10 flex items-center gap-2.5">
+    <!-- 左：品牌内容列（lg+ 显示；陈述句压光学中心，轮播钉底） -->
+    <aside class="relative z-10 hidden w-[55%] shrink-0 grid-rows-[auto_1fr_auto_1.2fr_auto] px-12 pb-12 pt-10 lg:grid">
+      <div class="login-rise relative flex items-center gap-2.5">
         <span class="flex size-9 items-center justify-center rounded-xl bg-[var(--accent)] text-lg font-bold text-white shadow-lg shadow-indigo-950/50">K</span>
         <span class="text-xl font-semibold tracking-tight">KBase</span>
       </div>
@@ -182,22 +187,18 @@ async function submitReset() {
       </div>
     </aside>
 
-    <!-- 右：表单区（跟随应用主题；无框表单直接落在页面地色上，不再卡片悬浮虚空） -->
-    <div class="relative flex min-w-0 flex-1 items-center justify-center">
-      <div
-        class="pointer-events-none absolute inset-0 opacity-[0.05]"
-        style="background: radial-gradient(48% 42% at 72% 16%, var(--accent), transparent 65%)"
-      />
+    <!-- 右：表单列。玻璃卡浮在地球弧上（backdrop-blur 保证任何底纹下可读） -->
+    <div class="relative z-10 flex min-w-0 flex-1 items-center justify-center">
     <!-- 登录前也能切语言：马来/英文客户第一屏即可选母语（顶栏切换器要登录后
     才有）。inline 文字行放页脚居中——比角落悬浮地球图标融入页面，且母语自称
     （中文 · English · Bahasa Melayu）对不识中文的访客一眼可认。 -->
     <div class="absolute inset-x-0 bottom-8 flex justify-center">
       <LanguagePicker />
     </div>
-    <!-- 登录（无框表单：输入框自带边界，砍掉"卡片浮虚空"的双重框） -->
+    <!-- 登录 -->
     <form
       v-if="mode === 'login'"
-      class="login-rise relative z-10 flex w-[360px] max-w-[calc(100vw-2.5rem)] flex-col gap-4"
+      class="login-rise relative z-10 flex w-[380px] max-w-[calc(100vw-2.5rem)] flex-col gap-4 rounded-2xl border border-white/10 bg-white/[0.07] p-8 shadow-2xl shadow-black/40 backdrop-blur-xl"
       @submit.prevent="submit"
     >
       <div class="mb-2">
@@ -258,7 +259,7 @@ async function submitReset() {
     <!-- 忘记密码 -->
     <form
       v-else-if="mode === 'forgot'"
-      class="login-rise relative z-10 flex w-[360px] max-w-[calc(100vw-2.5rem)] flex-col gap-4"
+      class="login-rise relative z-10 flex w-[380px] max-w-[calc(100vw-2.5rem)] flex-col gap-4 rounded-2xl border border-white/10 bg-white/[0.07] p-8 shadow-2xl shadow-black/40 backdrop-blur-xl"
       @submit.prevent="submitForgot"
     >
       <div class="mb-2">
@@ -297,7 +298,7 @@ async function submitReset() {
     <!-- 重置密码（邮件链接落地） -->
     <form
       v-else
-      class="login-rise relative z-10 flex w-[360px] max-w-[calc(100vw-2.5rem)] flex-col gap-4"
+      class="login-rise relative z-10 flex w-[380px] max-w-[calc(100vw-2.5rem)] flex-col gap-4 rounded-2xl border border-white/10 bg-white/[0.07] p-8 shadow-2xl shadow-black/40 backdrop-blur-xl"
       @submit.prevent="submitReset"
     >
       <div class="mb-2">
