@@ -50,6 +50,12 @@ _COLUMN_MIGRATIONS = [
     ("users", "language", "TEXT"),
     # 多库联查分享：JSON 数组存全部检索库；老库补列 NULL=单库（既有行为）。
     ("share_links", "kb_ids", "TEXT"),
+    # 方案卡 front matter 元数据（JSON dict）：检索元数据过滤（ztenith 流水线）。
+    # 老库补列 NULL=非方案卡文档，行为不变。
+    ("chunks", "meta", "TEXT"),
+    # API Key 库级 scope（JSON 数组=白名单；NULL=不限，与升级前行为一致）。
+    # MCP agent 用受限 key 越权查询时服务端静默返回空集。
+    ("api_keys", "scope_kb_ids", "TEXT"),
 ]
 
 _FTS_DDL = (

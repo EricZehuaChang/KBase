@@ -184,19 +184,28 @@ class IngestPipeline:
             # 供后续 bbox 引用高亮等使用；表格语义本身已随 md_results 里的
             # Markdown 表格进入表格感知分块，不依赖这份明细。
             ocr_layout = getattr(result, "layout", None)
-        else:
-            markdown = None
-            if suffix == ".pdf":
-                # 文本层 PDF 主路：opendataloader（真实标题层级/阅读序/边框
-                # 表格 + 同源页文本），不可用或失败返回 None 落回 markitdown
-                # ——回退即升级前现状，见 pdf_odl 模块 docstring。
-                from kbase.ingest import pdf_odl
-                parsed = pdf_odl.parse_pdf(path)
-                if parsed is not None:
-                    markdown, odl_page_texts = parsed
-            if markdown is None:
-                from markitdown import MarkItDown
-                markdown = MarkItDown(enable_plugins=False).convert(str(path)).text_content
+        doc_meta: dict = {}          # Markdown front matter（方案卡等）→ chunk metadata
+        if not needs_ocr:
+            if suffix in (".md", ".markdown"):
+                # 方案卡路径（ztenith 流水线/通用）：Markdown 直读原文——markitdown
+                # 对 .md 本就是近似恒等转换，直读换来 front matter 的确定性解析。
+                # front matter 进 chunk metadata（检索元数据过滤用），正文照常分块。
+                from kbase.ingest.front_matter import split_front_matter
+                raw_text = Path(path).read_text(encoding="utf-8", errors="replace")
+                doc_meta, markdown = split_front_matter(raw_text)
+            else:
+                markdown = None
+                if suffix == ".pdf":
+                    # 文本层 PDF 主路：opendataloader（真实标题层级/阅读序/边框
+                    # 表格 + 同源页文本），不可用或失败返回 None 落回 markitdown
+                    # ——回退即升级前现状，见 pdf_odl 模块 docstring。
+                    from kbase.ingest import pdf_odl
+                    parsed = pdf_odl.parse_pdf(path)
+                    if parsed is not None:
+                        markdown, odl_page_texts = parsed
+                if markdown is None:
+                    from markitdown import MarkItDown
+                    markdown = MarkItDown(enable_plugins=False).convert(str(path)).text_content
         # \x0c（form feed）是 pdfminer/markitdown 的**页分隔符**，属于合法
         # 解析产物而非二进制垃圾——必须在下面的控制字符防线之前归一为换行，
         # 否则任何多页文本层 PDF 都会被误判"损坏"而摄取失败（M5-2 引用定位
@@ -240,14 +249,19 @@ class IngestPipeline:
         self._index_markdown(
             kb_id, doc_id, markdown, name,
             pdf_locate_path=(path if (suffix == ".pdf" and not needs_ocr) else None),
-            page_texts=odl_page_texts)
+            page_texts=odl_page_texts, doc_meta=doc_meta)
         return ("ready", ocr_confidence)
 
     def _index_markdown(self, kb_id: str, doc_id: str, markdown: str, name: str,
-                        pdf_locate_path=None, page_texts=None) -> None:
+                        pdf_locate_path=None, page_texts=None,
+                        doc_meta: dict | None = None) -> None:
         """Markdown → 分块 → [页码定位] → [enrich] → 向量化 → chunk 行 →
         关键词索引。既有摄取与 F 的确认入库（approve_document）共用这一段，
-        保证两条路径的索引语义完全一致。"""
+        保证两条路径的索引语义完全一致。
+
+        doc_meta（方案卡等 front matter 元数据）：整份文档的所有 chunk 共享
+        同一份——复制进向量库 payload（原生元数据过滤）与 Chunk.meta 列
+        （关键词路后过滤 + 展示）。"""
         kb_config = self._load_kb_config(kb_id)
         chunker = self._chunker_for(kb_config)
         chunks = chunker.chunk(markdown, doc_name=name)
@@ -281,9 +295,12 @@ class IngestPipeline:
                 collection=kb_id,
                 ids=[c.id for c in leaves],
                 vectors=vectors,
-                metas=[{"doc_id": doc_id, "parent_id": c.parent_id}
+                metas=[{"doc_id": doc_id, "parent_id": c.parent_id,
+                        **(doc_meta or {})}
                        for c in leaves],
             )
+        meta_json = (json.dumps(doc_meta, ensure_ascii=False)
+                     if doc_meta else None)
         with self._sf() as s:
             for c in chunks:
                 s.add(Chunk(id=c.id, doc_id=doc_id, kb_id=kb_id,
@@ -292,6 +309,7 @@ class IngestPipeline:
                             text=c.text, is_leaf=c.parent_id is not None,
                             enrich_context=c.meta.get("enrich_context"),
                             page=c.meta.get("page"),
+                            meta=meta_json,
                             layout=(json.dumps(c.meta["layout"], ensure_ascii=False)
                                     if c.meta.get("layout") else None)))
             s.commit()

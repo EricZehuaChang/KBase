@@ -30,7 +30,7 @@ def test_retrieve_multi_scatter_gather(tmp_path, fake_embedder):
     # 用两个假库直接测 retrieve_multi 的合并排序（各库 retrieve 打桩）
     r = Retriever.__new__(Retriever)
 
-    def fake_retrieve(kb_id, query, top_k, strategy=None):
+    def fake_retrieve(kb_id, query, top_k, strategy=None, filters=None):
         pool = {
             "kbA": [ContextBlock("dA", "a.md", "h", "ta", "sa", 0.9, kb_id="kbA"),
                     ContextBlock("dA2", "a2.md", "h", "t", "s", 0.4, kb_id="kbA")],

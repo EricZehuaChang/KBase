@@ -109,6 +109,9 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         # 记录）+ 被授权的库 + 自己建的库。
         actor = getattr(request.state, "actor", None) or {"role": "admin"}
         mode, visible = kb_acl.visible_kb_filter(sf, actor)
+        # API Key 库级 scope（ztenith MCP）：受限 key 只列白名单内的库——
+        # 与查询侧"越权静默空集"同一姿态，agent 看不到碰不得的库名。
+        scope = actor.get("scope_kb_ids")
         with sf() as s:
             # doc_count 随列表一次返回（单条 group by）：此前前端逐库拉文档
             # 列表数数，既是 N+1 请求，又让卡片计数先显示 0 再跳变。
@@ -119,7 +122,8 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
                      "doc_count": counts.get(k.id, 0),
                      "config": json.loads(k.config) if k.config else None}
                     for k in s.query(KnowledgeBase).all()
-                    if mode == "all" or k.id in visible]
+                    if (mode == "all" or k.id in visible)
+                    and (scope is None or k.id in scope)]
 
     @router.delete("/kb/{kb_id}", dependencies=[deps.require_editor, deps.audit_mutation])
     def delete_kb(kb_id: str):

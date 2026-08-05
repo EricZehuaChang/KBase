@@ -22,10 +22,30 @@ class KBCreate(BaseModel):
     embedder: str | None = None
 
 
+def _validate_filters(filters: dict | None) -> dict | None:
+    """检索元数据过滤（方案卡）形状校验：扁平 dict，值=标量或标量列表。
+    字段间 AND、列表内 OR 的语义由 retriever/向量库适配器实现。"""
+    if filters is None:
+        return None
+    for k, v in filters.items():
+        vals = v if isinstance(v, list) else [v]
+        if not vals or not all(isinstance(x, (str, int, float, bool)) for x in vals):
+            raise ValueError(
+                f"filters[{k!r}] 只支持标量或标量列表（AND/OR 语义见文档）")
+    return filters
+
+
 class QueryBody(BaseModel):
     question: str
     provider: str | None = None     # 不传用配置里的 active —— 模型对比入口
     top_k: int = 5
+    # ztenith 流水线/方案卡：chunk 元数据过滤（{字段: 值|[值,...]}）
+    filters: dict | None = None
+
+    @model_validator(mode="after")
+    def _check_filters(self):
+        _validate_filters(self.filters)
+        return self
 
 
 class RebindEmbedderBody(BaseModel):
@@ -163,6 +183,13 @@ class SearchBody(BaseModel):
     use_keyword: bool | None = None
     use_rerank: bool | None = None
     candidates: StrictInt | None = Field(default=None, ge=1, le=100)
+    # ztenith 流水线/方案卡：chunk 元数据过滤（{字段: 值|[值,...]}，AND/OR）
+    filters: dict | None = None
+
+    @model_validator(mode="after")
+    def _check_filters(self):
+        _validate_filters(self.filters)
+        return self
 
 
 class KBRetrievalBody(BaseModel):
@@ -331,6 +358,9 @@ class RoleUpdate(BaseModel):
 class ApiKeyCreate(BaseModel):
     name: str
     role: Role
+    # 库级 scope（ztenith MCP）：白名单=允许访问的 kb_id；None/缺省=不限。
+    # 受限 key 越权查询由服务端静默返回空集（不报错不提示）。
+    scope_kb_ids: list[str] | None = None
 
 
 class UserCreate(BaseModel):

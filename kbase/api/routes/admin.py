@@ -67,11 +67,14 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
     def create_api_key(body: ApiKeyCreate):
         full_key, prefix, key_hash = security.generate_api_key()
         row = ApiKey(id=str(uuid.uuid4()), name=body.name, prefix=prefix,
-                    key_hash=key_hash, role=body.role, revoked=False)
+                    key_hash=key_hash, role=body.role, revoked=False,
+                    scope_kb_ids=(json.dumps(body.scope_kb_ids)
+                                  if body.scope_kb_ids else None))
         with sf() as s:
             s.add(row)
             s.commit()
-        return {"id": row.id, "name": row.name, "role": row.role, "key": full_key}
+        return {"id": row.id, "name": row.name, "role": row.role,
+                "scope_kb_ids": body.scope_kb_ids, "key": full_key}
 
     @router.get("/settings/api-keys", dependencies=[deps.require_admin])
     def list_api_keys():
@@ -81,6 +84,8 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
             rows = s.query(ApiKey).order_by(ApiKey.created_at.desc()).all()
             return [{"id": r.id, "name": r.name, "prefix": r.prefix,
                      "role": r.role, "revoked": r.revoked,
+                     "scope_kb_ids": (json.loads(r.scope_kb_ids)
+                                      if r.scope_kb_ids else None),
                      "created_at": r.created_at.isoformat()} for r in rows]
 
     @router.delete("/settings/api-keys/{key_id}",
