@@ -12,6 +12,8 @@ auth="off" 模式下的 synthetic_admin_actor 依赖（见 make_synthetic_admin_
 rank 最高的合成 admin，令所有 require_role 检查天然放行（角色矩阵在
 off 模式下是无操作，行为与鉴权改造前一致）。
 """
+import json
+
 from fastapi import Depends, HTTPException, Request
 
 from kbase.auth import security
@@ -81,6 +83,15 @@ def make_get_current_actor(sf, secret: str):
             # 这类 actor 建的会话落 NULL，语义上等同"历史遗留/无归属"，
             # 只有它自己和后续任何人都能在归属过滤下看到（见 _visible_filter）。
             actor = {"name": row.name, "role": row.role, "user_id": None}
+            # 库级 scope（ztenith MCP）：JSON 数组→白名单进 actor，越权查询由
+            # 查询路由静默空集处理；NULL/脏数据=不限（与升级前行为一致）。
+            if row.scope_kb_ids:
+                try:
+                    scope = json.loads(row.scope_kb_ids)
+                    if isinstance(scope, list):
+                        actor["scope_kb_ids"] = [str(x) for x in scope]
+                except (ValueError, TypeError):
+                    pass
             request.state.actor = actor
             return actor
 

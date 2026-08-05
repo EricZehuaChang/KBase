@@ -52,6 +52,7 @@ Retriever 实例上（单进程 uvicorn 部署下等价于"进程级"，见 rera
 property），用一把 threading.Lock 保护自增——多线程同时命中同一个
 Retriever 实例是常态（那正是这个降级机制要处理的场景）。
 """
+import json
 import logging
 import math
 import threading
@@ -96,6 +97,27 @@ def rrf_fuse(ranked_lists: list[list[tuple[str, float]]], k: int = 60
         for rank, (cid, _s) in enumerate(ranked, start=1):
             scores[cid] = scores.get(cid, 0.0) + 1.0 / (k + rank)
     return sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
+
+
+def chunk_meta_matches(meta_json: str | None, filters: dict) -> bool:
+    """canonical 过滤语义（与向量库两档适配器对齐）：字段间 AND、列表值 OR、
+    值统一转 str 比较；chunk 元数据缺字段或整体为空 → 不匹配。纯函数，单测直击。"""
+    if not meta_json:
+        return False
+    try:
+        meta = json.loads(meta_json)
+    except (ValueError, TypeError):
+        return False
+    for k, wanted in filters.items():
+        wanted_vals = wanted if isinstance(wanted, list) else [wanted]
+        stored = meta.get(k)
+        if stored is None:
+            return False
+        stored_vals = stored if isinstance(stored, list) else [stored]
+        stored_set = {str(x) for x in stored_vals}
+        if not any(str(w) in stored_set for w in wanted_vals):
+            return False
+    return True
 
 
 def _cosine(a: list[float], b: list[float]) -> float:
@@ -183,13 +205,19 @@ class Retriever:
                 self._rerank_error_total += 1
 
     def retrieve(self, kb_id: str, query: str, top_k: int = 5, debug: bool = False,
-                 strategy=None):
+                 strategy=None, filters: dict | None = None):
         """debug=False 返回 list[ContextBlock]（向后兼容）；
         debug=True 返回 RetrievalResult(blocks, trace)。
 
         strategy（M6-1.5，RetrievalStrategy|None）：KB 级/请求级检索策略。
         None=沿用构造参数（既有行为字节级不变）。策略只能**关闭**已安装的
-        能力（keyword_index/reranker 实例仍是最终门），开不出部署里没有的路。"""
+        能力（keyword_index/reranker 实例仍是最终门），开不出部署里没有的路。
+
+        filters（ztenith 流水线/方案卡）：{字段: 值|[值,...]}，字段间 AND、
+        列表内 OR，作用于 chunk 元数据（front matter 摄取时落库）。稠密路
+        由向量库原生过滤（两档适配器语义已对齐）；关键词路 BM25 索引没有
+        元数据概念，检索后按 Chunk.meta 后过滤——两路进融合的候选集口径
+        一致，融合排序逻辑不动。"""
         trace: dict = {}
         use_keyword = strategy.use_keyword if strategy is not None else True
         use_rerank = strategy.use_rerank if strategy is not None else True
@@ -198,13 +226,16 @@ class Retriever:
         embedder = (self._embedder_resolver(kb_id)
                     if self._embedder_resolver else self._embedder)
         vec = embedder.embed([query])[0]
-        dense_hits = self._store.search(kb_id, vec, top_k=candidates)
+        dense_hits = self._store.search(kb_id, vec, top_k=candidates,
+                                        filters=filters or None)
         dense = [(h.chunk_id, h.score) for h in dense_hits]
         cosine = {h.chunk_id: h.score for h in dense_hits}
         trace["dense"] = dense
 
         if self._kw is not None and use_keyword:
             kw_hits = self._kw.search(kb_id, query, top_k=candidates)
+            if filters:
+                kw_hits = self._filter_hits_by_meta(kw_hits, filters)
             keyword = [(h.chunk_id, h.score) for h in kw_hits]
             trace["keyword"] = keyword
             fused = rrf_fuse([dense, keyword], k=self._rrf_k)[: candidates]
@@ -257,6 +288,19 @@ class Retriever:
         if debug:
             return RetrievalResult(blocks=blocks, trace=trace, rerank_status=rerank_status)
         return blocks
+
+    def _filter_hits_by_meta(self, hits, filters: dict):
+        """关键词路元数据后过滤：批量取 Chunk.meta（JSON）判 canonical 语义
+        （chunk_meta_matches 纯函数）。meta 为 NULL 的 chunk（非方案卡文档）
+        不匹配任何过滤条件——带过滤的检索意图就是"只要有该元数据的内容"。"""
+        if not hits:
+            return hits
+        with self._sf() as s:
+            rows = s.query(Chunk.id, Chunk.meta).filter(
+                Chunk.id.in_([h.chunk_id for h in hits])).all()
+        metas = {cid: m for cid, m in rows}
+        return [h for h in hits
+                if chunk_meta_matches(metas.get(h.chunk_id), filters)]
 
     def _cosine_from_store(self, kb_id: str, ids: list[str], query_vec: list[float]
                             ) -> dict[str, float]:
@@ -328,7 +372,7 @@ class Retriever:
         return min(max(w, 0.1), 10.0)
 
     def retrieve_multi(self, kb_ids: list[str], query: str, top_k: int = 5,
-                       strategy=None):
+                       strategy=None, filters: dict | None = None):
         """M6-2 跨库联合检索（散射-聚合）：对每个库独立跑一次 retrieve()
         （复用其全套策略/向量模型/重排逻辑），把各库结果块合并后按分数全局
         重排，取前 top_k。
@@ -343,7 +387,8 @@ class Retriever:
         merged: list[ContextBlock] = []
         for kb_id in kb_ids:
             weight = self._union_weight(kb_id)
-            for block in self.retrieve(kb_id, query, top_k, strategy=strategy):
+            for block in self.retrieve(kb_id, query, top_k, strategy=strategy,
+                                       filters=filters):
                 if weight != 1.0:
                     block.score = block.score * weight
                 merged.append(block)

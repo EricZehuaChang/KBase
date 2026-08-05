@@ -19,7 +19,7 @@ from kbase.api.schemas import (ConversationCreate, ConversationRename,
 from kbase.api.services import Services
 from kbase.audit import write_query_audit
 from kbase.errors import AppError
-from kbase.rag.generator import Generator
+from kbase.rag.generator import Generator, refusal_for
 
 
 def register(router, svc: Services, deps: RouteDeps):
@@ -39,6 +39,19 @@ def register(router, svc: Services, deps: RouteDeps):
         QueryRewrite 时传入改写后的问题——生成（answer_stream）与落库
         （on_complete）仍固定使用 body.question（原文），只有检索这一步换词。
         """
+        # API Key 库级 scope：越权查询静默返回空集语义——事件序列与"检索
+        # 无依据"完全一致（citations []→拒答文案→done），外部无法区分
+        # "库不存在/无权/真没答案"（不报错不提示，防探测）。联查列表里的
+        # 越权库直接裁掉，只查剩余在权库。
+        if _out_of_scope(request, kb_id):
+            async def _empty_events():
+                yield {"event": "citations", "data": "[]"}
+                yield {"event": "token", "data": refusal_for(body.question)}
+                yield {"event": "done", "data": ""}
+            return EventSourceResponse(_empty_events())
+        if kb_ids:
+            kb_ids = [k for k in kb_ids if not _out_of_scope(request, k)]
+
         try:
             llm = svc.get_llm(body.provider)
         except KeyError as e:
@@ -55,10 +68,12 @@ def register(router, svc: Services, deps: RouteDeps):
         # retriever.retrieve_multi）；否则走单库既有路径（行为字节级不变）。
         if kb_ids and len(kb_ids) > 1:
             blocks = await run_in_threadpool(
-                retriever.retrieve_multi, kb_ids, query_text, body.top_k, strategy)
+                retriever.retrieve_multi, kb_ids, query_text, body.top_k,
+                strategy, body.filters)
         else:
             blocks = await run_in_threadpool(
-                retriever.retrieve, kb_id, query_text, body.top_k, False, strategy)
+                retriever.retrieve, kb_id, query_text, body.top_k, False,
+                strategy, body.filters)
         gen = Generator(llm, min_score=min_score,
                         min_include_score=cfg.retrieval.min_include_score)
         # 关键契约：usable_blocks 只算一次，citations 与 answer_stream 用同一份列表，
@@ -106,6 +121,15 @@ def register(router, svc: Services, deps: RouteDeps):
         if not kb_acl.can_access(sf, kb_id, actor):
             raise AppError("error.kb_not_found", "知识库不存在: {id}", status=404, id=kb_id)
 
+    def _out_of_scope(request, kb_id: str) -> bool:
+        """API Key 库级 scope（ztenith MCP）：受限 key 越权访问返回 True。
+        Cookie 通道/未设 scope 的 key 恒 False（行为与升级前一致）。scope 由
+        服务端强制——不信任 agent 传参，见 kbase/auth/deps.py 的 actor 组装。"""
+        actor = (getattr(request.state, "actor", None)
+                 if request is not None else None)
+        scope = actor.get("scope_kb_ids") if actor else None
+        return scope is not None and kb_id not in scope
+
     @router.post("/kb/{kb_id}/query", dependencies=[deps.require_viewer])
     async def query(kb_id: str, body: QueryBody, request: Request):
         _guard_kb(kb_id, request)
@@ -124,9 +148,13 @@ def register(router, svc: Services, deps: RouteDeps):
             overrides={"use_keyword": body.use_keyword,
                        "use_rerank": body.use_rerank,
                        "candidates": body.candidates})
+        if _out_of_scope(request, kb_id):
+            # 静默空集（与"检索无命中"同形状），见 _out_of_scope 注释
+            return ({"blocks": [], "trace": {}} if body.debug
+                    else {"blocks": []})
         result = await run_in_threadpool(
             retriever.retrieve, kb_id, body.query, body.top_k, body.debug,
-            strategy)
+            strategy, body.filters)
         if body.debug:
             return {"blocks": [asdict(b) for b in result.blocks],
                     "trace": result.trace}

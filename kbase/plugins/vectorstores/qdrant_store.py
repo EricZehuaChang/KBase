@@ -75,8 +75,15 @@ class QdrantStore:
             return []
         query_filter = None
         if filters:
+            # canonical filters：{字段: 值|[值,...]}，字段间 AND（must）、列表内
+            # OR（MatchAny）。payload 里的数组字段（方案卡多值元数据）MatchAny
+            # 天然按"包含任一"匹配；标量字段等值匹配——语义与 Chroma 适配器的
+            # 超采后过滤一致（双档行为对齐由 test_chroma_store 契约测试钉住）。
             query_filter = models.Filter(must=[
-                models.FieldCondition(key=k, match=models.MatchValue(value=v))
+                models.FieldCondition(
+                    key=k,
+                    match=models.MatchAny(
+                        any=[v2 for v2 in (v if isinstance(v, list) else [v])]))
                 for k, v in filters.items()
             ])
         res = self._client.query_points(

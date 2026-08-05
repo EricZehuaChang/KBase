@@ -59,10 +59,14 @@ async def list_knowledge_bases_impl(c: KBaseClient):
 
 
 async def search_knowledge_impl(c: KBaseClient, kb_id: str, query: str,
-                                top_k: int = 5):
+                                top_k: int = 5,
+                                filters: dict | None = None):
+    body: dict = {"query": query, "top_k": top_k}
+    if filters:
+        body["filters"] = filters
     try:
         r = await c.http.post(f"/api/kb/{kb_id}/search",
-                              json={"query": query, "top_k": top_k},
+                              json=body,
                               timeout=120)
         r.raise_for_status()
     except httpx.TransportError:
@@ -75,7 +79,8 @@ async def search_knowledge_impl(c: KBaseClient, kb_id: str, query: str,
 
 
 async def ask_knowledge_base_impl(c: KBaseClient, kb_id: str, question: str,
-                                  provider: str | None = None):
+                                  provider: str | None = None,
+                                  filters: dict | None = None):
     """SSE 组装：比照 web-app/src/lib/sse.ts 的 accumulate-flush 逻辑移植。
     sse-starlette 对含 \\n 的 token 事件会拆成多条 data 行（SSE 规范），
     因此必须按事件收集 dataLines，事件边界（空行）处以 "\\n" join 后再 flush，
@@ -84,6 +89,8 @@ async def ask_knowledge_base_impl(c: KBaseClient, kb_id: str, question: str,
     body = {"question": question}
     if provider:
         body["provider"] = provider
+    if filters:
+        body["filters"] = filters
     answer_parts, citations = [], []
     event = ""
     data_lines: list[str] = []
@@ -122,6 +129,20 @@ async def ask_knowledge_base_impl(c: KBaseClient, kb_id: str, question: str,
                            "snippet": ci["snippet"]} for ci in citations]}
 
 
+# filters 参数说明（写进工具 description，agent 才会正确使用）。部署方可用
+# KBASE_MCP_FILTERS_DOC 追加受控词表（如 ztenith 方案卡的行业/数据实体枚举）
+# ——词表随 cards 仓库演进，不硬编码进 kbase 通用发行版。
+_FILTERS_DOC = (
+    "filters（可选）：按 chunk 元数据过滤，形如 {\"industry\": \"零售\"} 或 "
+    "{\"data_entities\": [\"订单\", \"库存\"]}；字段间 AND，列表值内 OR。"
+    "仅对带 front matter 元数据摄取的文档（如方案卡）生效。")
+
+
+def _filters_doc() -> str:
+    extra = os.environ.get("KBASE_MCP_FILTERS_DOC", "").strip()
+    return _FILTERS_DOC + ("\n" + extra if extra else "")
+
+
 def build_mcp(client: KBaseClient | None = None) -> FastMCP:
     mcp = FastMCP("kbase")
     # 默认 client 有意随进程存活（不 aclose）：MCP Server 生命周期＝进程生命周期，
@@ -133,22 +154,26 @@ def build_mcp(client: KBaseClient | None = None) -> FastMCP:
         """列出全部知识库（id 与名称）。"""
         return await list_knowledge_bases_impl(c)
 
-    @mcp.tool()
-    async def search_knowledge(kb_id: str, query: str, top_k: int = 5) -> list | dict:
-        """在指定知识库中检索，返回带出处与相关度的原文块（不生成答案）。"""
-        return await search_knowledge_impl(c, kb_id, query, top_k)
+    @mcp.tool(description=(
+        "在指定知识库中检索，返回带出处与相关度的原文块（不生成答案）。\n"
+        + _filters_doc()))
+    async def search_knowledge(kb_id: str, query: str, top_k: int = 5,
+                               filters: dict | None = None) -> list | dict:
+        return await search_knowledge_impl(c, kb_id, query, top_k, filters)
 
-    @mcp.tool()
+    @mcp.tool(description=(
+        "对指定知识库完整 RAG 问答，返回答案与引用。\n" + _filters_doc()))
     async def ask_knowledge_base(kb_id: str, question: str,
-                                 provider: str | None = None) -> dict | list:
-        """对指定知识库完整 RAG 问答，返回答案与引用。
-        返回标注写成 `dict | list`（而非直觉的裸 `dict`）：FastMCP 的
-        func_metadata 对裸 `dict` 返回值不生成 output_schema（落入
-        "其他类class" 分支、get_type_hints(dict) 为空，模型创建失败），
-        导致 CallToolResult.structuredContent 恒为 None；只要标注是
-        list/dict 的 Union（这里从不会真的返回 list，仅借用触发条件），
-        SDK 就会把结果包进 {"result": ...} 并生成 schema，
-        与另外两个工具的 structuredContent["result"] 形状保持一致。"""
-        return await ask_knowledge_base_impl(c, kb_id, question, provider)
+                                 provider: str | None = None,
+                                 filters: dict | None = None) -> dict | list:
+        # 返回标注写成 `dict | list`（而非直觉的裸 `dict`）：FastMCP 的
+        # func_metadata 对裸 `dict` 返回值不生成 output_schema（落入
+        # "其他类class" 分支、get_type_hints(dict) 为空，模型创建失败），
+        # 导致 CallToolResult.structuredContent 恒为 None；只要标注是
+        # list/dict 的 Union（这里从不会真的返回 list，仅借用触发条件），
+        # SDK 就会把结果包进 {"result": ...} 并生成 schema，
+        # 与另外两个工具的 structuredContent["result"] 形状保持一致。
+        return await ask_knowledge_base_impl(c, kb_id, question, provider,
+                                             filters)
 
     return mcp

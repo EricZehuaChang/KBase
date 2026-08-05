@@ -69,6 +69,9 @@ class Chunk(Base):
     # M6-1 chunk 运营开关：false=从向量库+关键词索引摘除（不可被检索），
     # 行保留可随时恢复。默认 true 与存量行为一致。
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # 方案卡 front matter 元数据（JSON dict，ztenith 流水线/通用）：整份文档
+    # 所有 chunk 共享同一份，关键词路元数据后过滤与展示用；非方案卡文档 NULL。
+    meta: Mapped[str | None] = mapped_column(Text, nullable=True)
     # M6-6 预埋：GLM-OCR layout_details 的版式元数据（JSON：bbox_2d/label/
     # 表格结构等），本迁移波一并加列避免二次迁移；当前摄取暂不写入。
     layout: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -187,6 +190,9 @@ class ApiKey(Base):
     key_hash: Mapped[str] = mapped_column(String(64), index=True)  # sha256 hex
     role: Mapped[str] = mapped_column(String(20))
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+    # 库级 scope（JSON 数组=允许访问的 kb_id 白名单；NULL=不限）。scope 由
+    # 服务端强制：受限 key 越权查询静默返回空集（不报错不提示，防探测）。
+    scope_kb_ids: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
