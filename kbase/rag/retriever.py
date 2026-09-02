@@ -59,6 +59,8 @@ import threading
 from dataclasses import dataclass
 
 from kbase.models import Chunk, Document
+from kbase.params import (group_matches_range, is_range_condition,
+                          layout_param_bounds, numeric_bounds)
 from kbase.plugins.base import Embedder, VectorStore
 
 logger = logging.getLogger(__name__)
@@ -99,16 +101,36 @@ def rrf_fuse(ranked_lists: list[list[tuple[str, float]]], k: int = 60
     return sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
 
 
-def chunk_meta_matches(meta_json: str | None, filters: dict) -> bool:
+def chunk_meta_matches(meta_json: str | None, filters: dict,
+                       layout_json: str | None = None) -> bool:
     """canonical 过滤语义（与向量库两档适配器对齐）：字段间 AND、列表值 OR、
-    值统一转 str 比较；chunk 元数据缺字段或整体为空 → 不匹配。纯函数，单测直击。"""
+    值统一转 str 比较；chunk 元数据缺字段或整体为空 → 不匹配。纯函数，单测直击。
+
+    范围条件（{"字段":{"gte":..,"lte":..}}）走 layout_json 里的**块级参数区间**
+    ——文档级 meta 是整份文档共享的 front matter，放不下行组级的数值区间。
+    判定复用 kbase/params.py 的 group_matches_range，与两个向量库适配器同源。
+    """
+    range_conds = {k: v for k, v in filters.items() if is_range_condition(v)}
+    plain = {k: v for k, v in filters.items() if k not in range_conds}
+
+    for k, cond in range_conds.items():
+        bounds = numeric_bounds(cond)
+        if bounds is None:
+            continue
+        lo, hi = bounds
+        pmin, pmax = layout_param_bounds(layout_json, k)
+        if not group_matches_range(pmin, pmax, lo, hi):
+            return False
+
+    if not plain:
+        return True
     if not meta_json:
         return False
     try:
         meta = json.loads(meta_json)
     except (ValueError, TypeError):
         return False
-    for k, wanted in filters.items():
+    for k, wanted in plain.items():
         wanted_vals = wanted if isinstance(wanted, list) else [wanted]
         stored = meta.get(k)
         if stored is None:
@@ -296,11 +318,13 @@ class Retriever:
         if not hits:
             return hits
         with self._sf() as s:
-            rows = s.query(Chunk.id, Chunk.meta).filter(
+            rows = s.query(Chunk.id, Chunk.meta, Chunk.layout).filter(
                 Chunk.id.in_([h.chunk_id for h in hits])).all()
-        metas = {cid: m for cid, m in rows}
+        metas = {cid: (m, lay) for cid, m, lay in rows}
         return [h for h in hits
-                if chunk_meta_matches(metas.get(h.chunk_id), filters)]
+                if chunk_meta_matches(
+                    metas.get(h.chunk_id, (None, None))[0], filters,
+                    metas.get(h.chunk_id, (None, None))[1])]
 
     def _cosine_from_store(self, kb_id: str, ids: list[str], query_vec: list[float]
                             ) -> dict[str, float]:

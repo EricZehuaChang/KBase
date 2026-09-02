@@ -9,6 +9,7 @@ from pathlib import Path
 from sqlalchemy.exc import IntegrityError
 
 from kbase.embed_text import embed_input, keyword_input
+from kbase.params import flatten_params
 from kbase.models import Chunk, Document, KnowledgeBase
 from kbase.plugins.base import Chunker, Embedder, OCRUnavailable, VectorStore
 from kbase.plugins.chunkers.structure import StructureChunker
@@ -295,8 +296,13 @@ class IngestPipeline:
                 collection=kb_id,
                 ids=[c.id for c in leaves],
                 vectors=vectors,
+                # 块级结构化参数铺进 payload，稠密路才能做范围过滤。
+                # 扁平化 + p_ 前缀与既有 `**(doc_meta or {})` 的平铺风格一致，
+                # 前缀防止与文档级 front matter 字段撞名。
+                # ⚠️ reindex.py 必须铺同一份，否则重建索引后过滤静默失效。
                 metas=[{"doc_id": doc_id, "parent_id": c.parent_id,
-                        **(doc_meta or {})}
+                        **(doc_meta or {}),
+                        **flatten_params(c.meta.get("layout"))}
                        for c in leaves],
             )
         meta_json = (json.dumps(doc_meta, ensure_ascii=False)

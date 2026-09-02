@@ -16,6 +16,7 @@ import json
 
 from kbase.embed_text import embed_input, keyword_input
 from kbase.models import Chunk, Document
+from kbase.params import extract_group_params
 from kbase.plugins.chunkers.structure import linearize_table, parse_table
 
 
@@ -36,6 +37,12 @@ def _refresh_table_layout(c: Chunk) -> None:
         c.layout = None
         return
     layout["linearized"] = linearize_table(*parsed)
+    # 编辑后重算块级参数区间，否则运营改过的块在范围过滤下会失踪。
+    params = extract_group_params(*parsed)
+    if params:
+        layout["params"] = params
+    else:
+        layout.pop("params", None)
     c.layout = json.dumps(layout, ensure_ascii=False)
 
 

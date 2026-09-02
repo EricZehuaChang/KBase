@@ -24,9 +24,29 @@ def reindex_kb(session_factory, keyword_index, embedder, store, kb_id: str) -> i
     texts = [embed_input(c.enrich_context, c.heading_path, c.text, c.layout)
              for c in leaves]
     vectors = embedder.embed(texts)
+    # payload 必须与摄取管道（ingest/pipeline.py）逐字段一致，否则重建后
+    # 稠密路过滤静默失效——Qdrant 的 must 条件在缺字段时直接过滤掉全部候选。
+    # 修既有缺陷：此处原本没铺文档级 front matter（Chunk.meta），重建后
+    # 方案卡类 filters 在稠密路会失灵（关键词路读库所以还能工作，症状是
+    # 两路结果不一致，很难排查）。
+    import json as _json
+
+    from kbase.params import flatten_params
+
+    def _payload(c):
+        out = {"doc_id": c.doc_id, "parent_id": c.parent_id}
+        if c.meta:
+            try:
+                doc_meta = _json.loads(c.meta)
+                if isinstance(doc_meta, dict):
+                    out.update(doc_meta)
+            except (ValueError, TypeError):
+                pass
+        out.update(flatten_params(c.layout))
+        return out
+
     store.upsert(kb_id, ids=[c.id for c in leaves], vectors=vectors,
-                 metas=[{"doc_id": c.doc_id, "parent_id": c.parent_id}
-                        for c in leaves])
+                 metas=[_payload(c) for c in leaves])
     return len(leaves)
 
 
