@@ -9,10 +9,13 @@ dependencies = [
     "pydantic>=2.7",
     "pyyaml>=6.0",
     "sqlalchemy>=2.0",
-    # 上界必须钉：1.x 换成 Rust 内核（chromadb_rust_bindings），每个 client
-    # 起一套 tokio runtime，测试套里多实例会堆到两千多线程后整个进程卡死
-    # （2026-09-02 实测 1.5.9：0% CPU、无网络，sample 显示主线程停在 Rust 绑定内）。
-    "chromadb>=0.5,<1",
+    # ⚠️ 不要加 <1 上界：线上（1.95.86.187 演示服+KMBP 同机）实际跑的就是
+    # chromadb 1.5.9 且稳定运行数周，而 0.x→1.x 是 Rust 重写、持久化格式不保证
+    # 向下兼容——钉 <1 会让任何一次全量重建把生产降级并可能读不了现有库。
+    # 已知开发期问题（非生产问题）：1.x 每个 client 起一套 tokio runtime，
+    # 测试套在同一进程里反复建实例会堆到两千多线程后卡死（2026-09-02 实测）。
+    # 对策是**只在本地测试 venv** 里 `pip install "chromadb<1"`，不要改这里。
+    "chromadb>=0.5",
     "qdrant-client>=1.10",
     "markitdown[docx,pptx,xlsx,pdf]>=0.1",
     # 文本层 PDF 主解析器（真实标题层级/阅读序/边框表格，见 ingest/pdf_odl）。
