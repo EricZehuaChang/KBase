@@ -72,8 +72,10 @@ class Chunk(Base):
     # 方案卡 front matter 元数据（JSON dict，ztenith 流水线/通用）：整份文档
     # 所有 chunk 共享同一份，关键词路元数据后过滤与展示用；非方案卡文档 NULL。
     meta: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # M6-6 预埋：GLM-OCR layout_details 的版式元数据（JSON：bbox_2d/label/
-    # 表格结构等），本迁移波一并加列避免二次迁移；当前摄取暂不写入。
+    # 块级版式元数据（JSON）：表格块存 {kind:"table", linearized:..., params:{...}}，
+    # params 为结构化参数区间（kbase/params.py，供范围过滤）。摄取由
+    # ingest/pipeline.py 写入、reindex.py 读取回填 payload。
+    # （原注释写"当前摄取暂不写入"已过时——M6 表格版起就在写。）
     layout: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 

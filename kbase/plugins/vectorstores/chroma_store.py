@@ -3,6 +3,8 @@ from chromadb.config import Settings
 
 from kbase.plugins.base import Hit
 from kbase.plugins.registry import registry
+from kbase.params import (group_matches_range, is_range_condition,
+                          numeric_bounds, param_field_names)
 
 # 列表元数据的扁平化分隔符：Chroma metadata 只收标量，多值字段（方案卡的
 # 数据实体/交互模式等）压成 "a|b|c"。检索过滤时按它切回集合做交集判断。
@@ -28,6 +30,29 @@ def _meta_value_matches(stored, wanted: list) -> bool:
     stored_set = (set(str(stored).split(_LIST_SEP))
                   if isinstance(stored, str) else {str(stored)})
     return any(str(w) in stored_set for w in wanted)
+
+
+def _chroma_matches(meta: dict, filters: dict) -> bool:
+    """lite 档的过滤判定：范围条件走 params 共享判定，其余沿用等值/集合语义。
+
+    与 Qdrant 适配器和 retriever.chunk_meta_matches 三处必须同结果——同一查询
+    在 lite 与 standard 上给出不同答案的 bug 在演示环境测不出来，只在客户现场炸。
+    共用 kbase/params.py 的 numeric_bounds / param_field_names /
+    group_matches_range 即可由构造保证一致。
+    """
+    for k, v in filters.items():
+        if is_range_condition(v):
+            bounds = numeric_bounds(v)
+            if bounds is None:
+                continue
+            lo, hi = bounds
+            fmin, fmax = param_field_names(k)
+            if not group_matches_range(meta.get(fmin), meta.get(fmax), lo, hi):
+                return False
+            continue
+        if not _meta_value_matches(meta.get(k), v if isinstance(v, list) else [v]):
+            return False
+    return True
 
 
 @registry.register("vectorstore", "chroma")
@@ -63,10 +88,7 @@ class ChromaStore:
         for cid, dist, meta in zip(res["ids"][0], res["distances"][0],
                                    res["metadatas"][0]):
             meta = meta or {}
-            if filters and not all(
-                    _meta_value_matches(meta.get(k),
-                                        v if isinstance(v, list) else [v])
-                    for k, v in filters.items()):
+            if filters and not _chroma_matches(meta, filters):
                 continue
             hits.append(Hit(chunk_id=cid, score=1 - dist, meta=meta))
             if len(hits) >= top_k:

@@ -9,7 +9,10 @@ dependencies = [
     "pydantic>=2.7",
     "pyyaml>=6.0",
     "sqlalchemy>=2.0",
-    "chromadb>=0.5",
+    # 上界必须钉：1.x 换成 Rust 内核（chromadb_rust_bindings），每个 client
+    # 起一套 tokio runtime，测试套里多实例会堆到两千多线程后整个进程卡死
+    # （2026-09-02 实测 1.5.9：0% CPU、无网络，sample 显示主线程停在 Rust 绑定内）。
+    "chromadb>=0.5,<1",
     "qdrant-client>=1.10",
     "markitdown[docx,pptx,xlsx,pdf]>=0.1",
     # 文本层 PDF 主解析器（真实标题层级/阅读序/边框表格，见 ingest/pdf_odl）。
@@ -43,7 +46,10 @@ dependencies = [
 [project.optional-dependencies]
 local-embed = ["sentence-transformers>=3.0"]
 dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "httpx>=0.27"]
-mcp = ["mcp>=1.2"]
+# mcp 2.x 把 FastMCP 改名为 MCPServer（mcp.server.fastmcp 整个模块没了），
+# kbase_mcp/server.py 用的是 v1 API；不加上界的话新环境装 2.x 会让镜像
+# 构建期通过、MCP Server 运行期直接 ImportError（2026-09-02 实测 2.1.1）。
+mcp = ["mcp>=1.2,<2"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

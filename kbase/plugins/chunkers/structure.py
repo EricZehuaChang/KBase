@@ -17,6 +17,8 @@ chunk_size 按字符计。纯中文下与 token 数接近，但混合中英文/�
 import re
 import uuid
 
+from kbase.params import extract_group_params
+
 from langchain_text_splitters import (
     MarkdownHeaderTextSplitter,
     RecursiveCharacterTextSplitter,
@@ -243,11 +245,20 @@ class StructureChunker:
                     pieces = split_table(content, self.chunk_size)
                     if pieces:
                         for body, linearized in pieces:
+                            # 结构化参数区间（kbase/params.py）：从该行组重新
+                            # 解析拿 (表头, 行) 再抽数值列。这里刻意不改
+                            # split_table 的返回签名——它的调用方与测试都按
+                            # 二元组写，重解析成本相对嵌入可忽略，换取零爆炸半径。
+                            layout = {"kind": "table", "linearized": linearized}
+                            reparsed = parse_table(body)
+                            if reparsed is not None:
+                                params = extract_group_params(*reparsed)
+                                if params:
+                                    layout["params"] = params
                             leaves.append(ChunkData(
                                 id=str(uuid.uuid4()), text=body,
                                 heading_path=heading_path, parent_id=parent.id,
-                                meta={"layout": {"kind": "table",
-                                                 "linearized": linearized}}))
+                                meta={"layout": layout}))
                         continue
                     # 表格解析失败：回退为普通文本切分，内容绝不丢
                 for p in self._text_splitter.split_text(content):

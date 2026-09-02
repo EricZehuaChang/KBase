@@ -29,6 +29,8 @@ from qdrant_client import QdrantClient, models
 
 from kbase.plugins.base import Hit
 from kbase.plugins.registry import registry
+from kbase.params import (is_range_condition, numeric_bounds,
+                          param_field_names)
 
 _ID_NAMESPACE = uuid.UUID("12345678-1234-5678-1234-567812345678")
 
@@ -79,13 +81,32 @@ class QdrantStore:
             # OR（MatchAny）。payload 里的数组字段（方案卡多值元数据）MatchAny
             # 天然按"包含任一"匹配；标量字段等值匹配——语义与 Chroma 适配器的
             # 超采后过滤一致（双档行为对齐由 test_chroma_store 契约测试钉住）。
-            query_filter = models.Filter(must=[
-                models.FieldCondition(
+            # 范围条件（{"字段":{"gte":..,"lte":..}}）落在块级参数的两个扁平
+            # payload 字段上，判定语义是"块区间与查询区间**重叠**"——
+            # 块 max >= 查询下界 且 块 min <= 查询上界。用重叠而非包含：
+            # 块区间代表该行组覆盖的取值范围，有交集就说明组内可能有满足
+            # 条件的行，应召回交给 LLM 在组内挑。语义与 chroma_store 和
+            # retriever.chunk_meta_matches 由 kbase/params.py 共享函数保证一致。
+            must = []
+            for k, v in filters.items():
+                if is_range_condition(v):
+                    bounds = numeric_bounds(v)
+                    if bounds is None:
+                        continue
+                    lo, hi = bounds
+                    fmin, fmax = param_field_names(k)
+                    if lo is not None:
+                        must.append(models.FieldCondition(
+                            key=fmax, range=models.Range(gte=lo)))
+                    if hi is not None:
+                        must.append(models.FieldCondition(
+                            key=fmin, range=models.Range(lte=hi)))
+                    continue
+                must.append(models.FieldCondition(
                     key=k,
                     match=models.MatchAny(
-                        any=[v2 for v2 in (v if isinstance(v, list) else [v])]))
-                for k, v in filters.items()
-            ])
+                        any=[v2 for v2 in (v if isinstance(v, list) else [v])])))
+            query_filter = models.Filter(must=must) if must else None
         res = self._client.query_points(
             collection, query=vector, limit=top_k, query_filter=query_filter)
         hits = []
