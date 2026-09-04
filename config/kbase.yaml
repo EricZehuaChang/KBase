@@ -103,6 +103,29 @@ llm:
       params:
         extra_body:
           reasoning_effort: high
+    # iruidong 中转（2026-09-04）：https://api.iruidong.com/v1，key 走 IRUIDONG_API_KEY。
+    # OpenAI 兼容，提供 GLM-5.3-Flash / DeepSeek V4 Flash / DeepSeek V4 Pro / GLM-5.3。
+    # 名称独立于内置厂商，避免 provider 解析重名。
+    - name: iruidong-glm-flash
+      base_url: https://api.iruidong.com/v1
+      api_key_env: IRUIDONG_API_KEY
+      model: glm-5.3-flash
+      max_concurrency: 4
+    - name: iruidong-ds-flash
+      base_url: https://api.iruidong.com/v1
+      api_key_env: IRUIDONG_API_KEY
+      model: deepseek-v4-flash
+      max_concurrency: 4
+    - name: iruidong-ds-pro
+      base_url: https://api.iruidong.com/v1
+      api_key_env: IRUIDONG_API_KEY
+      model: deepseek-v4-pro
+      max_concurrency: 4
+    - name: iruidong-glm
+      base_url: https://api.iruidong.com/v1
+      api_key_env: IRUIDONG_API_KEY
+      model: glm-5.3
+      max_concurrency: 4
 # OCR：扫描件/图片摄取时转 Markdown。两种后端：
 # - glm-ocr（默认推荐）：智谱云 layout_parsing（kbase/plugins/ocr/glm_http.py），
 #   密钥走 ZHIPU_API_KEY 环境变量（api_key_env 可改名）；endpoint 留空用官方云，
