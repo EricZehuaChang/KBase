@@ -55,3 +55,7 @@ RUN chmod +x /app/entrypoint.sh
 EXPOSE 8100
 
 ENTRYPOINT ["/app/entrypoint.sh"]
+# 本文件在 .github/workflows/docker-ci.yml 的 paths 触发列表里——即使只改注释
+# 也会重跑镜像构建冒烟（BuildKit 缓存键只含指令行，纯注释变更不使层缓存失效，
+# 重跑主要验证依赖源/远端状态，2026-09-07 首跑冒烟单步挂起 26 分钟即靠重触发定位）。
+
