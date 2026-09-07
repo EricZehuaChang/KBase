@@ -1,5 +1,5 @@
 # Docker 镜像真构建 + 冒烟（可复用 workflow）。
-# 调用方：ci.yml（仅镜像相关路径变化或 main 时）、nightly.yml（每日）、
+# 调用方：docker-ci.yml（main push/PR，按路径过滤）、nightly.yml（每日）、
 # release.yml（发版前）。构建不推送（push: false, load: true），产物只在本
 # runner 内做冒烟；现行部署走 git archive + scp + 服务器本地 build，不用 registry。
 #
@@ -7,6 +7,11 @@
 # bge-local（6.6GB 权重下载），仓库内没有可注册的假 embedder 插件，启动即
 # 触发下载。import 冒烟已能拦住历史上真踩过的坑——mcp 2.x 改名导致
 # 构建期通过、运行期 ImportError（2026-09-02 实测）；java/JRE 缺省会直接红。
+#
+# 每个冒烟都是独立 docker run 且带容器内 timeout + step timeout-minutes：
+# 2026-09-07 首跑实测"冒烟 1 单步挂起 26 分钟"（docker run/python import
+# 正常应在 1-3 分钟内完成），不能再让一步挂死吃掉整个 job 的 40 分钟预算。
+# Debian slim 基底自带 coreutils timeout；exit 124 = 超时被杀，步骤红。
 name: docker-build
 
 on:
@@ -16,7 +21,7 @@ jobs:
   docker:
     name: docker (镜像构建 + import 冒烟)
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - name: Set up Docker Buildx
@@ -30,13 +35,26 @@ jobs:
           tags: kbase:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - name: 冒烟 1——关键模块可导入（拦 mcp 2.x / 依赖缺失类运行期 ImportError）
+      - name: 冒烟 1——应用模块逐个可导入（拦 mcp 2.x / 依赖缺失类运行期 ImportError）
+        timeout-minutes: 12
         run: |
-          docker run --rm kbase:ci python -c "import kbase.api.main, kbase_mcp.server, opendataloader_pdf, sentence_transformers; print('imports ok')"
-      - name: 冒烟 2——JRE 在位（opendataloader-pdf 解析回退契约的前置）
+          for m in kbase.api.main kbase_mcp.server opendataloader_pdf; do
+            echo "=== import $m ==="
+            docker run --rm kbase:ci timeout 150 python -c "import $m; print('ok')" || exit 1
+          done
+      - name: 冒烟 2——sentence_transformers 可装载（torch CPU，首载可能 1-3 分钟）
+        timeout-minutes: 8
+        run: |
+          docker run --rm kbase:ci timeout 300 python -c "import sentence_transformers; print('sentence_transformers ok')"
+      - name: 冒烟 3——JRE 在位（opendataloader-pdf 解析回退契约的前置）
+        timeout-minutes: 3
         run: docker run --rm kbase:ci java -version
-      - name: 冒烟 3——前端产物在镜像内（web/ 随 git 提交，缺了 SPA 就是空壳）
+      - name: 冒烟 4——前端产物在镜像内（web/ 随 git 提交，缺了 SPA 就是空壳）
+        timeout-minutes: 3
         run: |
           docker run --rm kbase:ci sh -c 'test -f /app/web/index.html && test -f /app/web/admin.html && echo "web artifacts ok"'
-      - name: 冒烟 4——entrypoint 语法与可执行性（LF 行尾/shell 语法错误会在这红）
-        run: docker run --rm --entrypoint sh kbase:ci -c 'sh -n /app/entrypoint.sh && test -x /app/entrypoint.sh && echo "entrypoint ok"'
+      - name: 冒烟 5——entrypoint 语法与可执行性（LF 行尾/shell 语法错误会在这红）
+        timeout-minutes: 3
+        run: >-
+          docker run --rm --entrypoint sh kbase:ci -c
+          'sh -n /app/entrypoint.sh && test -x /app/entrypoint.sh && echo "entrypoint ok"'

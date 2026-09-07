@@ -1,15 +1,16 @@
 # 镜像构建（push/PR 触发版）：只在会改变镜像内容的改动上跑 docker-build。
 # 与 ci.yml 的关系：ci.yml 管「每次 push 都跑的测试门禁」，这里是它的补丁——
-# 镜像构建贵（torch CPU + JRE，无缓存 15min+），普通 feature 代码改动不必
+# 镜像构建贵（torch CPU + JRE，无缓存 15-30min），普通 feature 代码改动不必
 # 每次重建；但改了 Dockerfile/依赖/入口/前端产物托管的路径时必须真构建验证。
-# 用 on.push.paths + on.pull_request.paths 由 GitHub 原生过滤，比在 job 里写
-# if 表达式可靠（paths 过滤在 commit 层面决定 job 是否进队）。
+# 用 on.push.paths + on.pull_request.paths 由 GitHub 原生过滤。
+# push 只挂 main：本项目双推 feature→main，同内容跑两份重型构建是纯浪费
+# （2026-09-07 首跑即双份、每份 30min+），main push 就是门禁。
 # nightly / release 复用：.github/workflows/docker-build.yml（workflow_call）。
 name: docker-ci
 
 on:
   push:
-    branches: [main, "feature/**"]
+    branches: [main]
     paths:
       - Dockerfile
       - pyproject.toml
