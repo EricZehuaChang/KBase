@@ -20,6 +20,6 @@ jobs:
   ci-core:
     uses: ./.github/workflows/ci-core.yml
     with:
-      # feature 分支普通推送跳过 PG 集成（省免费分钟数，规划 §5-10）；
-      # main/PR/tag 全量。
-      run-pg: ${{ github.ref == 'refs/heads/main' || github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/v') }}
+      # 只有 feature 分支的普通 push 跳过 PG 集成（省免费分钟数，规划 §5-10）；
+      # main push / PR / tag / 手动 都全量。= 非「feature push」即跑。
+      run-pg: ${{ !(github.event_name == 'push' && github.ref != 'refs/heads/main') }}

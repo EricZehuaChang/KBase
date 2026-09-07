@@ -1,3 +1,5 @@
+import threading
+
 import chromadb
 from chromadb.config import Settings
 
@@ -61,11 +63,19 @@ class ChromaStore:
         self._client = chromadb.PersistentClient(
             path=persist_dir,
             settings=Settings(anonymized_telemetry=False))
+        # chromadb 0.6.x 的 get_or_create_collection 在并发首用同一集合时
+        # 会双创建撞唯一约束（UniqueConstraintError: Collection ... already
+        # exists）——上传 3 文件=3 并行线程同时 get_or_create 同一集合名，
+        # 2026-09-07 实测 ~10% 概率有一份文档 failed。本 store 每 app 单实例
+        # 共享，一把 per-client 锁把 取/建 集合串行化即可根治（锁内只做
+        # get_or_create，不持锁做 upsert，避免把写路径全部串行化）。
+        self._lock = threading.Lock()
 
     def _coll(self, collection: str):
         # cosine 距离，与 normalize 后的 bge 向量匹配
-        return self._client.get_or_create_collection(
-            collection, metadata={"hnsw:space": "cosine"})
+        with self._lock:
+            return self._client.get_or_create_collection(
+                collection, metadata={"hnsw:space": "cosine"})
 
     def upsert(self, collection, ids, vectors, metas):
         if not ids:
