@@ -1,4 +1,3 @@
-import pytest
 
 from kbase.rag.generator import Generator
 from kbase.rag.retriever import ContextBlock

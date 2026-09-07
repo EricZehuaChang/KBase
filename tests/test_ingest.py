@@ -1,5 +1,4 @@
 import threading
-from pathlib import Path
 
 from kbase.db import make_session_factory
 from kbase.index.keyword import KeywordIndex

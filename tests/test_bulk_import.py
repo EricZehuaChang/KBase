@@ -51,7 +51,7 @@ def test_resume_skips_done_and_retry_failed(tmp_path):
     sf = _sf(tmp_path)
     pipeline = StubPipeline(sf)
     root = tmp_path / "docs"
-    ok1, ok2, bad = _mk(root, "ok1.md"), _mk(root, "ok2.md"), _mk(root, "fail1.md")
+    ok1, _ok2, _bad = _mk(root, "ok1.md"), _mk(root, "ok2.md"), _mk(root, "fail1.md")
     manifest = tmp_path / "m.jsonl"
 
     # 第一轮：全量跑，2 成 1 败
@@ -65,7 +65,7 @@ def test_resume_skips_done_and_retry_failed(tmp_path):
     m = load_manifest(manifest)
     assert [p.name for p in plan_pending(files, m)] == ["fail1.md"]
     # retry_failed=True：只跑失败项，**新文件不纳入**（定向修复模式）
-    new_file = _mk(root, "new.md")
+    _mk(root, "new.md")   # 只写文件、不跑它——断言见下一行与 line 72 的对照
     files2 = scan_files(root)
     assert [p.name for p in plan_pending(files2, m, retry_failed=True)] == ["fail1.md"]
     # 默认模式：新文件+失败项都跑
@@ -120,14 +120,10 @@ def test_bulk_import_real_pipeline_end_to_end(tmp_path, fake_embedder):
         _mk(root, f"policy-{i:02d}.md",
             f"# 制度{i:02d}\n第{i}号文件规定：专项编号 SPEC-{1000+i} 的事项按本制度执行。")
 
-    pipeline = app.state.test_llm and None   # 仅为可读性占位
-    from kbase.api.services import build_services  # noqa: F401 —— 管道从 app 内部取
-    svc_pipeline = c.app  # TestClient 的 app
-    # 直接复用 app 内已装配的 pipeline/sf（与生产 CLI 同物）
-    from kbase.api.routes import kb as _kb_routes  # noqa: F401
-    # 通过再次 build 太重；批量导入的真实入口是 build_services——这里等价地
-    # 从既有 app 走一遍：用与 CLI 相同的函数驱动
-    # （app 没暴露 pipeline，改为直接再建一份共享同一 data_dir 的服务）
+    # 直接复用 app 内已装配的 pipeline/sf（与生产 CLI 同物），避免再次 build：
+    # 通过 build_services 再建一份共享同一 data_dir 的服务，等价于走一遍真实
+    # 入口（app 本身没暴露 pipeline）。
+    from kbase.api.services import build_services
     svc = build_services(cfg, embedder=fake_embedder, llms={"fake": FakeLLM()},
                          reranker=False, enricher=False, rewriter=False)
     manifest = tmp_path / "m.jsonl"

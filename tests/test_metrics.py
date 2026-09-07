@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from kbase import metrics
 from kbase.api.main import create_app
 from tests.test_qa_stats import CFG_STATS
-from tests.test_api import MD, FakeLLM
+from tests.test_api import FakeLLM
 
 
 def test_render_prometheus_format():

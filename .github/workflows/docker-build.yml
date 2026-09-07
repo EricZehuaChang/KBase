@@ -1,0 +1,42 @@
+# Docker 镜像真构建 + 冒烟（可复用 workflow）。
+# 调用方：ci.yml（仅镜像相关路径变化或 main 时）、nightly.yml（每日）、
+# release.yml（发版前）。构建不推送（push: false, load: true），产物只在本
+# runner 内做冒烟；现行部署走 git archive + scp + 服务器本地 build，不用 registry。
+#
+# 冒烟为什么是「容器内 import」而不是启动 uvicorn：lite 默认 embedder 是
+# bge-local（6.6GB 权重下载），仓库内没有可注册的假 embedder 插件，启动即
+# 触发下载。import 冒烟已能拦住历史上真踩过的坑——mcp 2.x 改名导致
+# 构建期通过、运行期 ImportError（2026-09-02 实测）；java/JRE 缺省会直接红。
+name: docker-build
+
+on:
+  workflow_call:
+
+jobs:
+  docker:
+    name: docker (镜像构建 + import 冒烟)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: kbase:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: 冒烟 1——关键模块可导入（拦 mcp 2.x / 依赖缺失类运行期 ImportError）
+        run: |
+          docker run --rm kbase:ci python -c "import kbase.api.main, kbase_mcp.server, opendataloader_pdf, sentence_transformers; print('imports ok')"
+      - name: 冒烟 2——JRE 在位（opendataloader-pdf 解析回退契约的前置）
+        run: docker run --rm kbase:ci java -version
+      - name: 冒烟 3——前端产物在镜像内（web/ 随 git 提交，缺了 SPA 就是空壳）
+        run: |
+          docker run --rm kbase:ci sh -c 'test -f /app/web/index.html && test -f /app/web/admin.html && echo "web artifacts ok"'
+      - name: 冒烟 4——entrypoint 语法与可执行性（LF 行尾/shell 语法错误会在这红）
+        run: docker run --rm --entrypoint sh kbase:ci -c 'sh -n /app/entrypoint.sh && test -x /app/entrypoint.sh && echo "entrypoint ok"'

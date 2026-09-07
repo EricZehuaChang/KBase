@@ -1,6 +1,4 @@
-import re
 
-import pytest
 
 from kbase.db import make_session_factory
 from kbase.jobs.proposal import assemble, build_proposal_steps, generate_section

@@ -1,0 +1,25 @@
+# KBase CI 门禁（触发壳）：push/PR 到 main、feature/** 与 v* tag 时跑核心
+# 测试门禁（ci-core.yml）。设计依据与 job 细节见 ci-core.yml 头注释与
+# projects/project06-kbase/deliverables/2026-09-07-CI接入规划.md。
+# 镜像构建由 docker-ci.yml（按路径过滤）负责，nightly/release 直接复用 ci-core。
+name: ci
+
+on:
+  push:
+    branches: [main, "feature/**"]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci-core:
+    uses: ./.github/workflows/ci-core.yml
+    with:
+      # feature 分支普通推送跳过 PG 集成（省免费分钟数，规划 §5-10）；
+      # main/PR/tag 全量。
+      run-pg: ${{ github.ref == 'refs/heads/main' || github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/v') }}

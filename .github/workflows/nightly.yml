@@ -1,0 +1,89 @@
+# 夜间任务：PR 门禁刻意不覆盖的三件事——生产版本依赖金丝雀、依赖漏洞审计、
+# 每日镜像全量构建（apt/pip 源漂移、远端缓存失效都会在这里现形）。
+# 触发：每日 UTC 18:00（北京 02:00）+ 手动。红只通知不阻塞任何人（无 PR 关联）。
+name: nightly
+
+on:
+  schedule:
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # 生产实际运行的 chromadb 版本（/opt/kbase 2026-09 实测 1.5.9）。
+  # 升级生产依赖时同步改这里——门禁跑的是 chromadb<1（开发期版本），
+  # 生产版本的一致性只能靠这条金丝雀守。
+  CHROMADB_PROD_VERSION: "1.5.9"
+
+jobs:
+  chroma-canary:
+    name: chromadb 生产版本金丝雀
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: 装生产版本 chromadb
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,mcp]" "chromadb==$CHROMADB_PROD_VERSION"
+      - name: 向量库相关子集（逐文件独立进程，绕开 1.x 同进程 tokio 线程堆积）
+        run: |
+          fail=0
+          for f in tests/test_chroma_store.py tests/test_metadata_filters.py \
+                   tests/test_range_filters.py tests/test_reindex.py \
+                   tests/test_rebind_embedder.py tests/test_embedder_options.py; do
+            echo "=== $f ==="
+            python -m pytest -q "$f" || fail=1
+          done
+          exit $fail
+
+  deps-audit:
+    name: 依赖漏洞审计（pip-audit + npm audit，只报不拦）
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: web-app/.nvmrc
+          cache: npm
+          cache-dependency-path: web-app/package-lock.json
+      - name: pip-audit
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,mcp]"
+          pip install pip-audit
+          pip-audit -r <(pip freeze) --format=json > reports/pip-audit.json 2>&1 || true
+          python -c "import json;d=json.load(open('reports/pip-audit.json'));print('python 漏洞数:',len(d.get('dependencies',[])))" 2>/dev/null || tail -5 reports/pip-audit.json
+      - name: npm audit
+        working-directory: web-app
+        run: |
+          npm ci --no-audit --no-fund
+          npm audit --omit=dev --audit-level=high || true
+      - name: 上传审计报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deps-audit
+          path: reports/
+          if-no-files-found: ignore
+
+  docker:
+    name: docker (每日全量镜像构建)
+    uses: ./.github/workflows/docker-build.yml
+
+  regression:
+    name: 全量测试回归（含 PG，防环境/依赖漂移）
+    uses: ./.github/workflows/ci-core.yml
+    with:
+      run-pg: true

@@ -1,33 +1,33 @@
 """kbase/license.py 单测：Ed25519 验签、四态（trial/valid/expired/invalid）。
+
 license.json 路径可通过 env KBASE_LICENSE_FILE 指定（测试用 tmp_path 隔离，
-不触碰仓库根目录真实文件）。valid/expired 态用本次任务生成、保存在仓库外的
-真实私钥（D:\\Claude Code\\kbase-license-private.pem）通过
-scripts/gen_license.py 的函数现签，让 license.py 内置的公钥常量能验证通过；
-invalid 态用另一把随手生成的密钥对签名（对不上内置公钥）或直接损坏签名字符串。
+不触碰仓库根目录真实文件）。
+
+valid/expired/corrupted 态**不再依赖仓库外私钥文件**（原测试硬编码
+D:\\Claude Code\\kbase-license-private.pem，导致任何没有该私钥的机器——
+CI、换机——上三个用例直接 FileNotFoundError）。改为：每个用例现生成一把
+Ed25519 密钥对，把对应公钥 monkeypatch 进 kbase.license._PUBLIC_KEY_B64
+（_verify_signature 每次调用时都读该常量），再用同一把私钥现签——完全不
+出网、不落盘、跨平台。
+
+内置公钥常量的完整性仍要盯：test_builtin_public_key_is_well_formed 校验
+格式；test_builtin_key_rejects_generated_signature 证明"没有真私钥的人签的
+字验证不过"。用真私钥回验内置常量属于本机/持钥者手动流程
+（scripts/gen_license.py --private-key），不进自动测试。
 """
+import base64
 import json
 from datetime import date, timedelta
-from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 from kbase import license as license_mod
-from scripts.gen_license import generate_keypair, sign_license
+from scripts.gen_license import (generate_keypair, public_key_to_b64,
+                                 sign_license)
 from tests.test_auth import _client_on
 
-
-REAL_PRIVATE_KEY_PATH = Path(r"D:\Claude Code\kbase-license-private.pem")
-
-
-def _load_real_private_key():
-    """kbase/license.py 内置的公钥常量对应的真实私钥——生成于本次任务，
-    刻意保存在仓库之外（见 D:\\Claude Code\\kbase-license-private.pem，
-    from README 与任务报告）。valid/expired 态必须用这把真实私钥签发，
-    license.py 才能用它内置的公钥验签通过；用随手新生成的密钥对签出的
-    证书应该落入 invalid 态（签名对不上），这个场景在
-    test_invalid_license_wrong_signature 里单独覆盖。"""
-    from scripts.gen_license import load_private_key_pem
-    return load_private_key_pem(REAL_PRIVATE_KEY_PATH.read_bytes())
+# Ed25519 原始公钥 32 字节 → base64 恰好 44 字符（含尾部 ==）
+_ED25519_PUBKEY_B64_LEN = 44
 
 
 def _write_license(path, org, expires, private_key):
@@ -35,55 +35,63 @@ def _write_license(path, org, expires, private_key):
     path.write_text(json.dumps(license_dict, ensure_ascii=False), encoding="utf-8")
 
 
+def _patched_env(tmp_path, monkeypatch):
+    """把 license 文件路径隔离到 tmp_path，返回该路径。"""
+    license_path = tmp_path / "license.json"
+    monkeypatch.setenv("KBASE_LICENSE_FILE", str(license_path))
+    return license_path
+
+
 def test_trial_when_no_license_file(tmp_path, monkeypatch):
-    monkeypatch.setenv("KBASE_LICENSE_FILE", str(tmp_path / "license.json"))
+    _patched_env(tmp_path, monkeypatch)
     result = license_mod.check_license()
     assert result["status"] == "trial"
 
 
 def test_valid_license_with_future_expiry(tmp_path, monkeypatch):
-    private_key = _load_real_private_key()
-    license_path = tmp_path / "license.json"
+    private_key, public_key = generate_keypair()
+    # 让内置公钥认这把私钥：monkeypatch 还原后其他用例不受影响
+    monkeypatch.setattr(license_mod, "_PUBLIC_KEY_B64", public_key_to_b64(public_key))
+    license_path = _patched_env(tmp_path, monkeypatch)
     future = (date.today() + timedelta(days=30)).isoformat()
     _write_license(license_path, "测试客户", future, private_key)
-    monkeypatch.setenv("KBASE_LICENSE_FILE", str(license_path))
 
     result = license_mod.check_license()
     assert result == {"status": "valid", "org": "测试客户", "expires": future}
 
 
 def test_expired_license_past_expiry(tmp_path, monkeypatch):
-    private_key = _load_real_private_key()
-    license_path = tmp_path / "license.json"
+    private_key, public_key = generate_keypair()
+    monkeypatch.setattr(license_mod, "_PUBLIC_KEY_B64", public_key_to_b64(public_key))
+    license_path = _patched_env(tmp_path, monkeypatch)
     past = (date.today() - timedelta(days=1)).isoformat()
     _write_license(license_path, "测试客户", past, private_key)
-    monkeypatch.setenv("KBASE_LICENSE_FILE", str(license_path))
 
     result = license_mod.check_license()
     assert result == {"status": "expired", "org": "测试客户", "expires": past}
 
 
 def test_invalid_license_wrong_signature(tmp_path, monkeypatch):
-    """用另一把（非内置公钥对应的）私钥签发——签名验证不过，落 invalid。"""
+    """用另一把（未打进公钥常量的）私钥签发——签名验证不过，落 invalid。"""
     wrong_private_key, _wrong_public_key = generate_keypair()
-    license_path = tmp_path / "license.json"
+    license_path = _patched_env(tmp_path, monkeypatch)
     future = (date.today() + timedelta(days=30)).isoformat()
     _write_license(license_path, "测试客户", future, wrong_private_key)
-    monkeypatch.setenv("KBASE_LICENSE_FILE", str(license_path))
 
     result = license_mod.check_license()
     assert result == {"status": "invalid"}
 
 
 def test_invalid_license_corrupted_signature_string(tmp_path, monkeypatch):
-    """用真实私钥签发后手工损坏 signature 字符串——同样落 invalid。"""
-    private_key = _load_real_private_key()
-    license_path = tmp_path / "license.json"
+    """签发后手工损坏 signature 字符串——同样落 invalid。"""
+    private_key, public_key = generate_keypair()
+    monkeypatch.setattr(license_mod, "_PUBLIC_KEY_B64", public_key_to_b64(public_key))
+    license_path = _patched_env(tmp_path, monkeypatch)
     future = (date.today() + timedelta(days=30)).isoformat()
     license_dict = sign_license("测试客户", future, private_key)
     license_dict["signature"] = license_dict["signature"][:-4] + "abcd"
-    license_path.write_text(json.dumps(license_dict, ensure_ascii=False), encoding="utf-8")
-    monkeypatch.setenv("KBASE_LICENSE_FILE", str(license_path))
+    license_path.write_text(json.dumps(license_dict, ensure_ascii=False),
+                            encoding="utf-8")
 
     result = license_mod.check_license()
     assert result == {"status": "invalid"}
@@ -93,7 +101,7 @@ def test_get_license_endpoint_reflects_trial_state(tmp_path, fake_embedder, monk
     """GET /api/license（viewer 楼层——任意已登录角色都能查看）返回
     check_license() 的结果形状。用 auth="on" 应用+viewer 角色贯通一次，
     确认路由的最低角色声明是 viewer 而不是更高的 editor/admin。"""
-    monkeypatch.setenv("KBASE_LICENSE_FILE", str(tmp_path / "license.json"))
+    _patched_env(tmp_path, monkeypatch)
     app, c = _client_on(tmp_path, fake_embedder, admin_password="adminpass123",
                         monkeypatch=monkeypatch)
     c.post("/api/auth/login", json={"username": "admin", "password": "adminpass123"})
@@ -108,9 +116,33 @@ def test_get_license_endpoint_reflects_trial_state(tmp_path, fake_embedder, monk
 
 
 def test_invalid_license_malformed_json(tmp_path, monkeypatch):
-    license_path = tmp_path / "license.json"
+    license_path = _patched_env(tmp_path, monkeypatch)
     license_path.write_text("not valid json{{{", encoding="utf-8")
-    monkeypatch.setenv("KBASE_LICENSE_FILE", str(license_path))
+
+    result = license_mod.check_license()
+    assert result == {"status": "invalid"}
+
+
+def test_builtin_public_key_is_well_formed():
+    """内置公钥常量是合法的 32 字节 Ed25519 原始公钥的 base64。
+
+    这把公钥对应仓库外私钥（scripts/gen_license.py 生成时打印后手工粘贴），
+    本测试不持私钥、无法验真伪，只能拦住"常量被误改/截断/整段丢失"这类
+    漂移；真伪回验是持钥者的手动流程。"""
+    raw = license_mod._PUBLIC_KEY_B64
+    assert isinstance(raw, str) and len(raw) == _ED25519_PUBKEY_B64_LEN
+    assert len(base64.b64decode(raw)) == 32
+
+
+def test_builtin_key_rejects_generated_signature(tmp_path, monkeypatch):
+    """没持有真私钥的人（现生成的密钥对）签的证书，内置公钥验证不过。
+
+    与 test_builtin_public_key_is_well_formed 配合：前者证明常量格式没坏，
+    后者证明验证路径真的在比对这把常量而不是形同虚设。"""
+    fresh_private_key, _fresh_public_key = generate_keypair()
+    license_path = _patched_env(tmp_path, monkeypatch)
+    future = (date.today() + timedelta(days=30)).isoformat()
+    _write_license(license_path, "冒名者", future, fresh_private_key)
 
     result = license_mod.check_license()
     assert result == {"status": "invalid"}

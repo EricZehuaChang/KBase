@@ -1,6 +1,5 @@
 """换绑向量模型（vault 待办收尾）：换绑触发全库重建、停用块不随重建复活
 （顺手修复 reindex_kb 的 M6-1 缺口）、同模型 409、未知 422、密钥缺失 503。"""
-import pytest
 from fastapi.testclient import TestClient
 
 import kbase.plugins.embedders.factory as factory_mod

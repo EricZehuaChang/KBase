@@ -14,7 +14,7 @@ off 模式下是无操作，行为与鉴权改造前一致）。
 """
 import json
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import HTTPException, Request
 
 from kbase.auth import security
 from kbase.models import ApiKey, User

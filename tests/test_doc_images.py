@@ -3,7 +3,6 @@
 import io
 import zlib  # noqa: F401 —— 构造器保留压缩流扩展位
 
-import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 

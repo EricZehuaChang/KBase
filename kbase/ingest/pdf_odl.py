@@ -17,10 +17,12 @@ None，由 pipeline 回退 markitdown——升级失败模式等于回到升级�
 - CJK 断行空格：PDF 文本层按行存储，行合并会在中文字符间引入空格
   （"监 管平台"），本模块统一剔除，保护 FTS5 精确匹配。
 """
+import functools
 import logging
 import os
 import re
 import shutil
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -38,16 +40,37 @@ def strip_cjk_gaps(text: str) -> str:
     return _CJK_GAP.sub("", text)
 
 
+@functools.lru_cache(maxsize=1)
+def _java_runtime_usable() -> bool:
+    """真执行一次 `java -version` 看退出码，而不是 `shutil.which`。
+
+    为什么必须真跑：macOS 无 JDK 时系统自带 /usr/bin/java 存根——`which java`
+    有输出，但一执行就报 "Unable to locate a Java Runtime" 并退出非零
+    （2026-09-07 实测，pytest 全量比 WIN 侧多 3 个失败全因此）。用 which 做
+    探测会让回退契约失效：odl_available() 判可用 → 真解析时 JVM 起不来 →
+    None 兜底才触发，下游用例与日志全乱。lru_cache：探测只跑一次，避免
+    每个文档解析都 fork 一次 JVM 探测进程。
+    """
+    java = shutil.which("java")
+    if java is None:
+        return False
+    try:
+        return subprocess.run([java, "-version"], capture_output=True,
+                              timeout=10).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
 def odl_available() -> bool:
-    """三重探测：环境开关未禁用 + 包已安装 + java 在 PATH。任一不满足即
-    走 markitdown 旧路，调用方无需区分原因。"""
+    """三重探测：环境开关未禁用 + 包已安装 + java 运行时真的可用。任一
+    不满足即走 markitdown 旧路，调用方无需区分原因。"""
     if os.environ.get("KBASE_PDF_PARSER", "").lower() == "markitdown":
         return False
     try:
         import opendataloader_pdf  # noqa: F401 —— 仅探测可导入
     except ImportError:
         return False
-    return shutil.which("java") is not None
+    return _java_runtime_usable()
 
 
 def parse_pdf(path) -> tuple[str, list[str]] | None:

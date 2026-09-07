@@ -9,7 +9,7 @@
 import logging
 from typing import Callable
 
-from kbase.jobs.store import get_job, update_job
+from kbase.jobs.store import update_job
 
 logger = logging.getLogger(__name__)
 

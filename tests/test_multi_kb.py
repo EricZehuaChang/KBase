@@ -2,7 +2,6 @@
 citations 带 kb_id 溯源、ACL 与多库交叉（无权库不能绑进会话）。"""
 import json as _json
 
-import pytest
 from fastapi.testclient import TestClient
 
 from kbase.api.main import create_app
