@@ -59,8 +59,9 @@ def test_compose_lite_has_app_service_and_volumes():
     assert "healthcheck" in app
     assert "curl" in " ".join(app["healthcheck"]["test"])
 
+    # 卷挂载必须真的落进容器（不写匿名卷）：数据卷 + HF 缓存卷都要有具名目标
     volume_targets = {v.split(":")[1] if ":" in v else v for v in app["volumes"]}
-    assert any(v.endswith("/app/data") for v in app["volumes"])
+    assert "/app/data" in volume_targets
     assert any("huggingface" in v for v in app["volumes"])
     assert "hf-cache" in doc["volumes"]
 

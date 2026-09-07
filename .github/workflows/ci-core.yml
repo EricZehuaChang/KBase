@@ -1,0 +1,139 @@
+# KBase CI 核心门禁（可复用 workflow）：lint + backend + backend-pg + frontend。
+# 只声明 workflow_call，被 ci.yml（push/PR）、docker-ci.yml、nightly.yml、
+# release.yml 复用。设计依据：projects/project06-kbase/deliverables/
+# 2026-09-07-CI接入规划.md —— 后端/前端/PG 各独立 job，红灯归因清楚；
+# 测试环境装 chromadb<1（开发期版本，生产版本 1.5.9 由 nightly 金丝雀覆盖）；
+# web/ 是构建产物随 git 提交，build 后 git status 必须干净否则红。
+name: ci-core
+
+on:
+  workflow_call:
+    inputs:
+      run-pg:
+        description: 是否跑 PostgreSQL 集成测试（free 额度敏感时 main/PR 才开）
+        type: boolean
+        required: false
+        default: true
+
+jobs:
+  lint:
+    name: lint (ruff + 配置可加载)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: 安装最小依赖（ruff + 应用自身以便 load_config）
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff -e ".[dev,mcp]"
+      - name: ruff 最小规则集（语法错误/未定义名/未用 import 与变量）
+        run: ruff check kbase kbase_mcp tests scripts eval
+      - name: 配置全部可加载（真实 pydantic 校验，不只 yaml.safe_load）
+        run: python scripts/check_config.py
+
+  backend:
+    name: backend (pytest, sqlite+chroma)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          # 与 Dockerfile 的 default-jre-headless 对齐（trixie 基底 = JDK 21）；
+          # 不要依赖 runner 预装版本（macOS 无 JDK 时 /usr/bin/java 是存根，
+          # 会骗过 shutil.which 式探测，见 kbase/ingest/pdf_odl.py 注释）。
+          java-version: "21"
+      - name: 安装依赖（chromadb<1：测试环境版本，见 pyproject 注释）
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,mcp]" "chromadb<1"
+      - name: 后端全量测试（addopts 自动排除 external/pg）
+        run: python -m pytest -q --junitxml=reports/backend.xml
+      - name: 上传 junit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-junit
+          path: reports/backend.xml
+          if-no-files-found: ignore
+
+  backend-pg:
+    name: backend-pg (pytest, PostgreSQL 集成)
+    if: inputs.run-pg
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: kbase
+          POSTGRES_PASSWORD: kbase
+          POSTGRES_DB: kbase
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kbase"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,mcp]" "chromadb<1"
+      - name: PG 集成测试（-m pg 覆盖 addopts 的排除）
+        env:
+          KBASE_TEST_PG_URL: postgresql+psycopg://kbase:kbase@localhost:5432/kbase
+        run: python -m pytest -q -m pg
+
+  frontend:
+    name: frontend (vitest + vue-tsc build + 产物漂移)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: web-app/.nvmrc
+          cache: npm
+          cache-dependency-path: web-app/package-lock.json
+      - name: 安装依赖（npm ci 强制与 lockfile 一致）
+        run: npm ci --no-audit --no-fund
+      - name: 单测
+        run: npm test
+      - name: 构建（vue-tsc 类型检查 + vite build → ../web）
+        run: npm run build
+      - name: 双入口 bundle 隔离校验
+        run: npm run check-isolation
+      - name: web/ 构建产物漂移检查（产物随 git 提交，须与源码构建一致）
+        working-directory: .
+        run: |
+          if [ -n "$(git status --porcelain -- web/)" ]; then
+            echo "::error::web/ 与 web-app 源码不一致：请本地 npm run build 后把 web/ 一并提交（产物随 git 提交，镜像直接 COPY web/）"
+            git status --porcelain -- web/
+            git diff --stat -- web/
+            exit 1
+          fi
+          echo "web/ 与构建输出一致，无漂移"

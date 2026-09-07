@@ -4,3 +4,16 @@
 # 而非文件缺失，报错信息具有误导性）。强制 shell 脚本始终以 LF 入库/检出，
 # 与 checkout 该文件时所在平台无关。
 *.sh text eol=lf
+
+# web/ 是前端构建产物随 git 提交（镜像内直接 COPY，无 Node）。CI 的
+# `web/` 漂移检查（build 后 git status 必须为空）要求产物与源码构建输出
+# 字节一致——HTML/JS/CSS 一律 LF 入库检出，否则 Windows 侧（autocrlf=true）
+# 重新 build+commit 会把 CRLF 带进索引，Linux/Mac 重 build 即误报漂移
+# （2026-09-07 实测：web/index.html 曾整文件 CRLF，唯一漂移来源）。
+web/*.html text eol=lf
+web/*.js text eol=lf
+web/*.css text eol=lf
+web/assets/*.js text eol=lf
+web/assets/*.css text eol=lf
+web/assets/*.svg text eol=lf
+web/.vite/*.json text eol=lf

@@ -1,4 +1,3 @@
-import json
 
 from kbase.db import make_session_factory
 from kbase.jobs.store import create_job, get_job, list_jobs, update_job

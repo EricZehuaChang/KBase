@@ -11,7 +11,6 @@
 """
 import json
 import uuid
-from datetime import datetime
 
 from kbase.models import EvalRun, EvalSet
 

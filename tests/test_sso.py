@@ -1,6 +1,5 @@
 """企业 SSO（M6-8 OIDC）：默认关闭零暴露、授权跳转带签名 state、回调换身份
 自动建号+发会话 cookie、state 伪造 400。oidc 网络层打桩，不出网。"""
-import pytest
 from fastapi.testclient import TestClient
 
 from kbase.api.main import create_app

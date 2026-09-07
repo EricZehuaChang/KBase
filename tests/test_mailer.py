@@ -3,7 +3,6 @@
 import pytest
 from fastapi.testclient import TestClient
 
-import kbase.mailer as mailer
 from kbase.api.main import create_app
 from tests.test_api import CFG, FakeLLM
 

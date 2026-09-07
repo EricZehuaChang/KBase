@@ -11,7 +11,6 @@
 import json
 
 from kbase.params import (
-    group_matches_range,
     is_range_condition,
     numeric_bounds,
     param_field_names,

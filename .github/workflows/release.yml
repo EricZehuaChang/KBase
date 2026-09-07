@@ -1,0 +1,63 @@
+# 发版：打 v* tag 时先全量门禁，再产出与现行部署流程同形的 git archive 包
+# 挂到 GitHub Release。现行部署（见 context.md 各 deploy 记录）=
+# 服务器本地 build（/opt/kbase 非 git 仓，scp 源文件 + 本地 build），
+# 所以产物是不含依赖/数据的源码包 + sha256，不是镜像（不推 GHCR：国内
+# 服务器拉取不可靠，规划文档 §2.4）。镜像构建验证仍做（docker-build.yml）。
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "要打的版本号（v1.2.3 格式）"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: 测试门禁（ci-core 全量）
+    uses: ./.github/workflows/ci-core.yml
+
+  docker:
+    name: 镜像构建验证
+    needs: gate
+    uses: ./.github/workflows/docker-build.yml
+
+  package:
+    name: 打包 release 产物
+    needs: [gate, docker]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: 计算版本号
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: 打包 git archive（与部署脚本同形：只含服务器 build 需要的路径）
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          git archive --format=tar.gz -o "kbase-${TAG}.tar.gz" HEAD \
+            kbase kbase_mcp web config Dockerfile entrypoint.sh pyproject.toml \
+            docker-compose.lite.yml docker-compose.standard.yml .dockerignore
+          sha256sum "kbase-${TAG}.tar.gz" > "kbase-${TAG}.tar.gz.sha256"
+          tar tzf "kbase-${TAG}.tar.gz" | head -8
+      - name: 上传 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            kbase-*.tar.gz
+            kbase-*.tar.gz.sha256

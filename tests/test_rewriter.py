@@ -1,6 +1,5 @@
-import pytest
 
-from kbase.rag.rewriter import QueryRewriter, RewriteResult, should_rewrite
+from kbase.rag.rewriter import QueryRewriter, should_rewrite
 
 HIST = [{"role": "user", "content": "出差北京住宿费标准是多少？"},
         {"role": "assistant", "content": "部级1100元，司局级650元，其他人员500元。"}]

@@ -1,6 +1,5 @@
 """URL 连接器（M6-7）：网页导入走 markitdown 管道可检索、scheme 校验、
 拉取失败 502、库不存在 404。httpx 层打桩，不出真网络。"""
-import pytest
 from fastapi.testclient import TestClient
 
 import kbase.api.routes.kb as kb_routes

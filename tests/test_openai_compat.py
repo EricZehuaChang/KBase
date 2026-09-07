@@ -2,7 +2,6 @@
 流式与非流式、model 不存在 404 错误格式、按库名解析、ACL 收紧后不可见。"""
 import json as _json
 
-import pytest
 from fastapi.testclient import TestClient
 
 from kbase.api.main import create_app

@@ -3,7 +3,6 @@
 import io
 import json as _json
 
-import pytest
 from docx import Document as DocxDocument
 from docx.shared import Inches
 from fastapi.testclient import TestClient

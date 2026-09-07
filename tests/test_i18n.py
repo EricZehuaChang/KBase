@@ -1,6 +1,5 @@
 """i18n 覆盖表(方案 A):store CRUD + 公开读 + admin 写 + 空值删除回落基线
 + 公开端点绕过鉴权。前端基线 JSON 不在后端测试范围(那是打包资源)。"""
-import pytest
 from fastapi.testclient import TestClient
 
 from kbase.api.main import create_app

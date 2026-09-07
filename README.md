@@ -157,6 +157,26 @@ npm run test
 .venv\Scripts\python -m pytest -m external -v
 ```
 
+## CI（GitHub Actions）
+
+推送/PR 到 `main`、`feature/*` 或 `v*` tag 时自动跑质量门禁（`.github/workflows/`），
+红灯即不合并。分层设计见项目规划文档 `projects/project06-kbase/deliverables/2026-09-07-CI接入规划.md`，
+本地逐 job 复现命令如下（顺序与 CI 一致，能本地复现 = CI 绿的必要条件）：
+
+| CI job | 本地复现 |
+|---|---|
+| lint（ruff + 配置可加载） | `python -m ruff check kbase kbase_mcp tests scripts eval && python scripts/check_config.py` |
+| backend（pytest，排除 external/pg） | `python -m pytest`（在仓库根目录，测试 venv 需 `pip install -e ".[dev,mcp]" "chromadb<1"`） |
+| backend-pg（PG 集成） | `KBASE_TEST_PG_URL=postgresql+psycopg://kbase:kbase@localhost:5432/kbase python -m pytest -m pg`（本地起 postgres:16 容器） |
+| frontend | `cd web-app && npm ci && npm test && npm run build && npm run check-isolation && git status --porcelain -- ../web` 须为空 |
+| docker（镜像构建 + 冒烟） | `docker build -t kbase:ci . && docker run --rm kbase:ci python -c "import kbase.api.main, kbase_mcp.server, opendataloader_pdf, sentence_transformers"` |
+
+要点（本地与 CI 都必须遵守，否则会有"本地绿 CI 红"）：
+- 测试依赖必须装 `chromadb<1`（开发期版本；生产 1.5.9 由 `nightly` 金丝雀守，勿在 pyproject 钉上界，见其注释）。
+- **改前端必须重建并提交 `web/`**——产物随 git 提交，镜像直接 COPY；CI 会检查 `web/` 与源码构建是否漂移。
+- **前端必须用 Node 22**（见 `web-app/.nvmrc`，CI 用 `node-version-file` 读取；本地请用 `nvm use` / `fnm use`）：Node 26 起自带实验性 `localStorage`（需 `--localstorage-file`），会让 vitest 的 jsdom 环境拿不到 localStorage，6 个用例静默红（2026-09-07 实测 171→165）。
+- 新增 ruff 规则集是刻意最小化的（`E9/F63/F7/F82/F401/F841`），扩类前先清存量再进 `pyproject.toml`。
+
 ## 评测（模型对比）
 
 `eval/run_eval.py` 跑一组问答对，产出检索命中率 + 答案关键词覆盖率的多 provider 对比报告：
