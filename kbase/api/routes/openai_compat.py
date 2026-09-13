@@ -52,7 +52,12 @@ def register(app, svc: Services, actor_dependency) -> None:
 
     def _resolve_kb(model: str, actor: dict) -> str | None:
         """model → kb_id：先按 id 精确匹配，再按库名匹配（仅当唯一时）。
-        找不到或无权访问都返回 None（统一 404，不泄漏存在性）。"""
+        找不到、无权访问、或超出 API Key 库级 scope 都返回 None
+        （统一 404，不泄漏存在性）。
+
+        T01/G01：ACL 与 scope 是两条独立闸门，必须都过——受限 key 可能是
+        admin 角色（can_access 对 admin 直接豁免），只判 ACL 会让它访问
+        白名单外的库。scope 判定不看角色，见 kb_acl.scope_allows。"""
         with sf() as s:
             kb = s.get(KnowledgeBase, model)
             if kb is None:
@@ -62,21 +67,28 @@ def register(app, svc: Services, actor_dependency) -> None:
             kb_id = kb.id if kb else None
         if kb_id is None or not kb_acl.can_access(sf, kb_id, actor):
             return None
+        if not kb_acl.scope_allows(actor, kb_id):
+            return None
         return kb_id
 
     @router.get("/models")
     def list_models(request: Request):
-        """可见知识库=可用"模型"清单。owned_by 固定 kbase，客户端仅展示用。"""
+        """可见知识库=可用"模型"清单。owned_by 固定 kbase，客户端仅展示用。
+
+        T01/G01：ACL 过滤后再叠加 API Key 库级 scope——受限 key 不得列出
+        白名单外的库（否则等于把不可访问的库名暴露给集成方）。"""
         actor = getattr(request.state, "actor", None) or {"role": "admin"}
         mode, allowed = kb_acl.visible_kb_filter(sf, actor)
         with sf() as s:
             kbs = s.query(KnowledgeBase).order_by(KnowledgeBase.created_at).all()
+            listed = [kb for kb in kbs if mode == "all" or kb.id in allowed]
+            in_scope = kb_acl.apply_scope(actor, [kb.id for kb in listed])
             data = [{"id": kb.id, "object": "model",
                      "created": int(kb.created_at.timestamp()),
                      "owned_by": "kbase",
                      # KBase 扩展：库名，便于客户端下拉里人读
                      "display_name": kb.name}
-                    for kb in kbs if mode == "all" or kb.id in allowed]
+                    for kb in listed if kb.id in in_scope]
         return {"object": "list", "data": data}
 
     @router.post("/chat/completions")

@@ -124,11 +124,13 @@ def register(router, svc: Services, deps: RouteDeps):
     def _out_of_scope(request, kb_id: str) -> bool:
         """API Key 库级 scope（ztenith MCP）：受限 key 越权访问返回 True。
         Cookie 通道/未设 scope 的 key 恒 False（行为与升级前一致）。scope 由
-        服务端强制——不信任 agent 传参，见 kbase/auth/deps.py 的 actor 组装。"""
+        服务端强制——不信任 agent 传参，见 kbase/auth/deps.py 的 actor 组装。
+
+        T01/G01：判定逻辑统一收敛到 kb_acl.scope_allows，/v1 OpenAI 兼容入口
+        用同一个函数，避免两处各写一份（改一处漏一处就是越权口子）。"""
         actor = (getattr(request.state, "actor", None)
                  if request is not None else None)
-        scope = actor.get("scope_kb_ids") if actor else None
-        return scope is not None and kb_id not in scope
+        return not kb_acl.scope_allows(actor or {}, kb_id)
 
     @router.post("/kb/{kb_id}/query", dependencies=[deps.require_viewer])
     async def query(kb_id: str, body: QueryBody, request: Request):

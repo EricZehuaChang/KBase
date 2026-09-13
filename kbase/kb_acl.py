@@ -38,6 +38,33 @@ def visible_kb_filter(sf, actor: dict):
     return ("set", public | granted | owned)
 
 
+def scope_allows(actor: dict, kb_id: str) -> bool:
+    """API Key 库级 scope 判定：actor 是否被白名单允许访问 kb_id。
+
+    T01/G01：scope 与 ACL 是两条独立的闸门，必须分别判定——
+    - actor 没有 scope_kb_ids（Cookie 通道 / 未设 scope 的 key / auth=off 的
+      合成 actor）→ 恒 True，行为与升级前一致；
+    - 有 scope_kb_ids（受限 API Key）→ 仅白名单内的 kb_id 通过。
+
+    **不要把它合并进 can_access**：原生入口依赖两种不同语义——ACL 挡=404
+    （不泄漏存在性），scope 挡=静默空集（/search 空集、/query 拒答流，
+    见 tests/test_apikey_scope.py）。另注意 scope 判定必须独立于角色：
+    API Key 可以是 admin 角色（kb_acl._is_admin 会对 admin 豁免 ACL），
+    受限的 admin key 仍然只能访问白名单内的库，所以这里不看 role。
+    """
+    scope = actor.get("scope_kb_ids") if actor else None
+    return scope is None or kb_id in scope
+
+
+def apply_scope(actor: dict, kb_ids) -> set:
+    """把一批 kb_id 过一遍 scope，返回允许的集合（T01/G01：/v1/models 用）。
+    无 scope 的 actor 原样返回全部（与 scope_allows 同一判定）。"""
+    ids = list(kb_ids)
+    if (actor.get("scope_kb_ids") if actor else None) is None:
+        return set(ids)
+    return {k for k in ids if scope_allows(actor, k)}
+
+
 def can_access(sf, kb_id: str, actor: dict) -> bool:
     """单库访问判定（检索/问答/文档操作前置校验）。"""
     if _is_admin(actor):
