@@ -90,6 +90,10 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
     # last_messages（如 FakeLLM），而不必依赖内部私有变量；生产路径未注入
     # 任何 llm 时为 None。
     app.state.test_llm = svc.test_llm
+    # 测试注入路径：暴露组装好的 Services（同一用途），便于测试对组件打桩观测
+    # （如 test_apikey_scope 用 spy 包住 retriever，断言越权请求根本不触达
+    # 检索）；生产路径下就是应用自己用的那个实例，无行为差异。
+    app.state.svc = svc
 
     # ---- 鉴权装配（spec §2/§7，角色矩阵+审计见 spec §3/§5，G3）----
     # auth="off"：既有功能测试路径，router 级依赖换成 synthetic_admin_actor

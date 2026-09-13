@@ -35,6 +35,10 @@ jobs:
         run: ruff check kbase kbase_mcp tests scripts eval
       - name: 配置全部可加载（真实 pydantic 校验，不只 yaml.safe_load）
         run: python scripts/check_config.py
+      - name: 部署变量覆盖（compose/config 引用的变量必须都在 .env.example 里）
+        # T06/G04：compose 漏列变量不会报错而是静默降级（.env 有值也传不进
+        # 容器），2026-09-14 修 IRUIDONG_API_KEY 时补的机械闸门。
+        run: python scripts/check_env_example.py
 
   backend:
     name: backend (pytest, sqlite+chroma)
@@ -58,6 +62,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev,mcp]" "chromadb<1"
+      - name: 库级权限矩阵与 scope 契约（安全门禁先跑，红灯归因更快）
+        # T01/T02/G01/G09：越权读写的回归闸门。单独一行是为了让"权限挂错"
+        # 这类红灯在第一分钟就出现，不用等全量 2.5 分钟。
+        run: python -m pytest -q tests/test_apikey_scope.py tests/test_acl_matrix.py tests/test_kb_acl.py
       - name: 后端全量测试（addopts 自动排除 external/pg）
         run: python -m pytest -q --junitxml=reports/backend.xml
       - name: 上传 junit
