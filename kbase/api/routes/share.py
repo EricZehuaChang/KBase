@@ -17,6 +17,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse
 
+from kbase.api.guards import KbGuard
 from kbase.api.routes import RouteDeps
 from kbase.api.schemas import QueryBody, ShareLinkCreate
 from kbase.api.services import Services
@@ -28,6 +29,10 @@ from kbase.models import Document, KnowledgeBase, ShareLink
 def register(app: FastAPI, router, svc: Services, deps: RouteDeps,
              *, run_query) -> None:
     sf = svc.sf
+    # T02/G09：管理组端点按链接绑定的 kb 过 ACL + scope（修前建链接只校验
+    # 库是否存在——拿到 kb_id 就能把无权库挂进免登录链接，绕开 ACL 把内容
+    # 对外发出去，比单个文档越权读更严重）。
+    guard = KbGuard(sf)
 
     # ---- 管理组（editor+）----
 
@@ -35,12 +40,16 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps,
                  dependencies=[deps.require_editor, deps.audit_mutation])
     def create_share_link(kb_id: str, body: ShareLinkCreate, request: Request):
         # 多库联查：路径主库 + extra_kb_ids 合并去重（主库恒为首项）；任一
-        # 库不存在即 404——建链接时就挡住脏引用，而不是等匿名查询才发现。
+        # 库不存在**或建链人无权**（ACL/scope）即 404——建链接时就挡住脏引用
+        # 与越权夹带，而不是等匿名查询才发现。
         all_ids = list(dict.fromkeys([kb_id, *body.extra_kb_ids]))
+        for k in all_ids:
+            guard.kb(k, request)
         with sf() as s:
-            for k in all_ids:
-                if s.get(KnowledgeBase, k) is None:
-                    raise AppError("error.kb_not_found", "知识库不存在: {id}", status=404, id=k)
+            missing = [k for k in all_ids if s.get(KnowledgeBase, k) is None]
+        if missing:
+            raise AppError("error.kb_not_found", "知识库不存在: {id}",
+                           status=404, id=missing[0])
         actor = getattr(request.state, "actor", None)
         row = ShareLink(id=str(uuid.uuid4()), kb_id=kb_id,
                         # 单库存 NULL（老行为字节级不变），联查才存 JSON
@@ -66,7 +75,9 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps,
         return [row.kb_id]
 
     @router.get("/kb/{kb_id}/share-links", dependencies=[deps.require_editor])
-    def list_share_links(kb_id: str):
+    def list_share_links(kb_id: str, request: Request):
+        # token 对建链接的人不是秘密，但仍只给有权访问该库的人看列表
+        guard.kb(kb_id, request)
         # token 对建链接的人不是秘密（列表就是为了复制分发），完整返回。
         # kb_names 供管理列表显示联查范围（已删副库名自然缺席）。
         with sf() as s:
@@ -85,13 +96,19 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps,
 
     @router.delete("/share-links/{link_id}",
                    dependencies=[deps.require_editor, deps.audit_mutation])
-    def revoke_share_link(link_id: str):
+    def revoke_share_link(link_id: str, request: Request):
         with sf() as s:
             row = s.get(ShareLink, link_id)
             if row is None:
                 raise AppError("error.share_link_not_found", "分享链接不存在: {id}", status=404, id=link_id)
             row.revoked = True     # 软删：审计可查，公开端点立即拒绝
             s.commit()
+        # 撤销按绑定库过 ACL + scope（联查链接任一绑定库有权即可撤）
+        for k in _link_kb_ids(row):
+            if guard.allows(k, request):
+                break
+        else:
+            raise AppError("error.share_link_not_found", "分享链接不存在: {id}", status=404, id=link_id)
         return {"ok": True}
 
     # ---- 公开组（app 级，token 即授权）----

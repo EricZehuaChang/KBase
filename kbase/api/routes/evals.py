@@ -6,35 +6,33 @@ viewer 不开放；库可见性沿用 M6-3 ACL（无权库统一 404）。
 from fastapi import Request
 from fastapi.concurrency import run_in_threadpool
 
-from kbase import evals, kb_acl
+from kbase import evals
 from kbase import retrieval_strategy as rs
+from kbase.api.guards import KbGuard
 from kbase.api.routes import RouteDeps
 from kbase.api.schemas import EvalRunBody, EvalSetCreate
 from kbase.api.services import Services
 from kbase.errors import AppError
-from kbase.models import KnowledgeBase
 
 
 def register(router, svc: Services, deps: RouteDeps) -> None:
     sf, cfg, retriever = svc.sf, svc.cfg, svc.retriever
 
-    def _guard_kb(kb_id: str, request: Request) -> None:
-        actor = getattr(request.state, "actor", None) or {"role": "admin"}
-        with sf() as s:
-            exists = s.get(KnowledgeBase, kb_id) is not None
-        if not exists or not kb_acl.can_access(sf, kb_id, actor):
-            raise AppError("error.kb_not_found", "知识库不存在: {id}", status=404, id=kb_id)
+    # T02/G09：评测集端点原先只判 ACL，没叠加 API Key 的库级 scope——
+    # 受限 key 能读写白名单外库的评测集（评测集会跑检索、暴露库内容形状）。
+    # 统一收敛到 KbGuard（ACL 且 scope）。
+    guard = KbGuard(sf)
 
     @router.post("/kb/{kb_id}/eval-sets",
                  dependencies=[deps.require_editor, deps.audit_mutation])
     def create_eval_set(kb_id: str, body: EvalSetCreate, request: Request):
-        _guard_kb(kb_id, request)
+        guard.kb(kb_id, request)
         return evals.create_set(sf, kb_id, body.name,
                                 [c.model_dump(exclude_none=True) for c in body.cases])
 
     @router.get("/kb/{kb_id}/eval-sets", dependencies=[deps.require_editor])
     def list_eval_sets(kb_id: str, request: Request):
-        _guard_kb(kb_id, request)
+        guard.kb(kb_id, request)
         return evals.list_sets(sf, kb_id)
 
     @router.delete("/eval-sets/{set_id}",
@@ -43,7 +41,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         row = evals.get_set(sf, set_id)
         if row is None:
             raise AppError("error.eval_set_not_found", "评测集不存在: {id}", status=404, id=set_id)
-        _guard_kb(row.kb_id, request)
+        guard.kb(row.kb_id, request)
         evals.delete_set(sf, set_id)
         return {"ok": True}
 
@@ -55,7 +53,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         row = evals.get_set(sf, set_id)
         if row is None:
             raise AppError("error.eval_set_not_found", "评测集不存在: {id}", status=404, id=set_id)
-        _guard_kb(row.kb_id, request)
+        guard.kb(row.kb_id, request)
         strategy = rs.resolve_strategy(cfg, rs.kb_retrieval_config(sf, row.kb_id))
         result = await run_in_threadpool(
             evals.run_eval, sf, retriever, set_id,
@@ -67,7 +65,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         row = evals.get_set(sf, set_id)
         if row is None:
             raise AppError("error.eval_set_not_found", "评测集不存在: {id}", status=404, id=set_id)
-        _guard_kb(row.kb_id, request)
+        guard.kb(row.kb_id, request)
         return evals.list_runs(sf, set_id)
 
     @router.get("/eval-runs/{run_id}", dependencies=[deps.require_editor])
@@ -77,5 +75,5 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
             raise AppError("error.eval_run_not_found", "回归记录不存在: {id}", status=404, id=run_id)
         row = evals.get_set(sf, run["set_id"])
         if row is not None:
-            _guard_kb(row.kb_id, request)
+            guard.kb(row.kb_id, request)
         return run

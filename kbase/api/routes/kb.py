@@ -15,6 +15,7 @@ from fastapi import (BackgroundTasks, Form, HTTPException, Query, Request,
 from fastapi.responses import FileResponse
 
 from kbase import chunk_admin, kb_acl
+from kbase.api.guards import KbGuard
 from kbase.api.routes import RouteDeps
 from kbase.api.schemas import (ChunkUpdate, DocumentReview, FeishuImportBody,
                                KBConfigBody, KBCreate, KbGrantsBody,
@@ -59,6 +60,9 @@ def _fetch_url(url: str) -> tuple[bytes, str]:
 def register(router, svc: Services, deps: RouteDeps) -> None:
     sf, cfg, store, keyword_index, pipeline = (
         svc.sf, svc.cfg, svc.store, svc.keyword_index, svc.pipeline)
+    # T02/G09：凡以 doc_id / chunk_id 为参数的端点都要过这道守卫——ACL 与
+    # API Key scope 两条闸门都过才放行，否则 404（见 kbase/api/guards.py）。
+    guard = KbGuard(sf)
 
     @router.get("/embedders", dependencies=[deps.require_viewer])
     def list_embedders():
@@ -423,9 +427,10 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
 
     @router.put("/documents/{doc_id}/review",
                 dependencies=[deps.require_editor, deps.audit_mutation])
-    def review_document(doc_id: str, body: DocumentReview):
+    def review_document(doc_id: str, body: DocumentReview, request: Request):
         """F 校验确认：管理员核对（可编辑）VLM 识别文本后确认入库——此刻
         才分块向量化。仅 pending_review 状态可执行（409 否则）。"""
+        guard.doc(doc_id, request)
         try:
             found = pipeline.approve_document(doc_id, markdown=body.markdown)
         except ValueError as e:
@@ -437,18 +442,16 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
             return {"id": doc.id, "status": doc.status, "error": doc.error}
 
     @router.get("/kb/{kb_id}/documents", dependencies=[deps.require_viewer])
-    def list_docs(kb_id: str):
+    def list_docs(kb_id: str, request: Request):
+        guard.kb(kb_id, request)
         with sf() as s:
             docs = s.query(Document).filter_by(kb_id=kb_id).all()
             return [{"id": d.id, "filename": d.filename, "status": d.status,
                      "error": d.error} for d in docs]
 
     @router.get("/documents/{doc_id}/content", dependencies=[deps.require_viewer])
-    def document_content(doc_id: str):
-        with sf() as s:
-            doc = s.get(Document, doc_id)
-        if doc is None:
-            raise AppError("error.doc_not_found", "文档不存在: {id}", status=404, id=doc_id)
+    def document_content(doc_id: str, request: Request):
+        doc = guard.doc(doc_id, request)
         content_path = cfg.data_dir / "files" / doc_id / "content.md"
         if not content_path.exists():
             raise AppError("error.doc_fulltext_not_found", "文档全文不存在: {id}", status=404, id=doc_id)
@@ -465,7 +468,8 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
                 or media_type.startswith("image/"))
 
     @router.get("/documents/{doc_id}/original", dependencies=[deps.require_viewer])
-    def document_original(doc_id: str, disposition: str = "attachment"):
+    def document_original(doc_id: str, request: Request,
+                          disposition: str = "attachment"):
         """获取识别前的原始上传文件（如 .docx/.pdf/扫描图），文件名恢复为
         用户上传时的原名。数据来源是 Document.source_path——上传时落在
         data_dir/uploads/ 的原件（摄取后不删除，重试 OCR 也依赖它）。
@@ -475,10 +479,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         disposition=attachment（默认）：浏览器下载，文件名为上传原名；
         disposition=inline：浏览器内联渲染（M5-2 引用定位预览用，PDF 可配合
         URL fragment #page=N 跳页）——仅白名单类型生效，其余强制 attachment。"""
-        with sf() as s:
-            doc = s.get(Document, doc_id)
-        if doc is None:
-            raise AppError("error.doc_not_found", "文档不存在: {id}", status=404, id=doc_id)
+        doc = guard.doc(doc_id, request)
         if not doc.source_path or not Path(doc.source_path).exists():
             raise AppError("error.original_file_gone",
                            "原始文件已不存在（历史数据未保留原件或已被清理）", status=404)
@@ -503,11 +504,8 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
 
     @router.post("/documents/{doc_id}/retry",
                  dependencies=[deps.require_editor, deps.audit_mutation])
-    def retry_document(doc_id: str):
-        with sf() as s:
-            doc = s.get(Document, doc_id)
-        if doc is None:
-            raise AppError("error.doc_not_found", "文档不存在: {id}", status=404, id=doc_id)
+    def retry_document(doc_id: str, request: Request):
+        guard.doc(doc_id, request)
         pipeline.retry_document(doc_id)
         with sf() as s:
             doc = s.get(Document, doc_id)
@@ -517,9 +515,10 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
 
     @router.get("/documents/{doc_id}/images/{filename}",
                 dependencies=[deps.require_viewer])
-    def get_document_image(doc_id: str, filename: str):
+    def get_document_image(doc_id: str, filename: str, request: Request):
         """回答附图直链（多模态一期）：files/{doc_id}/images/ 下的提取图。
         filename 强制取纯文件名（Path().name），杜绝 ../ 路径穿越。"""
+        guard.doc(doc_id, request)
         safe = Path(filename).name
         if safe != filename or not safe:
             raise AppError("error.image_not_found", "图片不存在", status=404)
@@ -530,10 +529,12 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         return FileResponse(str(img_path), media_type=media_type)
 
     @router.get("/documents/{doc_id}/chunks", dependencies=[deps.require_viewer])
-    def list_document_chunks(doc_id: str, offset: int = Query(default=0, ge=0),
+    def list_document_chunks(doc_id: str, request: Request,
+                             offset: int = Query(default=0, ge=0),
                              limit: int = Query(default=50, ge=1, le=200),
                              q: str | None = None):
         """分页列出文档的分块（叶子在前）；q 为文本包含过滤（定位坏块用）。"""
+        guard.doc(doc_id, request)
         result = chunk_admin.list_chunks(sf, doc_id, offset=offset,
                                          limit=limit, q=q)
         if result is None:
@@ -542,9 +543,10 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
 
     @router.put("/chunks/{chunk_id}",
                 dependencies=[deps.require_editor, deps.audit_mutation])
-    def update_chunk(chunk_id: str, body: ChunkUpdate):
+    def update_chunk(chunk_id: str, body: ChunkUpdate, request: Request):
         """启停/编辑一个块。停用=摘出向量与关键词索引（可恢复）；叶子编辑
         =按该库绑定的向量模型重嵌入+重索引；父块编辑仅落库。"""
+        guard.chunk(chunk_id, request)
         result = chunk_admin.update_chunk(
             sf, store, keyword_index, svc.embedder_for_kb, chunk_id,
             enabled=body.enabled, text=body.text)
@@ -560,7 +562,8 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
 
     @router.post("/kb/{kb_id}/retry-ocr",
                  dependencies=[deps.require_editor, deps.audit_mutation])
-    def retry_kb_ocr(kb_id: str, bg: BackgroundTasks):
+    def retry_kb_ocr(kb_id: str, request: Request, bg: BackgroundTasks):
+        guard.kb(kb_id, request)
         with sf() as s:
             pending = s.query(Document).filter_by(
                 kb_id=kb_id, status="pending_ocr").all()

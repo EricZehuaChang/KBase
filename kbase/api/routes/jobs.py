@@ -1,9 +1,10 @@
 """生成任务域路由：方案大纲、长任务（方案/汇编）的创建、查询与产物下载。"""
 from pathlib import Path
 
-from fastapi import BackgroundTasks, HTTPException
+from fastapi import BackgroundTasks, HTTPException, Request
 from fastapi.responses import FileResponse
 
+from kbase.api.guards import KbGuard
 from kbase.api.routes import RouteDeps
 from kbase.api.schemas import JobCreate, OutlineBody
 from kbase.api.services import Services
@@ -22,9 +23,13 @@ _DOCX_MEDIA_TYPE = ("application/vnd.openxmlformats-officedocument"
 
 def register(router, svc: Services, deps: RouteDeps) -> None:
     sf, cfg, retriever = svc.sf, svc.cfg, svc.retriever
+    # T02/G09：任务建/读/取产物都按 job 所属 kb 过 ACL + scope（修前只校验
+    # 角色：受限 key 或无授权 editor 拿 job_id 就能读他库产物）。
+    guard = KbGuard(sf)
 
     @router.post("/proposals/outline", dependencies=[deps.require_editor, deps.audit_mutation])
-    async def proposals_outline(body: OutlineBody):
+    async def proposals_outline(body: OutlineBody, request: Request):
+        guard.kb(body.kb_id, request)
         try:
             llm = svc.get_llm(body.provider)
         except KeyError as e:
@@ -38,7 +43,8 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
             raise HTTPException(502, str(e)) from e
 
     @router.post("/jobs", dependencies=[deps.require_editor, deps.audit_mutation])
-    def create_job_endpoint(body: JobCreate, bg: BackgroundTasks):
+    def create_job_endpoint(body: JobCreate, request: Request,
+                            bg: BackgroundTasks):
         if body.type not in ("proposal", "digest"):
             raise AppError("error.unknown_job_type", "未知的 job type: {type}", status=422, type=body.type)
         if body.type == "proposal":
@@ -47,9 +53,10 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
                                "proposal job 缺少必需参数：topic/outline", status=422)
         with sf() as s:
             kb = s.get(KnowledgeBase, body.kb_id)
-            if kb is None:
-                raise AppError("error.kb_not_found", "知识库不存在: {id}", status=404, id=body.kb_id)
-            kb_name = kb.name
+        if kb is None or not guard.allows(body.kb_id, request):
+            raise AppError("error.kb_not_found", "知识库不存在: {id}",
+                           status=404, id=body.kb_id)
+        kb_name = kb.name
         try:
             llm = svc.get_llm(body.provider)
         except KeyError as e:
@@ -76,21 +83,26 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         return {"id": job["id"]}
 
     @router.get("/jobs", dependencies=[deps.require_viewer])
-    def jobs_list(kb_id: str):
+    def jobs_list(kb_id: str, request: Request):
+        guard.kb(kb_id, request)
         return list_jobs(sf, kb_id)
 
     @router.get("/jobs/{job_id}", dependencies=[deps.require_viewer])
-    def jobs_detail(job_id: str):
+    def jobs_detail(job_id: str, request: Request):
         job = get_job(sf, job_id)
         if job is None:
             raise AppError("error.job_not_found", "job 不存在: {id}", status=404, id=job_id)
+        # job 只带 kb_id，不冗余存库级权限判定——按当前 actor 复核一次，
+        # 无权（ACL 或 scope）按"不存在"处理，不泄漏 job 存在性。
+        guard.kb(job["kb_id"], request)
         return job
 
     @router.get("/jobs/{job_id}/artifact", dependencies=[deps.require_viewer])
-    def jobs_artifact(job_id: str, format: str = "md"):
+    def jobs_artifact(job_id: str, request: Request, format: str = "md"):
         job = get_job(sf, job_id)
         if job is None:
             raise AppError("error.job_not_found", "job 不存在: {id}", status=404, id=job_id)
+        guard.kb(job["kb_id"], request)
         if job["status"] not in ("done", "done_with_errors"):
             raise AppError("error.job_not_done", "job 尚未完成: status={state}", status=409, state=job['status'])
         if not job["artifact_path"]:
