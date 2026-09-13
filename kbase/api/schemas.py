@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, StrictBool, StrictInt, model_validator
 
+from kbase import params as params_mod
+
 
 class LoginBody(BaseModel):
     username: str
@@ -22,16 +24,70 @@ class KBCreate(BaseModel):
     embedder: str | None = None
 
 
+def _check_range_condition(k: str, v: dict) -> None:
+    """范围条件（T03/G02）：把 params.is_range_condition / numeric_bounds 的
+    判定搬到 HTTP 层，使 `{"gte":450,"lte":550}` 这类字典能通过请求体校验。
+
+    底层（params.py + Qdrant/Chroma/BM25 三路后过滤）早就支持范围条件，缺的
+    只有这一层校验——此前 `_validate_filters` 只放行标量/标量列表，范围条件在
+    HTTP 层就被 422 挡掉，MCP（原样转发 filters）同样不可用。
+
+    拒绝的形态（错误信息写清合法写法，省掉调用方猜）：
+    - `_RANGE_KEYS` 之外的键（拼错 `{"min":450}` 必须报错，不能静默当等值）；
+    - 非数值（`{"gte":"很贵"}`）；
+    - 上下界颠倒（`gte > lte`）；
+    - `tol` 为负；`approx` 与 `gte`/`lte` 混用（两条语义互斥）。
+    """
+    valid = " 合法写法：{\"gte\":450,\"lte\":550} 或 {\"approx\":500,\"tol\":0.1}"
+    unknown = [key for key in v if key not in params_mod._RANGE_KEYS]
+    if unknown:
+        raise ValueError(
+            f"filters[{k!r}] 范围条件只认 "
+            f"{list(params_mod._RANGE_KEYS)}，收到未知键 {unknown}。" + valid)
+    for key in ("gte", "lte", "approx", "tol"):
+        if key not in v:
+            continue
+        # bool 是 int 的子类，显式排除：{"gte": true} 是调用方写错了，不能当 1
+        if isinstance(v[key], bool) or not isinstance(v[key], (int, float)):
+            raise ValueError(
+                f"filters[{k!r}].{key} 必须是数值，收到 {v[key]!r}。" + valid)
+    if "approx" in v and ("gte" in v or "lte" in v):
+        raise ValueError(
+            f"filters[{k!r}] 的 approx 与 gte/lte 互斥，只能二选一。" + valid)
+    if "tol" in v and "approx" not in v:
+        raise ValueError(f"filters[{k!r}].tol 只与 approx 搭配使用。" + valid)
+    if "tol" in v and v["tol"] < 0:
+        raise ValueError(f"filters[{k!r}].tol 不能为负，收到 {v['tol']!r}。" + valid)
+    if params_mod.numeric_bounds(v) is None:
+        raise ValueError(
+            f"filters[{k!r}] 不是可用的范围条件（空区间或缺上下界）。" + valid)
+    lo, hi = params_mod.numeric_bounds(v)
+    if lo is not None and hi is not None and lo > hi:
+        raise ValueError(
+            f"filters[{k!r}] 上下界颠倒：{lo} > {hi}。" + valid)
+
+
 def _validate_filters(filters: dict | None) -> dict | None:
-    """检索元数据过滤（方案卡）形状校验：扁平 dict，值=标量或标量列表。
-    字段间 AND、列表内 OR 的语义由 retriever/向量库适配器实现。"""
+    """检索元数据过滤（方案卡）形状校验：扁平 dict，值=标量、标量列表或
+    范围条件 dict。字段间 AND、列表内 OR、范围条件按区间重叠判定的语义由
+    retriever/向量库适配器实现（kbase/params.py 是唯一权威）。"""
     if filters is None:
         return None
     for k, v in filters.items():
+        if params_mod.is_range_condition(v):
+            _check_range_condition(k, v)
+            continue
+        if isinstance(v, dict):
+            # 含 gte/lte/approx 的 dict 走上面的分支；其余 dict 仍按不支持处理
+            # （既不可能是标量也不是范围条件——例如嵌套对象）
+            raise ValueError(
+                f"filters[{k!r}] 不支持嵌套对象；范围条件请用 "
+                f"{list(params_mod._RANGE_KEYS)}，如 {{\"gte\":450,\"lte\":550}}")
         vals = v if isinstance(v, list) else [v]
         if not vals or not all(isinstance(x, (str, int, float, bool)) for x in vals):
             raise ValueError(
-                f"filters[{k!r}] 只支持标量或标量列表（AND/OR 语义见文档）")
+                f"filters[{k!r}] 只支持标量、标量列表或范围条件 dict"
+                f"（AND/OR 语义见文档）")
     return filters
 
 

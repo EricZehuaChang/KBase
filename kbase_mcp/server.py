@@ -135,6 +135,9 @@ async def ask_knowledge_base_impl(c: KBaseClient, kb_id: str, question: str,
 _FILTERS_DOC = (
     "filters（可选）：按 chunk 元数据过滤，形如 {\"industry\": \"零售\"} 或 "
     "{\"data_entities\": [\"订单\", \"库存\"]}；字段间 AND，列表值内 OR。"
+    "数值范围写成 {\"功率\": {\"gte\": 450, \"lte\": 550}}（上下界可只给一个），"
+    "或用相对公差 {\"功率\": {\"approx\": 500, \"tol\": 0.1}}（±10%）；"
+    "范围条件命中参数区间与查询区间有交集的表格块。"
     "仅对带 front matter 元数据摄取的文档（如方案卡）生效。")
 
 

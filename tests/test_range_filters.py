@@ -10,6 +10,8 @@
 """
 import json
 
+from fastapi.testclient import TestClient
+
 from kbase.params import (
     is_range_condition,
     numeric_bounds,
@@ -242,3 +244,148 @@ def test_chunker_table_linearization_unchanged():
               if c.parent_id is not None]
     lin = leaves[0].meta["layout"]["linearized"]
     assert "城市级别=二线城市；住宿上限=每晚350元。" in lin
+
+
+# ------------------------------------------------- HTTP / MCP 公开入口契约（T03/G02）
+
+# 底层三路早就支持范围条件，但公共入口此前在 HTTP 层就被 422 挡掉：
+# `kbase/api/schemas.py` 的 `_validate_filters` 只放行标量/标量列表，而
+# QueryBody 与 SearchBody 共用它，MCP 又原样转发 filters。下面这一组钉住
+# 「合法形态 200 / 非法形态 422」的对外契约。
+
+def _api_client(tmp_path, fake_embedder, monkeypatch):
+    """auth=off 的测试应用（只测 filters 契约，与鉴权无关）。"""
+    from fastapi.testclient import TestClient
+
+    from kbase.api.main import create_app
+    from tests.test_api import CFG, FakeLLM
+    cfg = tmp_path / "kbase.yaml"
+    cfg.write_text(CFG.format(data_dir=str(tmp_path / "data").replace("\\", "/")),
+                   encoding="utf-8")
+    app = create_app(config_path=cfg, embedder=fake_embedder,
+                     llms={"fake": FakeLLM()}, reranker=False, auth="off")
+    return app, TestClient(app)
+
+
+CARD_MD = """---
+id: card-fan
+industry: 零售
+---
+# 风扇选型
+
+| 型号 | 功率 | 风量 |
+| --- | --- | --- |
+| A1 | 500W | 420CFM |
+| A2 | 800W | 610CFM |
+"""
+
+
+def test_search_body_accepts_range_and_rejects_invalid(tmp_path, fake_embedder,
+                                                       monkeypatch):
+    app, c = _api_client(tmp_path, fake_embedder, monkeypatch)
+    kb = c.post("/api/kb", json={"name": "选型库"}).json()["id"]
+    r = c.post(f"/api/kb/{kb}/documents",
+               files={"files": ("card.md", CARD_MD.encode("utf-8"),
+                                "text/markdown")})
+    assert r.status_code == 200
+
+    # 合法形态：标量 / 列表 / gte+lte / 只给单边 / approx+tol
+    ok_bodies = [
+        {"query": "风扇", "filters": {"industry": "零售"}},
+        {"query": "风扇", "filters": {"industry": ["零售", "制造"]}},
+        {"query": "风扇", "filters": {"功率": {"gte": 450, "lte": 550}}},
+        {"query": "风扇", "filters": {"功率": {"gte": 450}}},
+        {"query": "风扇", "filters": {"功率": {"approx": 500, "tol": 0.1}}},
+        # approx 不传 tol：默认 5%（params.numeric_bounds 的既有默认）
+        {"query": "风扇", "filters": {"功率": {"approx": 500}}},
+        {"query": "风扇", "filters": {"industry": "零售",
+                                      "功率": {"gte": 450, "lte": 550}}},
+    ]
+    for body in ok_bodies:
+        resp = c.post(f"/api/kb/{kb}/search", json=body)
+        assert resp.status_code == 200, (body, resp.text)
+        assert "blocks" in resp.json()
+
+    # 范围条件真的参与过滤：500W 落在 A1 组 [500,800] 内，纯值条件不误杀
+    hit = c.post(f"/api/kb/{kb}/search",
+                 json={"query": "风扇", "filters": {"功率": {"gte": 500,
+                                                            "lte": 520}}})
+    assert hit.status_code == 200 and hit.json()["blocks"]
+    miss = c.post(f"/api/kb/{kb}/search",
+                  json={"query": "风扇",
+                        "filters": {"功率": {"gte": 5000, "lte": 6000}}})
+    assert miss.status_code == 200 and miss.json()["blocks"] == []
+
+    # 非法形态：未知键 / 非数值 / 颠倒区间 / tol 为负 / 空 dict / 嵌套对象 /
+    # approx 与 gte 混用 / tol 无 approx
+    bad_filters = [
+        {"功率": {"min": 450}},                        # 未知键（写错成 min/max）
+        {"功率": {"gte": "很贵"}},                      # 非数值
+        {"功率": {"gte": True}},                       # bool 不是数值
+        {"功率": {"gte": 600, "lte": 500}},             # 上下界颠倒
+        {"功率": {"approx": 500, "tol": -0.1}},         # tol 为负
+        {"功率": {}},                                  # 空 dict
+        {"功率": {"gte": 450, "approx": 500}},          # 两种语义混用
+        {"功率": {"tol": 0.1}},                        # tol 无 approx
+        {"功率": {"gte": 450, "lte": 550, "x": 1}},     # 合法键 + 未知键
+        {"规格": {"a": {"b": 1}}},                      # 嵌套对象
+    ]
+    for filters in bad_filters:
+        for path, payload in (
+                (f"/api/kb/{kb}/search", {"query": "风扇", "filters": filters}),
+                (f"/api/kb/{kb}/query", {"question": "风扇", "filters": filters})):
+            resp = c.post(path, json=payload)
+            assert resp.status_code == 422, (path, filters, resp.status_code)
+
+
+def test_query_body_accepts_range_condition(tmp_path, fake_embedder,
+                                            monkeypatch):
+    """问答入口共用同一份校验：范围条件放行且能落到检索。"""
+    app, c = _api_client(tmp_path, fake_embedder, monkeypatch)
+    kb = c.post("/api/kb", json={"name": "选型库"}).json()["id"]
+    c.post(f"/api/kb/{kb}/documents",
+           files={"files": ("card.md", CARD_MD.encode("utf-8"), "text/markdown")})
+    ok = c.post(f"/api/kb/{kb}/query",
+                json={"question": "500 瓦的风扇怎么选",
+                      "filters": {"功率": {"gte": 450, "lte": 550}}})
+    assert ok.status_code == 200
+    assert "event: citations" in ok.text or "event: token" in ok.text
+    # 无命中（区间之外）→ 走拒答，不报错
+    miss = c.post(f"/api/kb/{kb}/query",
+                  json={"question": "风扇",
+                        "filters": {"功率": {"gte": 5000, "lte": 6000}}})
+    assert miss.status_code == 200 and "未找到依据" in miss.text
+
+
+async def test_mcp_search_forwards_range_filters(tmp_path, fake_embedder):
+    """MCP 原样转发 filters：范围条件经 search_knowledge 端到端可用
+    （此前被 HTTP 层 422 挡掉，MCP 侧表现为工具返回错误）。"""
+    import httpx
+
+    from kbase.api.main import create_app
+    from kbase_mcp.server import KBaseClient, search_knowledge_impl
+    from tests.test_api import CFG, FakeLLM
+    cfg = tmp_path / "kbase.yaml"
+    cfg.write_text(CFG.format(data_dir=str(tmp_path / "data").replace("\\", "/")),
+                   encoding="utf-8")
+    app = create_app(config_path=cfg, embedder=fake_embedder,
+                     llms={"fake": FakeLLM()}, reranker=False, auth="off")
+    c0 = TestClient(app)
+    kb = c0.post("/api/kb", json={"name": "选型库"}).json()["id"]
+    c0.post(f"/api/kb/{kb}/documents",
+            files={"files": ("card.md", CARD_MD.encode("utf-8"), "text/markdown")})
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport,
+                                 base_url="http://kbase.test") as http:
+        client = KBaseClient(http)
+        hit = await search_knowledge_impl(
+            client, kb, "风扇", filters={"功率": {"gte": 450, "lte": 550}})
+        assert isinstance(hit, list) and hit, hit
+        miss = await search_knowledge_impl(
+            client, kb, "风扇", filters={"功率": {"gte": 5000, "lte": 6000}})
+        assert miss == [], miss
+        # 非法条件经 MCP 转发回的是错误对象（不是静默空集），形如 {"error": ...}
+        bad = await search_knowledge_impl(
+            client, kb, "风扇", filters={"功率": {"min": 1}})
+        assert isinstance(bad, dict) and bad.get("error"), bad
