@@ -48,6 +48,11 @@ COPY kbase/ kbase/
 COPY kbase_mcp/ kbase_mcp/
 COPY web/ web/
 COPY config/ config/
+# T07/G05：运维脚本随镜像带上（scripts/backup.py 是运维手册里的备份入口，
+# 此前镜像里没有它，容器内无法执行备份；scripts/ 在 .dockerignore 里没有
+# 被排除）。不要改回只 COPY 应用代码——部署只发 git archive，镜像与发版包
+# 都必须自带工具，否则现场只能靠手工 cp。
+COPY scripts/ scripts/
 COPY entrypoint.sh /app/entrypoint.sh
 
 RUN chmod +x /app/entrypoint.sh

@@ -149,3 +149,77 @@ def test_config_standard_yaml_loads_via_app_config():
     assert cfg.embedder.name == "tei"
     assert cfg.vectorstore.name == "qdrant"
     assert cfg.db.url.startswith("postgresql+psycopg://")
+
+
+# ------------------------------- T05/T06/T07：标准档密码、env 样例、发版包内容
+
+def test_dockerfile_copies_ops_scripts():
+    """T07/G05：镜像必须自带 scripts/——运维手册里的备份入口就是
+    scripts/backup.py，镜像里没有它现场只能手工 cp。"""
+    text = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
+    assert "COPY scripts/ scripts/" in text
+    assert (REPO_ROOT / "scripts" / "backup.py").is_file()
+    # scripts/ 不能被 .dockerignore 排除（否则 COPY 直接构建失败）
+    ignored = (REPO_ROOT / ".dockerignore").read_text(encoding="utf-8")
+    assert not any(line.strip() == "scripts/" for line in ignored.splitlines())
+
+
+def test_compose_lite_passes_iruidong_key():
+    """T06/G04：lite 的 4 个 iruidong-* provider 依赖 IRUIDONG_API_KEY，
+    compose 没列它时 .env 里有值也传不进容器（静默降级）。"""
+    app = _load_yaml("docker-compose.lite.yml")["services"]["app"]
+    assert "IRUIDONG_API_KEY" in app["environment"]
+
+
+def test_compose_standard_passes_password_env_and_iruidong():
+    """standard：POSTGRES_PASSWORD 与 IRUIDONG_API_KEY 都要透传。"""
+    app = _load_yaml("docker-compose.standard.yml")["services"]["app"]
+    assert "POSTGRES_PASSWORD" in app["environment"]
+    assert "IRUIDONG_API_KEY" in app["environment"]
+    # 与 config 的 db.password_env 同名同源
+    cfg = _load_yaml("config/kbase.standard.yaml")
+    assert cfg["db"]["password_env"] == "POSTGRES_PASSWORD"
+
+
+def test_env_example_tracked_and_covers_compose_vars():
+    """仓库有受跟踪的 .env.example；compose/config 引用的变量全覆盖，
+    且文件里**没有任何疑似真实密钥的值**（只写变量名）。"""
+    example = REPO_ROOT / ".env.example"
+    assert example.is_file(), "缺少受跟踪的 .env.example"
+    from scripts.check_env_example import main as check_env
+    assert check_env() == 0
+    for line in example.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        assert line.endswith("="), f".env.example 只允许写变量名，收到: {line}"
+
+
+def test_release_workflow_packages_ops_scripts_and_docs():
+    """T07/G05：release 的 git archive 白名单含 scripts / README / CHANGELOG /
+    docs / .env.example，并有"包内必须有备份脚本"的冒烟断言。"""
+    text = (REPO_ROOT / ".github" / "workflows" / "release.yml").read_text(
+        encoding="utf-8")
+    block = text[text.index("git archive --format=tar.gz"):]
+    block = block[:block.index("sha256sum")]
+    for item in ("scripts", "docs", "README.md", "CHANGELOG.md", ".env.example"):
+        assert item in block, f"白名单缺 {item}"
+    assert "scripts/backup.py" in text          # 包内容冒烟
+    # .env.example 不能被 .gitignore 忽略（部署第一步就要照它填 .env）
+    ignored = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8")
+    assert ".env.example" not in ignored
+    assert ".env" in ignored
+
+
+def test_ops_manual_port_matches_compose():
+    """T07/G05：运维手册的健康检查/监控示例端口必须与 compose 一致（8100）。"""
+    manual = (REPO_ROOT / "docs" / "manual" / "运维手册.md").read_text(
+        encoding="utf-8")
+    assert "localhost:8000" not in manual
+    assert "kbase-host:8000" not in manual
+    assert "localhost:8100/healthz" in manual
+    assert "kbase-host:8100" in manual
+    # 手册里点名的运维工具必须在仓库里（避免文档指向不存在的脚本）
+    assert (REPO_ROOT / "scripts" / "backup.py").is_file()
+    # 备份范围提示：配置/.env/license/模型缓存不在 data_dir 备份内
+    assert "备份范围只覆盖" in manual

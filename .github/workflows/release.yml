@@ -49,12 +49,24 @@ jobs:
           fi
       - name: 打包 git archive（与部署脚本同形：只含服务器 build 需要的路径）
         run: |
+          # T07/G05：白名单含 scripts（运维脚本：备份/重建索引/许可证签发）、
+          # README.md、CHANGELOG.md、docs（运维手册）——此前都不在包里，
+          # 客户拿到发版包没有备份脚本与手册，只能回头找我们要。
+          # .env.example 必须带上：部署第一步就是照它填 .env。
           TAG="${{ steps.version.outputs.tag }}"
           git archive --format=tar.gz -o "kbase-${TAG}.tar.gz" HEAD \
-            kbase kbase_mcp web config Dockerfile entrypoint.sh pyproject.toml \
-            docker-compose.lite.yml docker-compose.standard.yml .dockerignore
+            kbase kbase_mcp web config scripts docs Dockerfile entrypoint.sh \
+            pyproject.toml README.md CHANGELOG.md .env.example .dockerignore \
+            docker-compose.lite.yml docker-compose.standard.yml
           sha256sum "kbase-${TAG}.tar.gz" > "kbase-${TAG}.tar.gz.sha256"
-          tar tzf "kbase-${TAG}.tar.gz" | head -8
+          # 冒烟：包里必须有运维脚本与部署文档，否则这次发版等于没带工具
+          tar tzf "kbase-${TAG}.tar.gz" > /tmp/pkg.list
+          for f in scripts/backup.py README.md CHANGELOG.md .env.example \
+                   docs/manual/运维手册.md; do
+            grep -qx "$f" /tmp/pkg.list || {
+              echo "::error::发版包缺少 $f"; exit 1; }
+          done
+          grep -c . /tmp/pkg.list
       - name: 上传 Release
         uses: softprops/action-gh-release@v2
         with:

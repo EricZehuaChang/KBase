@@ -7,9 +7,9 @@ KBase 是面向企业的**单租户**私有化知识库应用：文档摄取、�
 - **lite**：单容器，SQLite + 嵌入式 Chroma + 进程内 bge-m3 / bge-reranker-v2-m3。适合演示与小规模私有化交付，不需要 GPU。
 - **standard**：app + PostgreSQL 16 + Qdrant + 两个 TEI（embed / rerank）共 5 个服务，面向生产与较高并发。
 
-> 本文核对日期：2026-09-14；工程基线为本仓库 `main` 的 `25117bc`。**下文所有命令默认在 KBase 仓库根目录执行。**
+> 本文核对日期：2026-09-14（09-14 缺口修复轮更新）；工程基线为本仓库 `main` 的 `25117bc`。**下文所有命令默认在 KBase 仓库根目录执行。**
 >
-> 先了解三件事：①API Key 的库白名单没有覆盖 `/v1` 兼容接口；②数值范围 / approx 形式的元数据 filters 会被 HTTP 请求校验拒绝；③standard 的数据库密码不会自动注入，只填 `.env` 无法完成配置。详见「已知限制」。
+> 先了解三件事：①部署变量以受跟踪的 [`.env.example`](.env.example) 为准，复制成 `.env` 再填值；②lite 默认 LLM `glm-5-turbo` 与 GLM-OCR 都读 `ZHIPU_API_KEY`，两者都调云服务；③standard 的 PG 密码由 `db.password_env` 从环境变量渲染，不再是字面占位符。当前仍存在的限制见「已知限制」。
 
 ## 能力与边界
 
@@ -68,7 +68,7 @@ loadtest/           历史压测脚本与报告
 
 前置：Docker Engine / Desktop 与 Compose 插件，以及模型下载和所选模型 API 的网络访问。首次启动会下载本地 embedding 与 reranker 权重（bge-m3 + bge-reranker-v2-m3，体积不小），耗时取决于缓存、网络与机器。
 
-1. 在**仓库根目录**创建 `.env`，替换所有占位值：
+1. 在**仓库根目录**按受跟踪的 [`.env.example`](.env.example) 创建 `.env`（`cp .env.example .env`），替换所有占位值。至少要填：
 
 ```dotenv
 KBASE_SECRET_KEY=<随机生成的长密钥>
@@ -81,6 +81,8 @@ ZHIPU_API_KEY=<使用默认LLM和GLM-OCR时需要的密钥>
 # MOONSHOT_API_KEY=...
 # IRUIDONG_API_KEY=...
 ```
+
+`.env.example` 只写变量名与说明、不含任何真实值；它覆盖了 compose 与 `config/*.yaml` 引用的全部变量，CI 会用 `scripts/check_env_example.py` 核对（漏一个即门禁红）。
 
 `KBASE_SECRET_KEY` 可用 `python -c "import secrets; print(secrets.token_urlsafe(48))"` 生成。`.env` 已在 `.gitignore` 中，不要提交真实密钥。lite 默认的 LLM 是 `glm-5-turbo`、OCR 是 `glm-ocr`，两者都读 `ZHIPU_API_KEY`；这是当前配置里写死的默认值，不代表对应厂商服务已在本轮验证可用。
 
@@ -178,8 +180,8 @@ retrieval:
 | `KBASE_SECRET_KEY` | Compose 必填；会话 JWT 签名。原生启动缺省时生成随机密钥并存入 `app_settings`，保留 DB 的重启会复用 |
 | `KBASE_ADMIN_PASSWORD` | 仅 `users` 表为空的首启引导使用 |
 | `ZHIPU_API_KEY` / `DASHSCOPE_API_KEY` / `DEEPSEEK_API_KEY` / `OPENAI_API_KEY` / `MOONSHOT_API_KEY` | 各 provider 的 `api_key_env` 指向的密钥；按实际启用的通道配置，没有哪一家对所有部署都必需 |
-| `IRUIDONG_API_KEY` | YAML 已内置 4 个 iruidong 中转通道，但 lite Compose 未透传该变量，需要时自行在 `environment` 补映射 |
-| `POSTGRES_PASSWORD` | standard 的 PG 容器密码；**不会自动改写应用 YAML 里的 `PASSWORD`** |
+| `IRUIDONG_API_KEY` | YAML 内置 4 个 iruidong 中转通道所需的密钥；lite 与 standard 两份 Compose 都已透传 |
+| `POSTGRES_PASSWORD` | standard 的 PG 容器密码。与 `config/kbase.standard.yaml` 的 `db.password_env` 同源：应用启动时用它渲染 `db.url`，改一处两边一致；变量缺失会直接报错 |
 | `HF_ENDPOINT` / `HF_HUB_OFFLINE` | 模型下载端点 / 已缓存模型的离线加载 |
 | `KBASE_PDF_PARSER` | 设为 `markitdown` 可强制使用 PDF 回退解析器 |
 | `KBASE_LICENSE_FILE` | 许可证文件路径；容器使用时还要显式挂载文件并传入变量 |
@@ -188,7 +190,7 @@ retrieval:
 | `KBASE_MCP_TOKEN` | MCP HTTP 传输的独立 Bearer token；未配置即不启用这层校验 |
 | `KBASE_MCP_FILTERS_DOC` | 为 MCP 工具说明追加业务元数据词表 |
 
-Compose 的 `.env` 主要用于变量插值，**不会**把其中所有变量自动注入容器；要确认某个变量是否进入进程，请看对应服务的 `environment` / `env_file`。仓库当前没有受跟踪的 `.env.example`，请以 Compose 文件与本节表格为准。
+Compose 的 `.env` 主要用于变量插值，**不会**把其中所有变量自动注入容器；要确认某个变量是否进入进程，请看对应服务的 `environment` / `env_file`。完整变量清单见 [`.env.example`](.env.example)，本表只列需要解释语义的那些。
 
 ## REST、MCP 与分享接入
 
@@ -255,9 +257,9 @@ standard Compose 含 app、PostgreSQL 16、Qdrant、TEI embedding、TEI rerank �
 
 执行启动命令前必须：
 
-1. 配置 `KBASE_SECRET_KEY`、`POSTGRES_PASSWORD` 与所选 LLM 的密钥。
-2. **为应用准备一份受保护的部署配置**，使 `db.url` 中的密码与 PG 一致。`config/kbase.standard.yaml` 里写的是字面 `PASSWORD` 占位符，而配置加载器与 `entrypoint.sh` 都不做环境变量渲染（该文件顶部“会被环境变量渲染”的注释是不准确的），只填 `.env` 会导致 PG 与应用密码不一致。需要 URL 编码的密码必须正确编码，含真实凭据的配置不得提交。
-3. 配置 OCR 地址、LLM 通道及其环境透传。standard Compose 的 app 服务只透传 `KBASE_SECRET_KEY`、`KBASE_ADMIN_PASSWORD`、`DASHSCOPE_API_KEY` 与 `KBASE_WAIT_FOR`，其他通道密钥需要自行加进 `environment`；standard 的默认模型清单与 lite 不同步，不能假设两份 YAML 的业务配置一致。
+1. 配置 `KBASE_SECRET_KEY`、`POSTGRES_PASSWORD` 与所选 LLM 的密钥（照 [`.env.example`](.env.example) 填）。
+2. **数据库密码无需改动配置文件**：`config/kbase.standard.yaml` 的 `db.url` 里不写密码，由 `db.password_env: POSTGRES_PASSWORD` 指名的环境变量在启动时渲染（`kbase/config.py:resolve_db_url` 走 `make_url().set(password=...)`，含 `@ : / % {` 的密码会自动转义）。变量缺失会明确报错，不会静默用错密码连库。只有需要自己一份配置（如自定义端口/库名）时才复制该文件并按同样写法给出 `password_env`；含真实凭据的配置不得提交。
+3. 配置 OCR 地址、LLM 通道及其环境透传。standard Compose 的 app 服务透传 `KBASE_SECRET_KEY`、`KBASE_ADMIN_PASSWORD`、`DASHSCOPE_API_KEY`、`POSTGRES_PASSWORD`、`IRUIDONG_API_KEY` 与 `KBASE_WAIT_FOR`，其他通道密钥需要自行加进 `environment`；standard 的默认模型清单与 lite 不同步，不能假设两份 YAML 的业务配置一致。
 4. OCR 走 `host.docker.internal:7861`，Linux 宿主依赖 Compose 里已有的 `extra_hosts: host.docker.internal:host-gateway`；Docker Desktop 默认支持。
 
 完成配置后：
@@ -337,16 +339,19 @@ docker run --rm --entrypoint sh kbase:ci -c 'test -f /app/web/index.html && test
 
 | 优先级 | 当前缺口 |
 |---|---|
-| P0 | `/v1/models` 与 `/v1/chat/completions` 未应用 API Key 的 `scope_kb_ids`（本轮用真实鉴权依赖 + 内存合成数据复现：受限 key 可列出并访问白名单外的库） |
-| P1 | 数值范围 / approx filters 的底层实现与请求模型脱节：`SearchBody` / `QueryBody` 对标量与列表返回 200，对 `gte/lte` 与 `approx/tol` 返回 422 |
-| P1 | standard 的 DB 密码没有自动注入闭环；lite Compose 缺 `IRUIDONG_API_KEY` 透传；仓库无受跟踪的 `.env.example` |
-| P1 | 运行包与 release 包不含备份脚本和文档；旧备份说明漏了 `uploads`；`docs/manual/运维手册.md` 的健康 / Prometheus 示例仍写 8000（当前 lite 与 standard 的 Compose 都是 8100） |
+| P0 | 仍缺 API Key 生命周期治理：没有过期时间、最近使用时间、IP 白名单与配额（`api_keys` 表只有 8 个字段）；`/v1` 响应的 token 用量恒为 0；全仓没有限流实现 |
+| P0 | 分享链接没有过期 / 密码 / 访问次数上限；登录失败只有审计、没有锁定与退避 |
+| P1 | 生成任务（`/api/jobs*`）与连接器路由的库级判定已补齐，但**批量导入批次未登记**：`kbase/bulk_import.py` 的 JSONL 清单不入库，管理端没有导入记录页 |
+| P1 | 问答结果无归因埋点：拒答只留一条 100 字审计，`/v1` 与飞书机器人路径各写各的；运营看板无法按空检索 / 低于阈值 / 越权分桶 |
 | P2 | 包版本仍是 `0.1.0`（前端 `0.0.0`），CHANGELOG 停留在 v1.0.x；Python 依赖为版本范围且 `qdrant/qdrant`、TEI 使用 `latest` 类标签，尚未形成固定 digest 的物料清单 |
+
+09-14 缺口修复轮已闭环的项（本轮新增测试钉住，见各提交）：`/v1` 入口的库白名单、文档 / 分块 / 评测 / 任务 / 连接器 / 分享链接的库级 ACL 与 scope 守卫、数值范围 filters 的 HTTP 契约、旧表格参数回填（`python -m kbase.reindex --kb <id>` 默认补算，`--no-backfill-params` 关闭）、standard 的 PG 密码环境变量渲染、lite/standard 的 `IRUIDONG_API_KEY` 透传与 `.env.example`、发版包与镜像带上 `scripts/` 与文档、运维手册端口口径统一为 8100。
 
 其他必须如实说明的边界：
 
-- 参数范围匹配是**块级 min/max 区间相交**，不是逐行精确筛选。旧文档的 `Chunk.layout` 若没有 params，单纯运行 `python -m kbase.reindex --kb <kb_id>` 只会复制既有 layout，不会补算参数；这类文档需要重新解析 / 分块，或专门做参数回填。
-- 本次核对只做了静态代码检查与少量最小探针，未重跑完整 pytest 与前端测试，未启动 standard 栈，未做真实备份恢复演练，也未访问生产环境。历史 CI 的 611 后端 / 171 前端通过数属于当时基线，不代表当前 HEAD。
+- 参数范围匹配是**块级 min/max 区间相交**，不是逐行精确筛选。旧文档的 `Chunk.layout` 若没有 params，`python -m kbase.reindex --kb <kb_id>` 现在会补算并落库（已有 params 的块不动，人工校正过的值不被覆盖）；补算只对仍是合法 Markdown 表格的块生效，失败/非数值列不写键。
+- 库级 scope 对检索 / 问答路径是**静默空集**（不报错、不提示，防探测）；对文档 / 分块 / 评测 / 任务 / 连接器 / 分享链接等资源型端点是 **404**（与"资源不存在"不可区分）。这两套语义是有意区分的，不要按"统一报错"改。
+- standard 档的真机链路（PG 连库、Qdrant、TEI、5 服务全栈启动）本轮**未验证**：本机没有 Docker daemon 与 standard 栈。
 - 引用溯源不做逐页 bbox 高亮，这是已记录的产品取舍，不算遗漏项。
 - 真实 IdP 联调、更多连接器与源权限同步、视频 / ASR 时间戳、Deep Research 与编排属于后续方向，**尚未上线**，不应作为现成能力对外承诺。
 - 压测数字（10 并发 P95 亚秒、100 并发 P95 约 4.2～5.2s 且约 6 成查询降级）来自特定机器上的一次实测，其中 100 并发**未达** 500ms 验收线；详见 [`loadtest/report-standard.md`](loadtest/report-standard.md)，不能当作当前环境 SLA。
