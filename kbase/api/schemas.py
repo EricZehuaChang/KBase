@@ -78,11 +78,15 @@ def _validate_filters(filters: dict | None) -> dict | None:
             _check_range_condition(k, v)
             continue
         if isinstance(v, dict):
-            # 含 gte/lte/approx 的 dict 走上面的分支；其余 dict 仍按不支持处理
-            # （既不可能是标量也不是范围条件——例如嵌套对象）
+            # 不含 gte/lte/approx 的 dict：最常见的是把范围条件写成 {"min":450}
+            # 这类"看着像但键名不对"的形态——指名未知键，比笼统说"不支持嵌套
+            # 对象"更能让人一眼改对。
+            unknown = [key for key in v if key not in params_mod._RANGE_KEYS]
             raise ValueError(
-                f"filters[{k!r}] 不支持嵌套对象；范围条件请用 "
-                f"{list(params_mod._RANGE_KEYS)}，如 {{\"gte\":450,\"lte\":550}}")
+                f"filters[{k!r}] 不接受这种 dict 值"
+                + (f"（未知键 {unknown}）" if unknown else "（空 dict 或缺上下界）")
+                + f"；范围条件只认 {list(params_mod._RANGE_KEYS)}，"
+                  "如 {\"gte\":450,\"lte\":550}")
         vals = v if isinstance(v, list) else [v]
         if not vals or not all(isinstance(x, (str, int, float, bool)) for x in vals):
             raise ValueError(

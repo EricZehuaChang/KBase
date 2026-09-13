@@ -336,6 +336,9 @@ def test_search_body_accepts_range_and_rejects_invalid(tmp_path, fake_embedder,
                 (f"/api/kb/{kb}/query", {"question": "风扇", "filters": filters})):
             resp = c.post(path, json=payload)
             assert resp.status_code == 422, (path, filters, resp.status_code)
+            # 错误信息必须能直接指导改正：指名字段与合法写法
+            detail = str(resp.json()["detail"])
+            assert "filters[" in detail and "gte" in detail, (filters, detail)
 
 
 def test_query_body_accepts_range_condition(tmp_path, fake_embedder,
