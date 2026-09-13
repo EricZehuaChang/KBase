@@ -2,9 +2,9 @@
 # 各 endpoint 指向 compose 内的服务名（Docker 内置 DNS 按 service name 解析），
 # 与 config/kbase.yaml（lite，进程内模型 + SQLite + Chroma）互不影响。
 #
-# 密钥一律走环境变量：db.url 里的密码、DASHSCOPE_API_KEY 等在生产环境由
-# docker-compose.standard.yml 的 environment/.env 注入，本文件不写明文密钥
-# ——下面的 PASSWORD 占位符会在部署时被环境变量渲染 / 替换，不要直接照抄入库。
+# 密钥一律走环境变量：db 密码由 db.password_env 指定变量名（见下方 db 段）、
+# DASHSCOPE_API_KEY 等在生产环境由 docker-compose.standard.yml 的
+# environment/.env 注入，本文件不写明文密钥。
 data_dir: ./data
 
 embedder:
@@ -32,10 +32,14 @@ retrieval:
     # kbase/rag/retriever.py）。8 是默认值，此处显式写出以便压测时调参。
     max_concurrency: 8
 
-# PostgreSQL 元数据库：密码来自环境变量渲染，不要把真实密码提交进仓库。
-# 生产部署时把 PASSWORD 替换成实际值（或用支持 env 插值的部署工具处理）。
+# PostgreSQL 元数据库：url 里**不写密码**，由 db.password_env 指名的环境变量
+# 在启动时渲染（kbase/config.py:resolve_db_url → make_url().set(password=...)，
+# 特殊字符自动转义）。变量缺失会直接报错，不会静默用错密码连库。
+# compose 的 app.environment 已透传 POSTGRES_PASSWORD（与 postgres 服务同源），
+# 只设这一个变量即可完成连库。
 db:
-  url: postgresql+psycopg://kbase:PASSWORD@postgres:5432/kbase
+  url: postgresql+psycopg://kbase@postgres:5432/kbase
+  password_env: POSTGRES_PASSWORD
 
 # M4-2 H7：AnyIO 线程池容量可配（默认 40）。实测教训（loadtest/report-standard.md）：
 # 在 4 vCPU 参考机上调到 120 反而使 100 并发 P95 回退约 20%——线程数超过

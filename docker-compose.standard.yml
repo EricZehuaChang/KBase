@@ -126,6 +126,12 @@ services:
       KBASE_SECRET_KEY: ${KBASE_SECRET_KEY:?请设置 KBASE_SECRET_KEY（会话签名密钥）}
       KBASE_ADMIN_PASSWORD: ${KBASE_ADMIN_PASSWORD:-}
       DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      # T05/G03：config/kbase.standard.yaml 的 db.password_env 指名它——
+      # 应用启动时用它渲染 db.url 的密码段。与 postgres 服务的密码同源
+      # （同一个 .env 变量），改一处即两边一致。
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+      # T06/G04：iruidong 中转网关（config 里 iruidong-* provider 共用）
+      IRUIDONG_API_KEY: ${IRUIDONG_API_KEY:-}
       # 等待四个依赖服务的端口就绪后再启动 uvicorn（entrypoint.sh 里的
       # wait-for 逻辑）；depends_on.condition: service_healthy 已经做了一层
       # 保证，这里是双保险。

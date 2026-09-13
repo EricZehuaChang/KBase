@@ -30,6 +30,12 @@ class DBConfig(BaseModel):
     # 与改造前的 f"sqlite:///{cfg.data_dir}/kbase.sqlite" 字节级一致；
     # postgresql+psycopg:// 等其他 URL 原样透传，不做占位替换。
     url: str = "sqlite:///{data_dir}/kbase.sqlite"
+    # T05/G03：PG 密码走环境变量的**变量名**（与 provider 的 api_key_env 同一
+    # 写法：配置文件只写变量名，密钥值永不进仓库）。设置后 resolve_db_url 用
+    # sqlalchemy.engine.make_url(url).set(password=...) 渲染——make_url 负责
+    # 转义（密码含 @ : / % { 等字符不会再拼出坏 URL，这是"直接字符串替换"
+    # 做不到的）。不设时 url 原样使用，行为与改造前一致。
+    password_env: str | None = None
 
 
 class VectorStoreConfig(BaseModel):
@@ -210,6 +216,29 @@ def resolve_db_url(cfg: AppConfig) -> str:
     反过来若 URL 中恰好含字面 "{data_dir}" 之外的花括号内容也可能被误替换。
     只在确认存在 "{data_dir}" 占位符时才调用 .format，其余情况一律原样返回，
     这样才符合本文件顶部注释里"postgresql+psycopg:// 等其他 URL 原样透传，
-    不做占位替换"的约定。"""
+    不做占位替换"的约定。
+
+    T05/G03：db.password_env 非空时，用环境变量里的值渲染 URL 的密码段。
+    走 sqlalchemy.engine.make_url 而不是字符串拼接——密码含 @ : / % { } 等
+    字符时，字符串拼接会拼出解析错误的 URL（密码被当成 host/端口），
+    make_url 会正确转义并保留其余部分。变量缺失**必须报错**（不静默退回
+    字面 PASSWORD）：静默失败会让连接用错密码，症状是部署期莫名其妙的
+    auth failed，而不明说"环境变量没设"。
+    """
     url = cfg.db.url
-    return url.format(data_dir=str(cfg.data_dir)) if "{data_dir}" in url else url
+    if "{data_dir}" in url:
+        url = url.format(data_dir=str(cfg.data_dir))
+    if not cfg.db.password_env:
+        return url
+    import os
+
+    from sqlalchemy.engine import make_url
+
+    password = os.environ.get(cfg.db.password_env)
+    if password is None:
+        raise RuntimeError(
+            f"数据库密码环境变量 {cfg.db.password_env} 未设置"
+            f"（配置项 db.password_env 指定了它）；"
+            f"请在部署环境注入该变量，或从配置里删掉 db.password_env")
+    return make_url(url).set(password=password).render_as_string(
+        hide_password=False)

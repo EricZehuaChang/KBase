@@ -259,3 +259,94 @@ llm:
     )
     cfg = load_config(cfg_file)
     assert cfg.server.threadpool_size == 120
+
+
+# ------------------------------------------- T05/G03：PG 密码走环境变量
+
+def _pg_cfg(tmp_path: Path, *, password_env: str | None, url: str) -> Path:
+    f = tmp_path / "kbase.yaml"
+    env_line = f"  password_env: {password_env}\n" if password_env else ""
+    f.write_text(
+        f"data_dir: ./data\ndb:\n  url: \"{url}\"\n" + env_line
+        + "llm:\n  active: a\n  providers:\n"
+          "    - {name: a, base_url: 'http://x', api_key_env: K, model: m}\n",
+        encoding="utf-8")
+    return f
+
+
+def test_resolve_db_url_renders_password_env(tmp_path: Path, monkeypatch):
+    """设了 password_env：密码从环境变量渲染进 URL，配置文件里不出现密码值。"""
+    monkeypatch.setenv("POSTGRES_PASSWORD", "s3cret")
+    cfg = load_config(_pg_cfg(
+        tmp_path, password_env="POSTGRES_PASSWORD",
+        url="postgresql+psycopg://kbase@postgres:5432/kbase"))
+    assert cfg.db.password_env == "POSTGRES_PASSWORD"
+    url = resolve_db_url(cfg)
+    assert url == "postgresql+psycopg://kbase:s3cret@postgres:5432/kbase"
+    # 用 SQLAlchemy 反解确认 host/库名/用户名都没被密码搅乱
+    from sqlalchemy.engine import make_url
+    parsed = make_url(url)
+    assert (parsed.username, parsed.host, parsed.port, parsed.database) == (
+        "kbase", "postgres", 5432, "kbase")
+
+
+def test_resolve_db_url_escapes_special_chars_in_password(tmp_path: Path,
+                                                          monkeypatch):
+    """密码含 @ : / % { 等字符时仍拼出可解析的 URL（字符串拼接会拼坏）。"""
+    from sqlalchemy.engine import make_url
+    for password in ["p@ss:word/1", "50%off", "pa{ss}", "a b#c?d", "p&s=s"]:
+        monkeypatch.setenv("POSTGRES_PASSWORD", password)
+        cfg = load_config(_pg_cfg(
+            tmp_path, password_env="POSTGRES_PASSWORD",
+            url="postgresql+psycopg://kbase@postgres:5432/kbase"))
+        parsed = make_url(resolve_db_url(cfg))
+        assert parsed.password == password, (password, resolve_db_url(cfg))
+        assert parsed.host == "postgres" and parsed.database == "kbase"
+
+
+def test_resolve_db_url_missing_password_env_raises(tmp_path: Path,
+                                                    monkeypatch):
+    """变量缺失必须明确报错，不静默退回（静默失败会拿错密码连库）。"""
+    import pytest
+
+    monkeypatch.delenv("POSTGRES_PASSWORD", raising=False)
+    cfg = load_config(_pg_cfg(
+        tmp_path, password_env="POSTGRES_PASSWORD",
+        url="postgresql+psycopg://kbase@postgres:5432/kbase"))
+    with pytest.raises(RuntimeError, match="POSTGRES_PASSWORD"):
+        resolve_db_url(cfg)
+
+
+def test_resolve_db_url_without_password_env_unchanged(tmp_path: Path,
+                                                       monkeypatch):
+    """没设 password_env：{data_dir} 语义与其它 URL 透传都与改造前一致。"""
+    monkeypatch.setenv("POSTGRES_PASSWORD", "should-be-ignored")
+    cfg = load_config(_pg_cfg(
+        tmp_path, password_env=None,
+        url="postgresql+psycopg://kbase:PASSWORD@postgres:5432/kbase"))
+    assert cfg.db.password_env is None
+    assert resolve_db_url(cfg) == \
+        "postgresql+psycopg://kbase:PASSWORD@postgres:5432/kbase"
+
+    # sqlite 默认路径不受 password_env 特性影响
+    f = tmp_path / "lite.yaml"
+    f.write_text(
+        "data_dir: ./data\nllm:\n  active: a\n  providers:\n"
+        "    - {name: a, base_url: 'http://x', api_key_env: K, model: m}\n",
+        encoding="utf-8")
+    assert resolve_db_url(load_config(f)) == "sqlite:///data/kbase.sqlite"
+
+
+def test_standard_profile_config_loads_with_password_env():
+    """仓库自带的 config/kbase.standard.yaml：url 不含密码串，password_env
+    指向 compose 透传的变量名（防止有人把密码又写回配置文件）。"""
+    from pathlib import Path as _Path
+    root = _Path(__file__).resolve().parent.parent
+    raw = (root / "config" / "kbase.standard.yaml").read_text(encoding="utf-8")
+    assert "PASSWORD@" not in raw and "password_env: POSTGRES_PASSWORD" in raw
+    cfg = load_config(root / "config" / "kbase.standard.yaml")
+    assert cfg.db.password_env == "POSTGRES_PASSWORD"
+    assert ":" not in cfg.db.url.split("//", 1)[1].split("@", 1)[0]  # 无 user:pass
+
+    compose = (root / "docker-compose.standard.yml").read_text(encoding="utf-8")
+    assert "POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}" in compose
