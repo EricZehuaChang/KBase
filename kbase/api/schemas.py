@@ -541,10 +541,32 @@ class LanguageBody(BaseModel):
 class ShareLinkCreate(BaseModel):
     """建免登录分享链接：name 备注用；provider 绑定回答模型（None=系统默认，
     对标 Dify/FastGPT——模型在建链接侧配置，终端用户无感）；extra_kb_ids
-    为联查副库（与路径主库合并去重，匿名问答跨全部库散射检索，M6-2 复用）。"""
+    为联查副库（与路径主库合并去重，匿名问答跨全部库散射检索，M6-2 复用）。
+
+    T10 追加可选策略（NULL=该维度不限，与升级前行为一致）：expires_at 有效期、
+    password 访问口令（服务端 bcrypt 哈希后落库，明文不落库不回传）、
+    max_visits 次数上限（只有免登录问答计次）。
+    """
     name: str = ""
     provider: str | None = None
     extra_kb_ids: list[str] = []
+    # 有效期：NULL=永不过期。
+    expires_at: datetime | None = None
+    # 访问口令：NULL/空=免口令；下限 4 位（分享链接是面向外部的入口，太短等于
+    # 没有）。上限 64 字符——bcrypt 只取前 72 字节，更长没有额外强度。
+    password: str | None = Field(default=None, min_length=4, max_length=64)
+    # 次数上限：NULL=不限；下限 1（0 次等于建一条建好就死的链接，要停用请撤销）。
+    max_visits: int | None = Field(default=None, ge=1, le=1000000)
+
+    @field_validator("expires_at", mode="before")
+    @classmethod
+    def _date_only_means_end_of_day(cls, v):
+        """日期选择器给的是 YYYY-MM-DD：按当日 23:59:59 处理，否则建链接人选
+        "今天"会得到一条刚建就过期的链接（公开端点立刻 404，看起来像功能坏了）。
+        与 T09 ApiKey 的有效期同一约定。带时间的 ISO 串原样解析。"""
+        if isinstance(v, str) and len(v.strip()) == 10:
+            return v.strip() + "T23:59:59"
+        return v
 
 
 class ForgotBody(BaseModel):

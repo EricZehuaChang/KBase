@@ -4,12 +4,17 @@
 // 无模型选择/无库切换/无会话侧栏（模型在建链接侧绑定，token 已绑死库）。
 // ?embed=1（widget iframe 场景）时头部收窄。多轮：本页内存内追问（history
 // 不落库——分享场景无会话归属）。
+// T10：带口令的链接先弹口令框——口令只存内存，随每次请求走 X-Share-Password
+// 头；后端把"口令不对"与"链接失效"分开（401 / 404），这里据此分流：
+// 401=留在口令框重试（并提示口令错），404=整页替换成失效提示。
 import { onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { SendHorizontal } from "@lucide/vue";
 import MessageStream from "@/components/MessageStream.vue";
-import { getShareMeta } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { getShareMeta, SHARE_PASSWORD_HEADER } from "@/lib/api";
 import { parseSSE } from "@/lib/sse";
 import type { ChatMessage } from "@/composables/useChat";
 
@@ -23,18 +28,48 @@ const invalid = ref(false);
 const messages = ref<ChatMessage[]>([]);
 const input = ref("");
 const busy = ref(false);
+// T10：口令链接的三种状态——needPassword=显示口令框，password=已提交的口令
+// （随请求头带上），passwordWrong=刚提交的口令被拒（401）时给一句提示。
+const needPassword = ref(false);
+const password = ref("");
+const passwordInput = ref("");
+const passwordWrong = ref(false);
 
-onMounted(async () => {
+/** 首屏/重试口令：401 → 弹口令框；404 → 整页失效；200 → 进入问答。
+ * 网络异常（后端不可达）也走失效提示：总比留一个永远空白的页面好。 */
+async function load() {
   try {
-    const meta = await getShareMeta(token);
-    // 多库联查链接：头部/空态显示全部库名（访客知道自己在问什么范围）；
-    // 单库时 kb_names 长度 1，展示与旧版一致
-    kbName.value = meta.kb_names?.length
-      ? meta.kb_names.join(" · ") : meta.kb_name;
+    const meta = await getShareMeta(token, password.value);
+    if (meta.state === "ok") {
+      // 多库联查链接：头部/空态显示全部库名（访客知道自己在问什么范围）；
+      // 单库时 kb_names 长度 1，展示与旧版一致
+      kbName.value = meta.kb_names.length
+        ? meta.kb_names.join(" · ") : meta.kb_name;
+      needPassword.value = false;
+      passwordWrong.value = false;
+      return;
+    }
+    if (meta.state === "password") {
+      // 已经带过口令还是 401 = 口令不对（首次进入时 password 为空，不提示错误）
+      passwordWrong.value = password.value !== "";
+      needPassword.value = true;
+      return;
+    }
+    invalid.value = true;  // 链接不存在/已撤销/已过期/次数用尽：整页替换
   } catch {
-    invalid.value = true;    // 链接不存在或已撤销：整页替换为失效提示
+    invalid.value = true;
   }
-});
+}
+
+onMounted(load);
+
+async function submitPassword() {
+  const pw = passwordInput.value.trim();
+  if (!pw) return;
+  password.value = pw;
+  await load();
+  if (!needPassword.value) passwordInput.value = "";   // 通过后不在框里留明文
+}
 
 let seq = 0;
 
@@ -52,11 +87,22 @@ async function ask() {
   messages.value.push(msg);
   const live = messages.value[messages.value.length - 1];
   try {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (password.value) headers[SHARE_PASSWORD_HEADER] = password.value;
     const resp = await fetch(`/api/share/${token}/query`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({ question }),
     });
+    if (resp.status === 401) {
+      // 口令在会话中途被改（或首次没带）：退回口令框重试，不留半截回答气泡
+      needPassword.value = true;
+      passwordWrong.value = true;
+      messages.value = messages.value.slice(0, -2);
+      return;
+    }
     if (!resp.ok || !resp.body) throw new Error(`request failed (${resp.status})`);
     const gotDone = await parseSSE(resp.body.getReader(), (event, data) => {
       if (event === "citations") {
@@ -89,6 +135,30 @@ async function ask() {
     <div v-if="invalid" class="flex flex-1 flex-col items-center justify-center gap-2">
       <p class="text-lg font-medium">{{ t("share.invalid_title") }}</p>
       <p class="text-sm text-[var(--text-3)]">{{ t("share.invalid_hint") }}</p>
+    </div>
+
+    <!-- T10 口令链接（401）：口令框替代问答区，输错只提示不判死链接 -->
+    <div
+      v-else-if="needPassword"
+      class="flex flex-1 flex-col items-center justify-center gap-3 px-6"
+    >
+      <p class="text-lg font-medium">{{ t("share.password_title") }}</p>
+      <p class="text-sm text-[var(--text-3)]">{{ t("share.password_hint") }}</p>
+      <div class="flex w-full max-w-xs items-center gap-2">
+        <Input
+          v-model="passwordInput"
+          type="password"
+          autocomplete="off"
+          :placeholder="t('share.password_placeholder')"
+          @keydown.enter="submitPassword"
+        />
+        <Button :disabled="!passwordInput.trim()" @click="submitPassword">
+          {{ t("share.password_submit") }}
+        </Button>
+      </div>
+      <p v-if="passwordWrong" class="text-sm text-[var(--err)]">
+        {{ t("share.password_wrong") }}
+      </p>
     </div>
 
     <template v-else>

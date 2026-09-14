@@ -69,6 +69,17 @@ _COLUMN_MIGRATIONS = [
     ("api_keys", "rpm", "INTEGER"),
     ("api_keys", "daily_quota", "INTEGER"),
     ("api_keys", "disabled", "BOOLEAN"),
+    # T10：分享链接有效期/访问口令/次数上限与计数。老库补列一律 NULL，读取端
+    # 按"NULL=不限"解释（与 T09 api_keys 同一约定）：expires_at=NULL 永不过期；
+    # password_hash=NULL 免口令；max_visits=NULL 不限次数；visit_count=NULL 视作
+    # 0（计次用 COALESCE(visit_count,0)+1 归一，见 api/routes/share.py）——于是
+    # T10 前已发出的链接行为完全不变：能一直访问、不弹口令、次数不受限。
+    # DATETIME 由 _DIALECT_TYPE_NAMES 映射成 PG 的 TIMESTAMP（T09 真 PG 事故的
+    # 修复，别在这里写方言专有类型名）。
+    ("share_links", "expires_at", "DATETIME"),
+    ("share_links", "password_hash", "TEXT"),
+    ("share_links", "max_visits", "INTEGER"),
+    ("share_links", "visit_count", "INTEGER"),
 ]
 
 _FTS_DDL = (

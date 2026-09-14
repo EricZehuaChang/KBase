@@ -2,6 +2,7 @@
 // 分享链接管理对话框（KB 详情页，editor+）：建链接（备注+绑定回答模型，
 // 对标 Dify/FastGPT——模型是建链接者的决策，终端用户无感）、复制链接/
 // 嵌入代码、撤销。撤销立即生效（公开端点 404）。
+// T10：可加有效期/访问口令/次数上限（留空=该维度不限），列表回显用量。
 import { onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
@@ -34,6 +35,11 @@ const busy = ref(false);
 // 跨全部库散射检索。清单排除当前主库自身。
 const otherKbs = ref<Kb[]>([]);
 const extraKbIds = ref<string[]>([]);
+// T10 策略输入：三个都是字符串，空串=该维度不限（与 T09 ApiKey 策略表单
+// 同一套约定）。有效期只发日期，后端按当日 23:59:59 收口。
+const expiresAt = ref("");
+const password = ref("");
+const maxVisits = ref("");
 
 async function refresh() {
   try {
@@ -70,9 +76,16 @@ async function create() {
       name: name.value.trim(),
       provider: provider.value === "__default__" ? null : provider.value,
       extra_kb_ids: extraKbIds.value,
+      // 空串一律转 null=不限：后端 NULL 语义（老链接与"不填"是同一条路径）
+      expires_at: expiresAt.value.trim() || null,
+      password: password.value.trim() || null,
+      max_visits: maxVisits.value.trim() ? Number(maxVisits.value.trim()) : null,
     });
     name.value = "";
     extraKbIds.value = [];
+    expiresAt.value = "";
+    password.value = "";      // 口令不回显（后端只存哈希，也从不回传）
+    maxVisits.value = "";
     toast.success(t("sharedlg.created"));
     await refresh();
   } catch (err) {
@@ -89,6 +102,20 @@ function shareUrl(link: ShareLinkItem): string {
 function embedSnippet(link: ShareLinkItem): string {
   return `<script src="${window.location.origin}/widget.js" `
     + `data-kbase-share="${link.token}" defer><\/script>`;
+}
+
+/** 有效期展示：后端存 naive UTC ISO，取前 10 位即所选日期（同 T09 ApiKey）。 */
+function expiryText(link: ShareLinkItem): string | null {
+  return link.expires_at ? link.expires_at.slice(0, 10) : null;
+}
+
+/** 用量展示：有上限显示 n/max，无上限只显示已访问次数（0 次不占版面）。 */
+function visitText(link: ShareLinkItem): string | null {
+  const n = link.visit_count ?? 0;
+  if (link.max_visits == null) {
+    return n > 0 ? t("sharedlg.badge_visits", { n }) : null;
+  }
+  return t("sharedlg.badge_visits_capped", { n, max: link.max_visits });
 }
 
 async function copy(text: string, label: string) {
@@ -140,6 +167,36 @@ async function revoke(link: ShareLinkItem) {
         <Button :disabled="busy" @click="create">{{ t("common.create") }}</Button>
       </div>
 
+      <!-- T10 访问策略（可选）：有效期/口令/次数上限，留空=该维度不限 -->
+      <div class="flex flex-col gap-1.5">
+        <span class="text-sm text-[var(--text-2)]">{{ t("sharedlg.policy") }}</span>
+        <div class="grid grid-cols-3 gap-2">
+          <label class="flex flex-col gap-1">
+            <span class="text-xs text-[var(--text-3)]">{{ t("sharedlg.expires") }}</span>
+            <Input v-model="expiresAt" type="date" />
+          </label>
+          <label class="flex flex-col gap-1">
+            <span class="text-xs text-[var(--text-3)]">{{ t("sharedlg.password") }}</span>
+            <Input
+              v-model="password"
+              type="password"
+              autocomplete="off"
+              :placeholder="t('sharedlg.password_ph')"
+            />
+          </label>
+          <label class="flex flex-col gap-1">
+            <span class="text-xs text-[var(--text-3)]">{{ t("sharedlg.max_visits") }}</span>
+            <Input
+              v-model="maxVisits"
+              type="number"
+              min="1"
+              :placeholder="t('sharedlg.unlimited')"
+            />
+          </label>
+        </div>
+        <span class="text-xs text-[var(--text-3)]">{{ t("sharedlg.policy_hint") }}</span>
+      </div>
+
       <!-- 多库联查（可选）：勾选副库，匿名问答同时检索（对标登录端 + 联查） -->
       <div v-if="otherKbs.length" class="flex flex-col gap-1.5">
         <span class="text-sm text-[var(--text-2)]">{{ t("sharedlg.joint_pick") }}</span>
@@ -171,18 +228,37 @@ async function revoke(link: ShareLinkItem) {
           class="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-3"
         >
           <div class="mb-1.5 flex items-center justify-between gap-2">
-            <span class="truncate text-sm font-medium">
+            <span class="flex min-w-0 flex-wrap items-center gap-x-1 text-sm font-medium">
               {{ link.name || t("sharedlg.unnamed") }}
-              <span class="ml-1 text-xs font-normal text-[var(--text-3)]">
+              <span class="text-xs font-normal text-[var(--text-3)]">
                 {{ t("sharedlg.model_prefix") }}{{ link.provider || t("sharedlg.default_model") }}
               </span>
               <!-- 联查徽标：悬停可见完整库名清单 -->
               <span
                 v-if="(link.kb_names?.length ?? 0) > 1"
-                class="ml-1 rounded bg-[var(--accent-weak)] px-1.5 py-0.5 text-xs font-normal text-[var(--accent-text)]"
+                class="rounded bg-[var(--accent-weak)] px-1.5 py-0.5 text-xs font-normal text-[var(--accent-text)]"
                 :title="link.kb_names.join(' · ')"
               >
                 {{ t("sharedlg.joint_badge", { n: link.kb_names.length }) }}
+              </span>
+              <!-- T10 策略/用量徽标：只显示"有限制"的维度，无限制不占版面 -->
+              <span
+                v-if="expiryText(link)"
+                class="rounded bg-[var(--surface-2)] px-1.5 py-0.5 text-xs font-normal text-[var(--text-3)]"
+              >
+                {{ t("sharedlg.badge_expires", { date: expiryText(link) }) }}
+              </span>
+              <span
+                v-if="link.has_password"
+                class="rounded bg-[var(--warn-weak)] px-1.5 py-0.5 text-xs font-normal text-[var(--warn)]"
+              >
+                {{ t("sharedlg.badge_password") }}
+              </span>
+              <span
+                v-if="visitText(link)"
+                class="rounded bg-[var(--surface-2)] px-1.5 py-0.5 text-xs font-normal text-[var(--text-3)]"
+              >
+                {{ visitText(link) }}
               </span>
             </span>
             <button

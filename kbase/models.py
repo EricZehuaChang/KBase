@@ -182,6 +182,18 @@ class ShareLink(Base):
     created_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # T10：有效期/访问口令/次数上限与访问计数。四列老库补列一律 NULL，读取端
+    # 统一按"NULL=不限"解释（与 T09 api_keys 同一约定——SQLite ALTER 没法带
+    # DEFAULT 回填存量行，语义只能由读取端给）：expires_at=NULL 永不过期；
+    # password_hash=NULL 免口令；max_visits=NULL 不限次数；visit_count=NULL
+    # 视作 0（计次语句用 COALESCE 归一，见 api/routes/share.py）。
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # bcrypt 哈希（kbase/auth/security.py，与账号口令同一套），明文永不落库；
+    # 校验用请求头 X-Share-Password（不放 query——query 会进访问日志）。
+    password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+    max_visits: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # 只有免登录问答计次（meta 取库名/附图直链不计——访客看一眼不算访问）。
+    visit_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class ApiKey(Base):
