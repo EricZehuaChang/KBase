@@ -5,9 +5,16 @@ import { adminBreadcrumb, adminSidebar, expect, gotoAdmin, test } from "./fixtur
 
 // 侧栏导航项 → 真实路由（web-app/src/admin/router.ts，base "/admin"）与页面
 // 自身的文案标记。路由路径按 router.ts 核对过，不是猜的。
+//
+// generate 的 marker 是"两种合法渲染取其一"：生成页只在**已选中知识库**时渲染
+// Tabs（generate.tab_proposal＝"方案生成"），库列表为空时渲染的是
+// generate.select_kb_first（"请先选择知识库"）空态（GenerateView.vue 的 v-if）。
+// 那是该页自己的正常渲染、不是白屏；而"库里有没有库"是环境状态，不是本用例要测的
+// 契约——CI 与服务器都是全新空库（data/dev 首启生成，admin 又是第一个跑的用例文件），
+// 写死"方案生成"会让这条用例在干净环境里必红（2026-09-14 服务器实测复现）。
 const ADMIN_PAGES = [
   { nav: "检索分析", path: "/admin/analysis", marker: "检索试跑" },
-  { nav: "生成", path: "/admin/generate", marker: "方案生成" },
+  { nav: "生成", path: "/admin/generate", marker: /方案生成|请先选择知识库/ },
   { nav: "设置", path: "/admin/settings", marker: "模型 Provider、用户与密钥、许可证与系统状态" },
   { nav: "多语言", path: "/admin/translations", marker: "编辑各语言界面译文" },
 ];

@@ -18,10 +18,14 @@
 # 表现再加 USE_DEV_APP=1（那时引用角标取决于模型是否在正文里标 [1]）。
 #
 # 服务器约定（同 provision_remote_test_env.sh / remote_test.sh）：
-#   - /opt/kbase-test/{repo,venv,logs}；仓库副本由 remote_test.sh sync 维护（排除 node_modules/data/.env 之外的敏感物按原样）。
+#   - /opt/kbase-test/{repo,venv,logs}；仓库副本由 remote_test.sh sync 维护。
 #   - 只监听 127.0.0.1 的 8100（后端）与 5173（Vite，代理 /api→8100），不对外暴露。
 #   - **不碰服务器上任何在跑的服务**（Gitea 容器 / java / nginx 全不涉及）；
 #     自己起的两个进程按 PID 关闭（trap 兜住异常退出），不留常驻进程。
+#   - 服务器侧一次性准备（setup 子命令已包含）：Node 22 走 dnf 模块流
+#     （dnf module enable nodejs:22 && dnf install -y nodejs npm，2026-09-14 已装
+#     v22.23.2/npm 10.9.8）；Chromium 用 npmmirror 镜像下载（官方 CDN 在国内服务器上
+#     拿不到数据），系统库用 dnf 逐个装（--with-deps 在 Rocky 9 上会去调 apt-get）。
 set -euo pipefail
 
 HOST=kbase-test
@@ -63,19 +67,39 @@ setup_env() {
     echo "-- npm ci（首次约 1 分钟）--"
     rsh "cd ${REPO_DIR}/web-app && npm ci --no-audit --no-fund"
   fi
-  # 幂等：已装过就秒过；--with-deps 会补系统库（Rocky 9 上缺 nss/atk 之类会起不来）
-  rsh "cd ${REPO_DIR}/web-app && npx playwright install --with-deps chromium" | tail -3
+  # 系统库：Rocky 9 不在 Playwright 官方支持列表里，`--with-deps` 会去调 apt-get
+  # 然后失败（实测 exit 127）。这里用 dnf 显式装 Chromium 需要的运行库（幂等）；
+  # 中文字体服务器上已有 google-noto-cjk，无需另装。
+  rsh "dnf -qy install nss atk at-spi2-atk cups-libs libdrm libxkbcommon libXcomposite \
+        libXdamage libXfixes libXrandr mesa-libgbm alsa-lib pango cairo libXtst \
+        libXScrnSaver libxshmfence >/dev/null" || true
+  # 下载源：服务器直连 cdn.playwright.dev 拿不到数据（实测 307、3.5s 零字节），
+  # npmmirror 镜像实测 4MB/s。要用别的源就自己 export PLAYWRIGHT_DOWNLOAD_HOST。
+  local host="${PLAYWRIGHT_DOWNLOAD_HOST:-https://cdn.npmmirror.com/binaries/playwright}"
+  rsh "cd ${REPO_DIR}/web-app && PLAYWRIGHT_DOWNLOAD_HOST=${host} npx playwright install chromium" | tail -3
+  # 起得来才算装好（`--list` 不碰浏览器，抓不到缺 .so 这类问题）
+  rsh "cd ${REPO_DIR}/web-app && npx playwright screenshot --browser chromium about:blank \
+        ${LOGDIR}/chromium-check.png >/dev/null && echo 'Chromium 启动自检 OK'"
 }
 
 start_services() {
   echo "== 3) 在服务器上起后端(8100) + Vite(5173) =="
   rsh "mkdir -p ${LOGDIR}"
-  # 先清掉可能残留的同端口进程（只清本脚本自己那两种命令行，不用宽泛的 pkill vite）
-  rsh "pkill -f 'uvicorn --factory ${FACTORY%%:*}' 2>/dev/null; pkill -f 'vite --host 127.0.0.1 --port ${WEB_PORT}' 2>/dev/null; true"
-  rsh "cd ${FACTORY_CWD} && nohup ${VENV}/bin/python -m uvicorn --factory ${FACTORY} \
-        --host 127.0.0.1 --port ${API_PORT} > ${LOGDIR}/${STAMP}-api.log 2>&1 & echo \$! > ${LOGDIR}/e2e-api.pid; sleep 1; cat ${LOGDIR}/e2e-api.pid"
-  rsh "cd ${REPO_DIR}/web-app && nohup npx vite --host 127.0.0.1 --port ${WEB_PORT} --strictPort \
-        > ${LOGDIR}/${STAMP}-web.log 2>&1 & echo \$! > ${LOGDIR}/e2e-web.pid; sleep 1; cat ${LOGDIR}/e2e-web.pid"
+  # 先清掉可能残留的同端口进程。模式写成 [u]vicorn 这种"括号拆字"形式：直接把
+  # 模式写全的话，pkill -f 会匹配到承载这条命令的远端 shell 自己（命令行里就有
+  # 这段字符串），把 ssh 会话一起杀掉——实测 rc=255、整段启动流程静默中断。
+  rsh "pkill -f '[u]vicorn --factory ${FACTORY%%:*}' 2>/dev/null; \
+       pkill -f '[v]ite --host 127.0.0.1 --port ${WEB_PORT}' 2>/dev/null; true"
+  # `nohup bash -c '... exec ...' &`：$! 拿到的是 bash 的 pid，而 exec 会把进程
+  # 映像换成真正的服务进程（uvicorn=python、vite=node），pid 因此就是服务本身，
+  # 收尾时按 pid kill 干净；不 exec 的话 kill 掉的是父壳子，服务会变孤儿。
+  rsh "nohup bash -c 'cd ${FACTORY_CWD} && exec ${VENV}/bin/python -m uvicorn \
+         --factory ${FACTORY} --host 127.0.0.1 --port ${API_PORT}' \
+         > ${LOGDIR}/${STAMP}-api.log 2>&1 & echo \$! > ${LOGDIR}/e2e-api.pid; \
+       nohup bash -c 'cd ${REPO_DIR}/web-app && exec ./node_modules/.bin/vite \
+         --host 127.0.0.1 --port ${WEB_PORT} --strictPort' \
+         > ${LOGDIR}/${STAMP}-web.log 2>&1 & echo \$! > ${LOGDIR}/e2e-web.pid; \
+       sleep 1; echo \"api pid=\$(cat ${LOGDIR}/e2e-api.pid) web pid=\$(cat ${LOGDIR}/e2e-web.pid)\""
 
   echo "-- 等服务就绪（后端 jieba 初始化 + Vite 首次依赖预打包，最多 90s）--"
   local i ok_api=0 ok_web=0
@@ -96,12 +120,14 @@ start_services() {
 stop_services() {
   echo "== 5) 关掉本次起的两个进程 =="
   rsh "for f in ${LOGDIR}/e2e-api.pid ${LOGDIR}/e2e-web.pid; do \
-         [ -f \"\$f\" ] && pid=\$(cat \"\$f\") && kill \"\$pid\" 2>/dev/null && echo \"killed \$(basename \$f) pid=\$pid\"; \
+         if [ -f \"\$f\" ]; then pid=\$(cat \"\$f\"); \
+           kill \"\$pid\" 2>/dev/null && echo \"killed \$(basename \$f) pid=\$pid\"; \
+           sleep 1; kill -9 \"\$pid\" 2>/dev/null; fi; \
          rm -f \"\$f\"; done; \
-       pkill -f 'uvicorn --factory ${FACTORY%%:*}' 2>/dev/null; \
-       pkill -f 'vite --host 127.0.0.1 --port ${WEB_PORT}' 2>/dev/null; true" || true
+       pkill -f '[u]vicorn --factory ${FACTORY%%:*}' 2>/dev/null; \
+       pkill -f '[v]ite --host 127.0.0.1 --port ${WEB_PORT}' 2>/dev/null; true" || true
   # 确认没留常驻
-  rsh "ss -ltnp 2>/dev/null | grep -E ':(${API_PORT}|${WEB_PORT})\b' || echo '端口已释放'" || true
+  rsh "ss -ltnp 2>/dev/null | grep -E ':(${API_PORT}|${WEB_PORT}) ' || echo '端口已释放'" || true
 }
 
 run_suite() {
@@ -120,8 +146,6 @@ run_suite() {
   return "$rc"
 }
 
-trap 'stop_services' EXIT
-
 case "${1:-run}" in
   sync)  sync_repo ;;
   setup) setup_env ;;
@@ -132,6 +156,7 @@ case "${1:-run}" in
   ssh) ssh "${SSH_OPTS[@]}" "$HOST" ;;
   once|run)
     TIMES=2; [ "${1:-}" = "once" ] && TIMES=1
+    trap 'stop_services' EXIT   # 只在这条路径上注册：其它子命令没起服务，别去关别人的东西
     sync_repo
     setup_env
     start_services

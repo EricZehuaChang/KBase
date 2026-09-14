@@ -319,18 +319,30 @@ python -m pytest
 
 ### 页面级端到端冒烟（Playwright）
 
-`web-app/e2e/` 是**页面级**冒烟套件（10 个用例，只装 Chromium）：只抓"页面是不是坏了"这类只有真浏览器能看见的回归，不替代上面的后端 pytest 与前端 vitest 单测。
+`web-app/e2e/` 是**页面级**冒烟套件（14 个用例，只装 Chromium）：只抓"页面是不是坏了"这类只有真浏览器能看见的回归，不替代上面的后端 pytest 与前端 vitest 单测。
+
+**开发机（8G 内存）不要在本机跑真实浏览器**：起一个 Chromium 就会把机器压死、还会拖垮同时在跑的 pytest。本机只做离线校验（用例发现与解析，不启动浏览器）：
 
 ```bash
 cd web-app
 npm ci
-npx playwright install chromium
-npm run test:e2e
+npx playwright test --list      # 14 条用例都能被发现/解析（能抓住 testDir、文件名、语法类低级错误）
 ```
 
-覆盖：使用端首屏外壳、语言切换（中文 / English / Bahasa Melayu 的文案与 `<html lang>` 真的跟着换）、管理端外壳与 `/admin`、`/admin/analysis`、`/admin/generate`、`/admin/settings`、`/admin/translations` 逐个可达不白屏、建库→上传 Markdown→轮询到 `ready`、问答的答案文本与引用区（引用计数、【n】角标→来源预览→引用抽屉）、会话列表出现该轮并可点回历史、工作台卡片与文档列表里的上传结果。
+真实运行放测试服务器（32G / 8 核，一条命令：同步 → 起后端与 Vite → 跑 → 收日志 → 关进程）：
 
-两个 server 由 `playwright.config.ts` 的 `webServer` 自动拉起（后端 8100 + Vite 5173，`reuseExistingServer: true`：本机已有 dev 栈就直接复用）。后端用 `web-app/e2e/dev_server.py`：沿用 `scripts/dev_app.py` 的开发配置（假向量 embedder、`auth=off` 免登录），另外注入一个确定性桩 LLM——真 provider 在没有 `DASHSCOPE_API_KEY` 时会让问答直接 503，而 CI 没有密钥，桩只替换"模型正文"这一段，引用与检索仍是真实链路（**假向量的检索分数不能用于效果验收，这套只做冒烟**）。本机解释器不在 PATH 时用 `E2E_PYTHON` 指定；用例建的知识库跑完由 `e2e/global-teardown.ts` 清理。
+```bash
+scripts/dev/run_remote_e2e.sh          # 默认连跑两次（证明不 flaky）
+scripts/dev/run_remote_e2e.sh once     # 只跑一次
+scripts/dev/run_remote_e2e.sh logs     # 看最近一次日志
+USE_DEV_APP=1 scripts/dev/run_remote_e2e.sh   # 后端换 scripts.dev_app（真实云 LLM，需 .env 密钥）
+```
+
+CI 的 `e2e` job 在 ubuntu runner 上直接 `npm run test:e2e`（runner 有内存与预装浏览器依赖，`--with-deps` 可用）。
+
+覆盖：使用端首屏外壳、语言切换（中文 / English / Bahasa Melayu 的文案与 `<html lang>` 真的跟着换）、管理端外壳与四个管理页（`/admin/analysis`、`/admin/generate`、`/admin/settings`、`/admin/translations`）深链直达不白屏 + 侧栏点击连通性、建库→上传 Markdown→轮询到 `ready`、问答的答案文本与引用区（引用计数、【n】角标→来源预览→引用抽屉）、会话列表出现该轮并可点回历史、工作台卡片与文档列表里的上传结果。
+
+两个 server 由 `playwright.config.ts` 的 `webServer` 自动拉起（后端 8100 + Vite 5173，`reuseExistingServer: true`：已有 dev 栈就直接复用）。后端用 `web-app/e2e/dev_server.py`：沿用 `scripts/dev_app.py` 的开发配置（假向量 embedder、`auth=off` 免登录），另外注入一个确定性桩 LLM——真 provider 在没有 `DASHSCOPE_API_KEY` 时会让问答直接 503，而 CI 没有密钥，桩只替换"模型正文"这一段，引用与检索仍是真实链路（**假向量的检索分数不能用于效果验收，这套只做冒烟**）。解释器不在 PATH 时用 `E2E_PYTHON` 指定；用例建的知识库跑完由 `e2e/global-teardown.ts` 清理。
 
 Docker 只做导入冒烟时**必须显式覆盖 ENTRYPOINT**：
 

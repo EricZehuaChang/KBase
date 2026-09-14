@@ -150,6 +150,13 @@ jobs:
   # ——前端 job 是"单测 + 类型检查 + 产物漂移"三条快闸门，浏览器用例要装
   # Python 依赖、下 Chromium、起两个真进程，慢一个量级；混在一起红灯时看不出
   # 是单测挂了还是浏览器挂了（CI 规划文档的归因原则）。
+  #
+  # 为什么本地验证不在本机跑：开发机只有 8G 内存且 swap 打满，起一个 Chromium
+  # 就会把机器压死并拖垮同时在跑的 pytest。本机只做离线校验（`npx playwright
+  # test --list` 校验用例发现/解析 + 配置），真实浏览器运行统一走
+  # `scripts/dev/run_remote_e2e.sh`（同步工作区到测试服务器 → 起两端 → 跑 →
+  # 收日志 → 关进程；服务器 32G/8 核）。CI 这边是干净的 ubuntu-latest runner，
+  # 内存与浏览器依赖都由 runner 提供，`--with-deps` 正常可用。
   e2e:
     name: e2e (Playwright 冒烟, Chromium)
     runs-on: ubuntu-latest
