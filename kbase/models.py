@@ -389,3 +389,68 @@ class Translation(Base):
     value: Mapped[str] = mapped_column(Text)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+
+class QaOutcome(Base):
+    """问答结果归因（T12）：每一次问答落一行，供运营看板按"桶"归因。
+
+    为什么独立成表而不是往 audit_logs 塞：审计行只留 100 字问题前缀、没有会话
+    与消息关联，也没法按桶聚合；而"用户问了什么我们答不上"是知识缺口的第一手
+    信号，需要能下钻到具体问答与当次 citations、能按时间/渠道/库筛、能导出。
+
+    bucket 取值写死在 kbase/qa_outcomes.py 的模块常量里（不是自由文本）：
+    empty_retrieval（检索为空）/ below_threshold（检索到了但全低于阈值、无可用
+    依据）/ scope_denied（越权静默空集）/ answered（正常作答）。
+    downvoted 不单列桶——由 feedback=-1 叠加表示（同一行既可 answered 又被点踩）。
+    """
+    __tablename__ = "qa_outcomes"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    # 入口渠道：web（登录态会话/直问）/ share（免登录分享）/ v1（OpenAI 兼容）
+    # / feishu（飞书机器人）/ mcp。各入口的归因行要能分开看——同一批问题从
+    # 不同入口进来，缺口含义不同。
+    channel: Mapped[str] = mapped_column(String(20), index=True)
+    kb_id: Mapped[str | None] = mapped_column(String(36), index=True, nullable=True)
+    # 多库联查时记全部库（JSON 数组）；单库为 NULL（与 conversations.kb_ids 同约定）
+    kb_ids: Mapped[str | None] = mapped_column(Text, nullable=True)
+    conv_id: Mapped[str | None] = mapped_column(String(36), index=True, nullable=True)
+    # 会话问答才有的助手消息 id：append_round 生成后可回填（T12 改造点）
+    message_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    actor: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    bucket: Mapped[str] = mapped_column(String(30), index=True)
+    retrieved_count: Mapped[int] = mapped_column(Integer, default=0)
+    usable_count: Mapped[int] = mapped_column(Integer, default=0)
+    # 本轮最高检索分（可为 NULL：检索为空时没有分数）。用它判断"差一点就够"
+    top_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # 问题原文（上限 2000 字）：比审计的 100 字前缀长得多，够用来提标问
+    question: Mapped[str] = mapped_column(Text)
+    # 用户反馈叠加：NULL=未评，1=赞，-1=踩（T12 与 feedback.upsert_feedback 联动）
+    feedback: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class StandardAnswer(Base):
+    """标问库（T13）：人工策展的"标准问题 + 标准答案"，**必须先过人工审核**。
+
+    红线（方案已定案）：审核通过的标问**只用于两处**——回灌评测集，以及可选地
+    作为问答型文档走正常摄取管道（这样仍可溯源、仍受 ACL 约束）。
+    **严禁任何"相似度命中就绕过检索直接返回答案"的代码路径**，这一条不做。
+    """
+    __tablename__ = "standard_answers"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    kb_id: Mapped[str] = mapped_column(String(36), index=True)
+    question: Mapped[str] = mapped_column(Text)
+    # 相似问法（JSON 数组）：标问的价值一半在这里——同一意图的多种问法
+    similar_questions: Mapped[str | None] = mapped_column(Text, nullable=True)
+    answer: Mapped[str] = mapped_column(Text)
+    category: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # pending_review -> approved | rejected（状态机照抄 documents 的人工审核：
+    # 非 pending_review 再审核返回 409，见 routes/kb.py 的 review_document）
+    status: Mapped[str] = mapped_column(String(20), default="pending_review", index=True)
+    # 来源：ops（运营看板一键提取）/ mcp（Agent 提交）/ manual（手工录入）
+    source: Mapped[str] = mapped_column(String(20), default="manual")
+    # 由哪条归因记录提取而来（T12 的 qa_outcomes.id），手工录入为 NULL
+    source_outcome_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    reviewed_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

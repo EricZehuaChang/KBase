@@ -80,6 +80,13 @@ _COLUMN_MIGRATIONS = [
     ("share_links", "password_hash", "TEXT"),
     ("share_links", "max_visits", "INTEGER"),
     ("share_links", "visit_count", "INTEGER"),
+    # 答案级评测（T15）用到的列。老库补列一律 NULL，读取端解释：mode=NULL
+    # 视作 retrieval（只评检索，与升级前行为一致）；answer_score/judge_provider
+    # =NULL 表示没跑过答案级判分。qa_outcomes / standard_answers 是新表，
+    # 由 create_all 建，不在这里登记。
+    ("eval_runs", "mode", "TEXT"),
+    ("eval_runs", "answer_score", "REAL"),
+    ("eval_runs", "judge_provider", "TEXT"),
 ]
 
 _FTS_DDL = (
