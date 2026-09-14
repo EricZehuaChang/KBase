@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# Playwright（页面级 E2E 冒烟）：报告与失败产物是生成物，不入库
+test-results
+playwright-report
+blob-report
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

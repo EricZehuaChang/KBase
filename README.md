@@ -317,6 +317,21 @@ python -m pytest
 
 前端使用 Node 22，在 `web-app/` 下依次：`npm ci` → `npm test` → `npm run build`（`vue-tsc` 类型检查 + Vite 双入口构建到 `../web`）→ `npm run check-isolation`，最后确认 `web/` 与提交内容一致（CI 会检查漂移，不一致直接红）。
 
+### 页面级端到端冒烟（Playwright）
+
+`web-app/e2e/` 是**页面级**冒烟套件（10 个用例，只装 Chromium）：只抓"页面是不是坏了"这类只有真浏览器能看见的回归，不替代上面的后端 pytest 与前端 vitest 单测。
+
+```bash
+cd web-app
+npm ci
+npx playwright install chromium
+npm run test:e2e
+```
+
+覆盖：使用端首屏外壳、语言切换（中文 / English / Bahasa Melayu 的文案与 `<html lang>` 真的跟着换）、管理端外壳与 `/admin`、`/admin/analysis`、`/admin/generate`、`/admin/settings`、`/admin/translations` 逐个可达不白屏、建库→上传 Markdown→轮询到 `ready`、问答的答案文本与引用区（引用计数、【n】角标→来源预览→引用抽屉）、会话列表出现该轮并可点回历史、工作台卡片与文档列表里的上传结果。
+
+两个 server 由 `playwright.config.ts` 的 `webServer` 自动拉起（后端 8100 + Vite 5173，`reuseExistingServer: true`：本机已有 dev 栈就直接复用）。后端用 `web-app/e2e/dev_server.py`：沿用 `scripts/dev_app.py` 的开发配置（假向量 embedder、`auth=off` 免登录），另外注入一个确定性桩 LLM——真 provider 在没有 `DASHSCOPE_API_KEY` 时会让问答直接 503，而 CI 没有密钥，桩只替换"模型正文"这一段，引用与检索仍是真实链路（**假向量的检索分数不能用于效果验收，这套只做冒烟**）。本机解释器不在 PATH 时用 `E2E_PYTHON` 指定；用例建的知识库跑完由 `e2e/global-teardown.ts` 清理。
+
 Docker 只做导入冒烟时**必须显式覆盖 ENTRYPOINT**：
 
 ```bash
@@ -331,7 +346,7 @@ docker run --rm --entrypoint sh kbase:ci -c 'test -f /app/web/index.html && test
 
 镜像的 `ENTRYPOINT` 是 `entrypoint.sh`，它固定 `exec uvicorn` 且**忽略附加参数**：省略 `--entrypoint` 会变成启动真应用并触发模型下载，而不是执行你期望的导入检查（历史 CI 上真踩过，单步挂 26 分钟）。
 
-完整门禁见 [`.github/workflows/`](.github/workflows/)：`ci.yml` 壳 + `ci-core.yml` 四个 job（ruff 与配置可加载、pytest、PG 集成、前端单测 / 构建 / 隔离 / 产物漂移）、`docker-ci.yml`（main 的镜像构建与冒烟）、`nightly.yml`（Chroma 1.5.9 金丝雀、依赖审计、每日镜像、全量回归）、`release.yml`（`v*` tag 门禁 + 源码打包挂 Release）。当前**没有**把镜像推送到 GHCR 的流程。
+完整门禁见 [`.github/workflows/`](.github/workflows/)：`ci.yml` 壳 + `ci-core.yml` 五个 job（ruff 与配置可加载、pytest、PG 集成、前端单测 / 构建 / 隔离 / 产物漂移、浏览器端到端冒烟）、`docker-ci.yml`（main 的镜像构建与冒烟）、`nightly.yml`（Chroma 1.5.9 金丝雀、依赖审计、每日镜像、全量回归）、`release.yml`（`v*` tag 门禁 + 源码打包挂 Release）。当前**没有**把镜像推送到 GHCR 的流程。
 
 ## 已知限制
 
