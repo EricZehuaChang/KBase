@@ -1,5 +1,22 @@
 # KBase 运行配置。密钥一律走环境变量（api_key_env 指定变量名），本文件可入库。
 data_dir: ./data
+# 登录/口令端点的人机闸（T11）：窗口内失败次数达阈值 → 429 + Retry-After，
+# 退避随失败档位指数增长（默认 5 次→30s、6→60s、7→120s …… 上限 900s）。
+# 计数源是 audit_logs 表里的失败留痕（login_failed 等），**不建新表**，因此
+# 多 worker/多副本共用同一份计数（与 T09 的进程内 API Key 限流不同，后者在
+# standard 档只能承诺每进程近似）。判定维度：/api/auth/login 按"同一用户名"
+# 与"同一来源 IP"各算一遍、任一达阈值即锁；forgot/reset 只按来源 IP。
+# 各键含义与默认值见 kbase/config.py 的 LoginGuardConfig；正常使用撞不上这几
+# 个阈值，只在被爆破时生效。
+# 注：IP 维度取传输层对端地址（不信任 X-Forwarded-For，与 T09 的 Key 白名单、
+# 审计 ip 同一口径）。若部署在未透传真实来源的反代后面，它看到的是代理地址、
+# 会退化成"整个出口"一道闸——那种部署应调大 max_attempts 留余量（用户名维度
+# 不受影响，仍按账号各自计数）。
+login_guard:
+  max_attempts: 5            # 窗口内同一用户名/同一 IP 的失败次数阈值（>= 即锁）
+  window_seconds: 900        # 计数窗口 15 分钟，同时也是锁定时长的上界
+  backoff_base_seconds: 30   # 刚达阈值时的 Retry-After
+  backoff_max_seconds: 900   # 指数退避的上限
 embedder:
   name: bge-local
   model: BAAI/bge-m3

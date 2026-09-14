@@ -168,9 +168,35 @@ class SsoConfig(BaseModel):
     default_role: str = "viewer"
 
 
+class LoginGuardConfig(BaseModel):
+    """登录/口令端点的人机闸（T11）：窗口内失败次数达阈值 → 429 + Retry-After，
+    退避时长随失败档位指数增长。
+
+    计数源是 audit_logs 表（见 kbase/ratelimit.py 的 LoginGuard），不新建表——
+    因此和 T09 的进程内限流不同，**多 worker/多副本下计数一致**（都在同一个
+    库里），重启也不丢锁。四个键都可在部署侧按规模调；默认 5 次 / 15 分钟是
+    "正常人连错 5 次之前基本都会去走忘记密码"的量级，而在线爆破会被立刻按住。
+    """
+    # 窗口内同一用户名 / 同一 IP 的失败次数阈值，达到（>=）即锁。
+    # 必须 >=1：0 会让"0 >= 0"恒真，等于把登录永久锁死。
+    max_attempts: int = Field(default=5, ge=1)
+    # 计数窗口（秒），同时是锁定时长的上界——窗口内所有失败滑出后锁自动解开
+    # （见 LoginGuard.check），所以 Retry-After 报得比它还大只是虚报。
+    window_seconds: int = Field(default=900, ge=1)
+    # 退避基数（秒）：刚好达阈值时 Retry-After = base，之后每多一档（一次失败
+    # 或一次被拒）翻一倍。
+    backoff_base_seconds: int = Field(default=30, ge=1)
+    # 退避上限（秒）：指数增长到此为止（默认与窗口同长，即最多让客户端等一个
+    # 窗口——等满一个窗口后锁必然已解开）。
+    backoff_max_seconds: int = Field(default=900, ge=1)
+
+
 class AppConfig(BaseModel):
     data_dir: Path = Path("./data")
     sso: SsoConfig = Field(default_factory=SsoConfig)
+    # T11：登录/忘记密码/重置密码的失败锁定（默认值与改造前"只记审计不拦截"
+    # 相比是行为变化，阈值给得足够宽，正常使用不会撞上）。
+    login_guard: LoginGuardConfig = Field(default_factory=LoginGuardConfig)
     db: DBConfig = Field(default_factory=DBConfig)
     embedder: EmbedderConfig = Field(default_factory=EmbedderConfig)
     # KB 级可选向量模型清单（M5-2）：建库时可从 [default]+embedders 中选一个

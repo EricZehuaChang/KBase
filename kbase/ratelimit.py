@@ -290,3 +290,162 @@ def make_rate_limit_dependency(sf):
             logging.getLogger(__name__).exception("API Key 用量落库失败: %s", key_id)
 
     return _rate_limit
+
+
+# ============================================================================
+# T11：登录/口令端点的人机闸——**以审计表为计数源**，不建新表
+# ============================================================================
+#
+# 背景：/api/auth/login 此前只把失败写进 audit_logs（actor=提交的用户名、ip=
+# 来源 IP），kbase_login_failed_total 也只统计不拦截，爆破可以无限打。本段在
+# 鉴权**之前**数窗口内的失败留痕，同一用户名/同一 IP 任一维度达阈值就回
+# 429 + Retry-After，退避随档位（失败数 + 已被拒次数）指数增长。
+#
+# 为什么用审计表当计数器，而不是像本文件上半部分（T09）那样用进程内 deque：
+# - audit_logs.ts 已有索引（kbase/models.py），计数查询走的是 ix_audit_logs_ts
+#   的范围扫描（EXPLAIN QUERY PLAN 实测），扫描量只与窗口内的审计行数有关、
+#   不随表总量增长；登录/口令端点都不在热路径上，这个代价可以接受；
+# - 计数天然跨 worker/跨副本一致、重启不丢锁——T09 的进程内滑窗在 standard
+#   档只能承诺"每进程近似"，而登录锁定对"绕过一个 worker 就绕过锁"很敏感；
+# - 判定只读计数、不维护状态列（锁的"状态"就是这些留痕行本身，没有可写坏的
+#   字段），少一张表就少一处迁移与运维面。
+#
+# 复用的是 T09 的两个约定：可注入 clock 的模块级单例、以及"返回 0=放行 /
+# 正数=Retry-After 秒数"的判定出口。
+#
+# 判定分两层，两个计数来源刻意分开：
+# - **阈值**只数"真实失败"留痕（下面的 LOGIN_ACTIONS / FORGOT_ACTIONS /
+#   RESET_ACTIONS）——它回答"这个账号/这个 IP 是不是有人在试密码"；
+# - **退避档位**在阈值之上再加窗口内的 login_locked 行（=已被闸拒了几次）
+#   ——它回答"挨了拒绝还在继续打"，每多一次翻一倍，于是退避真的指数增长。
+# 分开不是为了精确，而是为了不误伤：忘记密码被拒（办公室 NAT 下多人重置密码
+# 这种）只会抬高该维度的退避档位，不会把登录的阈值计数一起顶上去——否则一次
+# 集中重置就能把整个出口 IP 的登录逐级锁死（登录的阈值只认 login_failed）。
+# 被拒的请求只记 login_locked、不记 login_failed：它压根没被验证过，写成
+# "登录失败"是假账，也会把 kbase_login_failed_total 灌水。
+#
+# IP 维度取 request.client.host（传输层对端，与 T09/deps.py、登录审计同一口径，
+# **不信任 X-Forwarded-For**）：部署在未透传真实来源的反代后面时，它看到的是
+# 代理地址，这道 IP 闸会退化成"整个出口"的闸（T10 的公开端点限流有同一性质）。
+# 参考部署（docker-compose.*.yml 直接发布 uvicorn 端口）没有这层问题；确有反代
+# 时应把反代配成改写对端地址，或调高 login_guard.max_attempts 留余量——用户名
+# 维度不受影响，仍按账号各自计数。
+
+# 计数与留痕用的动作标签。计数源（本段）与写入侧（kbase/api/routes/auth.py）
+# 必须字面一致，所以两边都用这里的常量、不写字面量。
+LOGIN_FAILED = "login_failed"       # 登录失败（密码错/账号禁用/SSO 回调失败）
+LOGIN_LOCKED = "login_locked"       # T11 新增：被闸拦下的请求（计退避档位，不计阈值）
+PASSWORD_FORGOT = "password_forgot"          # 忘记密码请求（命中与否都记）
+PASSWORD_RESET_FAILED = "password_reset_failed"    # 重置 token 无效或已过期
+
+# 三个调用点各自的**失败**动作集合（阈值判定的唯一输入）：
+# - 登录：只数 login_failed，同一用户名与同一 IP 两个维度独立判定；
+# - 忘记密码 / 重置密码：只按 IP 判定，且除 login_failed 外还数本端点自己的
+#   留痕——爆破登录被打住的 IP 不该能转到这里继续试；这两个未鉴权端点自己也
+#   要有闸（防邮件轰炸与 token 猜测）。
+LOGIN_ACTIONS = (LOGIN_FAILED,)
+FORGOT_ACTIONS = (LOGIN_FAILED, PASSWORD_FORGOT)
+RESET_ACTIONS = (LOGIN_FAILED, PASSWORD_RESET_FAILED)
+
+# 退避指数 2**k 的 k 上限：防超大失败次数下的天文数字整数运算（config 里的
+# backoff_max_seconds 早已先生效，这里只是防御性封顶）。
+_MAX_BACKOFF_STEPS = 30
+
+
+def _utc_naive(epoch: float) -> datetime:
+    """纪元秒 → naive UTC datetime，与 write_audit 落库用的 datetime.utcnow()
+    同一口径（audit_logs.ts 是 naive UTC 列，拿本地时区去比会整体偏移）。"""
+    return datetime.fromtimestamp(epoch, tz=timezone.utc).replace(tzinfo=None)
+
+
+def _audit_count(sf, *, actions: tuple, since: datetime,
+                 actor: str | None = None, ip: str | None = None) -> int:
+    """窗口内（ts >= since）指定动作集合的审计行数，可按 actor / ip 收窄。
+
+    actions 收元组而不是单值：忘记密码/重置密码两个端点的计数源不止一个动作
+    标签（见 FORGOT_ACTIONS / RESET_ACTIONS 的注释），一次 IN 查询数完。
+    """
+    # 局部 import：本段是**追加**进本文件的（上方 T09 段的 import 清单保持不
+    # 动），这两个名字只有本段用得到。
+    from sqlalchemy import func
+
+    from kbase.models import AuditLog
+
+    with sf() as s:
+        q = s.query(func.count(AuditLog.id)).filter(
+            AuditLog.action.in_(list(actions)), AuditLog.ts >= since)
+        if actor is not None:
+            q = q.filter(AuditLog.actor == actor)
+        if ip is not None:
+            q = q.filter(AuditLog.ip == ip)
+        return int(q.scalar() or 0)
+
+
+class LoginGuard:
+    """登录/口令端点的锁定判定：唯一可注入的是时钟，状态全在 audit_logs 里。
+
+    clock 可注入（测试用可控时钟）。注意审计行的 ts 是 write_audit 里的
+    datetime.utcnow()（真实墙上时间），所以可控时钟得是"真实当下 + 偏移"，
+    不能像上面 limiter 那样冻结成任意绝对值——否则窗口边界与库里已有的行对
+    不上（T09 的滑窗只看内存时间戳，没有这个约束）。
+    """
+
+    def __init__(self, clock=time.time):
+        self.clock = clock
+
+    def check(self, sf, cfg, *, actions: tuple, username: str | None = None,
+              ip: str | None = None, now: float | None = None) -> dict:
+        """判定 + 退避。返回 {retry_after, username_attempts, ip_attempts,
+        username_refusals, ip_refusals}。
+
+        retry_after == 0 表示放行；> 0 表示锁定，值为 Retry-After 秒数（调用方
+        直接塞进响应头，与上面 RateLimiter.check 同一约定）。
+
+        两个维度**分别**计数（同一用户名的行数 / 同一 IP 的行数），任一维度的
+        失败数达阈值即锁；退避档位取两个维度"失败数 + 被拒数"的较大者（见文件
+        本段顶部的两层说明）。返回值里带上这几个计数，调用方落审计行时能看出
+        是"这个账号在被爆"还是"这个 IP 在扫"、以及挨了多少次拒绝。
+        """
+        now = self.clock() if now is None else now
+        since = _utc_naive(now - cfg.window_seconds)
+        actor_hits = actor_refused = ip_hits = ip_refused = 0
+        if username:
+            actor_hits = _audit_count(sf, actions=actions, since=since,
+                                      actor=username)
+            actor_refused = _audit_count(sf, actions=(LOGIN_LOCKED,),
+                                         since=since, actor=username)
+        if ip:
+            ip_hits = _audit_count(sf, actions=actions, since=since, ip=ip)
+            ip_refused = _audit_count(sf, actions=(LOGIN_LOCKED,), since=since,
+                                      ip=ip)
+        attempts = max(actor_hits, ip_hits)
+        retry_after = 0
+        if attempts >= cfg.max_attempts:
+            retry_after = self._backoff(
+                max(actor_hits + actor_refused, ip_hits + ip_refused), cfg)
+        return {"retry_after": retry_after,
+                "username_attempts": actor_hits, "ip_attempts": ip_hits,
+                "username_refusals": actor_refused, "ip_refusals": ip_refused}
+
+    def _backoff(self, level: int, cfg) -> int:
+        """指数退避：base * 2**(超出阈值的档位)，再双重封顶。
+
+        档位 level = 失败数（+ 已被拒次数），刚达阈值时 level == max_attempts
+        → 退避 base 秒，之后每多一档翻一倍。默认配置（base=30 / max=900 /
+        window=900）下：5 次→30s，6→60s，7→120s，8→240s，9→480s，10 档及以上
+        →900s。
+
+        上限取 min(backoff_max_seconds, window_seconds)：攻击停下来后，窗口内
+        的行整体滑出窗口、锁必然自解（见本段顶部的说明），报得比窗口还大就是
+        虚报。
+        """
+        steps = min(max(0, level - cfg.max_attempts), _MAX_BACKOFF_STEPS)
+        return max(1, int(min(cfg.backoff_base_seconds * (2 ** steps),
+                              cfg.backoff_max_seconds,
+                              cfg.window_seconds)))
+
+
+# 模块级单例：login/forgot/reset 三个调用点共用同一份判定逻辑。时钟可注入
+# （测试 monkeypatch login_guard.clock，与上面 limiter 的做法一致）。本对象
+# 不持有任何计数状态，所以用例之间无需 reset。
+login_guard = LoginGuard()
