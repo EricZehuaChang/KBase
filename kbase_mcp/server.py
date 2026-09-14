@@ -129,6 +129,62 @@ async def ask_knowledge_base_impl(c: KBaseClient, kb_id: str, question: str,
                            "snippet": ci["snippet"]} for ci in citations]}
 
 
+# T14：批次读取两个只读端点。越权（受限 API Key 的库级 scope）时服务端返回
+# **静默空集**——`{}` / `[]`，与 /search、/query 的越权语义一致；这里原样回空，
+# 不编造字段也不改成错误面（"块不存在"在服务端已是 404，另走下面的错误面）。
+async def get_chunk_impl(c: KBaseClient, chunk_id: str):
+    try:
+        r = await c.http.get(f"/api/chunks/{chunk_id}")
+        r.raise_for_status()
+    except httpx.TransportError:
+        return _err(str(c.http.base_url))
+    except httpx.HTTPStatusError as e:
+        return _wrap_status_error(e, e.response.text)
+    data = r.json()
+    if not data:
+        return {}
+    return {"doc_id": data["doc_id"], "doc_name": data["doc_name"],
+            "heading_path": data["heading_path"], "text": data["text"],
+            "page": data["page"], "layout": data["layout"]}
+
+
+async def get_document_outline_impl(c: KBaseClient, doc_id: str):
+    try:
+        r = await c.http.get(f"/api/documents/{doc_id}/outline")
+        r.raise_for_status()
+    except httpx.TransportError:
+        return _err(str(c.http.base_url))
+    except httpx.HTTPStatusError as e:
+        return _wrap_status_error(e, e.response.text)
+    return r.json()
+
+
+async def submit_standard_answer_impl(c: KBaseClient, kb_id: str, question: str,
+                                      answer: str,
+                                      similar_questions: list[str] | None = None,
+                                      category: str | None = None):
+    """T14 → T13 建标问端点（POST /api/kb/{kb_id}/standard-answers）。
+
+    **只提交、不生效**：服务端把新建标问一律置 pending_review（请求体里根本没有
+    status 字段，创建者不能自录自过），审核通过前它不进索引、不参与召回——
+    这正是标问库的红线（严禁"相似度命中就绕过检索直接返回答案"）。
+    响应体原样透传（服务端返回创建后的标问记录，含 id / status）。"""
+    # source=mcp：与人工录入（manual）区分，运营审核时能看出这是 Agent 提的
+    body: dict = {"question": question, "answer": answer, "source": "mcp"}
+    if similar_questions:
+        body["similar_questions"] = similar_questions
+    if category:
+        body["category"] = category
+    try:
+        r = await c.http.post(f"/api/kb/{kb_id}/standard-answers", json=body)
+        r.raise_for_status()
+    except httpx.TransportError:
+        return _err(str(c.http.base_url))
+    except httpx.HTTPStatusError as e:
+        return _wrap_status_error(e, e.response.text)
+    return r.json()
+
+
 # filters 参数说明（写进工具 description，agent 才会正确使用）。部署方可用
 # KBASE_MCP_FILTERS_DOC 追加受控词表（如 ztenith 方案卡的行业/数据实体枚举）
 # ——词表随 cards 仓库演进，不硬编码进 kbase 通用发行版。
@@ -178,5 +234,36 @@ def build_mcp(client: KBaseClient | None = None) -> FastMCP:
         # 与另外两个工具的 structuredContent["result"] 形状保持一致。
         return await ask_knowledge_base_impl(c, kb_id, question, provider,
                                              filters)
+
+    # 下面三个工具的返回标注同样写成 list/dict 的 Union（理由见上方 ask 的注释）：
+    # 裸 `dict` 不生成 output_schema，structuredContent 恒为 None。
+
+    @mcp.tool(description=(
+        "按 chunk_id 读取单个分块，返回正文与出处："
+        "{doc_id, doc_name, heading_path, text, page, layout}"
+        "（layout 为表格块的版式 JSON，非表格块为 null）。\n"
+        "chunk_id 可从检索结果的引用或文档分块列表中拿到；"
+        "越权或不可见时返回空对象 {}。"))
+    async def get_chunk(chunk_id: str) -> dict | list:
+        return await get_chunk_impl(c, chunk_id)
+
+    @mcp.tool(description=(
+        "读取一份文档的章节大纲：按 heading_path 去重后的父块树，"
+        "返回 [{title, heading_path, children}]（按原文出现顺序，children 可嵌套）。\n"
+        "用来先看文档有哪些章节再决定检索范围；越权或不可见时返回空数组 []。"))
+    async def get_document_outline(doc_id: str) -> list | dict:
+        return await get_document_outline_impl(c, doc_id)
+
+    @mcp.tool(description=(
+        "向知识库提交一条标准问答（question + answer，可选 similar_questions 相似问法、"
+        "category 分类）。提交**只进入人工审核队列**：审核通过前既不进索引也不参与"
+        "检索与问答，不会改变任何答案。\n"
+        "返回创建后的标问记录（含 id 与 status=pending_review）；"
+        "需 editor 及以上角色的 API Key，权限不足返回 403 错误对象。"))
+    async def submit_standard_answer(kb_id: str, question: str, answer: str,
+                                     similar_questions: list[str] | None = None,
+                                     category: str | None = None) -> dict | list:
+        return await submit_standard_answer_impl(
+            c, kb_id, question, answer, similar_questions, category)
 
     return mcp

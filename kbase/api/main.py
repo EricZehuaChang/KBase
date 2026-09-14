@@ -177,6 +177,12 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
     connector_sync = connectors_routes.register(router, svc, deps)
     from kbase.api.routes import i18n as i18n_routes
     i18n_routes.register(app, router, svc, deps)
+    # T13 标问库：录入/审核/回灌评测集 + 从 T12 归因行一键提取
+    from kbase.api.routes import standard_answers as standard_answers_routes
+    standard_answers_routes.register(router, svc, deps)
+    # T14 MCP 扩展：单块详情 + 文档章节树（MCP get_chunk / get_document_outline 的数据源）
+    from kbase.api.routes import mcp_extras as mcp_extras_routes
+    mcp_extras_routes.register(router, svc, deps)
     app.include_router(router)
 
     # 连接器定时同步调度器（对标#3）：startup 起 daemon 线程（TestClient

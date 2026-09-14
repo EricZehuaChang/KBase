@@ -665,13 +665,20 @@ tar -czf kbase-files-backup-$(date +%F).tar.gz data/files
 
 MCP（Model Context Protocol）Server 把知识库能力暴露为标准工具，供 Claude Code / Claude Desktop 等支持 MCP 的客户端直接调用。它通过 HTTP 反向调用运行中的 KBase API，**不会**额外加载一份模型内核，因此**必须先启动 KBase API 服务**才能使用。
 
-#### 三个工具
+#### 六个工具
 
 | 工具 | 参数 | 返回 |
 |---|---|---|
 | `list_knowledge_bases()` | 无 | 全部知识库列表 `[{id, name}, ...]` |
-| `search_knowledge(kb_id, query, top_k=5)` | 纯检索 | 带出处与相关度的原文块列表（不生成答案） |
-| `ask_knowledge_base(kb_id, question, provider=None)` | 完整问答 | `{answer, citations: [...]}`（内部消费 SSE 流后一次性返回完整结果，不流式） |
+| `search_knowledge(kb_id, query, top_k=5, filters=...)` | 纯检索 | 带出处与相关度的原文块列表（不生成答案） |
+| `ask_knowledge_base(kb_id, question, provider=None, filters=...)` | 完整问答 | `{answer, citations: [...]}`（内部消费 SSE 流后一次性返回完整结果，不流式） |
+| `get_chunk(chunk_id)` | 按块 id 取原文 | `{text, heading_path, page, layout, doc_id, doc_name}`（精确定位与溯源用） |
+| `get_document_outline(doc_id)` | 按文档 id 取章节树 | 章节树 `[{title, heading_path, children: [...]}]` |
+| `submit_standard_answer(kb_id, question, answer, similar_questions?, category?)` | 提交标问 | `{id, status: "pending_review", ...}`——**只进人工审核队列**，审核通过前不影响任何检索或回答 |
+
+`filters` 支持元数据等值与数值范围（`{"功率": {"gte": 450, "lte": 550}}` 或 `{"approx": 500, "tol": 0.1}`），用法见工具 description。
+
+**权限与作用域**：工具复用与 REST 相同的鉴权——受限 API Key（`scope_kb_ids` 白名单）取白名单外的块或文档大纲时**静默返回空**（`{}` / `[]`，不报错也不提示，与检索端点的越权语义一致）；被 ACL 挡住的库则返回 404。**不做** `get_table`（块上没有表身份字段）与 `run_eval`。
 
 **错误契约**：任一工具失败时（KBase 未启动、知识库不存在、密钥缺失等）不会抛出协议级异常，而是返回 `{"error": "<中文说明>"}`——调用方应先检查返回对象是否包含 `error` 键。
 

@@ -8,7 +8,9 @@ from kbase_mcp.__main__ import bearer_auth_middleware
 from tests.test_api import CFG, MD, FakeLLM
 
 
-EXPECTED_TOOLS = {"list_knowledge_bases", "search_knowledge", "ask_knowledge_base"}
+# T14 起共 6 个工具（新增 get_chunk / get_document_outline / submit_standard_answer）
+EXPECTED_TOOLS = {"list_knowledge_bases", "search_knowledge", "ask_knowledge_base",
+                  "get_chunk", "get_document_outline", "submit_standard_answer"}
 
 
 @pytest.fixture
@@ -18,7 +20,7 @@ async def dead_client():
     await c.aclose()
 
 
-async def test_stdio_handshake_lists_three_tools_with_chinese_descriptions(dead_client):
+async def test_stdio_handshake_lists_all_tools_with_chinese_descriptions(dead_client):
     fastmcp = build_mcp(dead_client)
     async with create_connected_server_and_client_session(fastmcp) as session:
         tools = await session.list_tools()
