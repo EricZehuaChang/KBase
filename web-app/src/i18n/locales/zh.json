@@ -34,6 +34,7 @@
     "eval_run_not_found": "回归记录不存在: {id}",
     "connector_not_found": "连接器不存在: {id}",
     "invalid_credentials": "用户名或密码错误，或账号已被禁用",
+    "too_many_requests": "请求过于频繁，请在 {retry_after} 秒后重试",
     "old_password_wrong": "旧密码不正确",
     "apikey_not_found": "API Key 不存在: {id}",
     "username_exists": "用户名已存在: {name}",
@@ -85,7 +86,8 @@
     "role_not_found": "角色不存在: {name}",
     "role_exists": "角色已存在: {name}",
     "role_builtin": "内置角色不可创建/修改/删除",
-    "role_in_use": "仍有 {n} 个用户在使用该角色，请先改派"
+    "role_in_use": "仍有 {n} 个用户在使用该角色，请先改派",
+    "share_password_required": "该分享链接需要访问口令"
   },
   "login": {
     "continue": "登录以继续",
@@ -164,7 +166,12 @@
     "based_on": "基于「{kb}」的资料回答，并附引用原文出处",
     "generating": "回答生成中…",
     "input_placeholder": "输入问题…",
-    "disclaimer": "回答依据知识库资料并附引用，请以原文为准"
+    "disclaimer": "回答依据知识库资料并附引用，请以原文为准",
+    "password_title": "该链接需要访问口令",
+    "password_hint": "请向给你链接的同事索取口令",
+    "password_placeholder": "访问口令",
+    "password_submit": "进入",
+    "password_wrong": "口令不正确，请重试"
   },
   "pwd": {
     "changed": "密码已修改，下次登录请使用新密码",
@@ -559,7 +566,18 @@
     "link": "链接",
     "embed": "嵌入代码",
     "joint_pick": "联查更多库（可选，勾选后访客提问将同时检索）",
-    "joint_badge": "联查 {n} 库"
+    "joint_badge": "联查 {n} 库",
+    "policy": "访问限制（可选）",
+    "expires": "有效期",
+    "password": "访问口令",
+    "password_ph": "留空=免口令",
+    "max_visits": "次数上限",
+    "unlimited": "不限",
+    "policy_hint": "有效期只到所选日期当天；口令至少 4 位；次数只统计匿名提问（访客取附图不算）。",
+    "badge_expires": "有效至 {date}",
+    "badge_password": "需口令",
+    "badge_visits": "已访问 {n} 次",
+    "badge_visits_capped": "已访问 {n}/{max} 次"
   },
   "chunk": {
     "enabled_toast": "已启用（重新加入检索）",

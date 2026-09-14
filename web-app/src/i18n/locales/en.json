@@ -34,6 +34,7 @@
     "eval_run_not_found": "Regression record not found: {id}",
     "connector_not_found": "Connector not found: {id}",
     "invalid_credentials": "Invalid username or password, or account has been disabled",
+    "too_many_requests": "Too many requests. Please retry in {retry_after} seconds",
     "old_password_wrong": "Old password is incorrect",
     "apikey_not_found": "API Key not found: {id}",
     "username_exists": "Username already exists: {name}",
@@ -85,7 +86,8 @@
     "role_not_found": "Role not found: {name}",
     "role_exists": "Role already exists: {name}",
     "role_builtin": "Built-in roles cannot be created, modified, or deleted",
-    "role_in_use": "Still {n} user(s) using this role, please reassign first"
+    "role_in_use": "Still {n} user(s) using this role, please reassign first",
+    "share_password_required": "This share link requires an access password"
   },
   "login": {
     "continue": "Log in to continue",
@@ -164,7 +166,12 @@
     "based_on": "Answer based on '{kb}' materials, with citations",
     "generating": "Generating answer...",
     "input_placeholder": "Ask a question...",
-    "disclaimer": "Answer based on knowledge base with citations. Refer to original."
+    "disclaimer": "Answer based on knowledge base with citations. Refer to original.",
+    "password_title": "This link requires an access password",
+    "password_hint": "Ask the colleague who shared the link for the password",
+    "password_placeholder": "Access password",
+    "password_submit": "Enter",
+    "password_wrong": "Wrong password, please try again"
   },
   "pwd": {
     "changed": "Password changed. Use new password next login.",
@@ -559,7 +566,18 @@
     "link": "Link",
     "embed": "Embed code",
     "joint_pick": "Joint search additional libraries (optional; when checked, visitor queries will also search across)",
-    "joint_badge": "Joint search {n} libraries"
+    "joint_badge": "Joint search {n} libraries",
+    "policy": "Access limits (optional)",
+    "expires": "Expires",
+    "password": "Access password",
+    "password_ph": "Empty = no password",
+    "max_visits": "Visit limit",
+    "unlimited": "Unlimited",
+    "policy_hint": "Expiry covers the selected day; password needs at least 4 characters; only anonymous questions count as visits (loading images does not).",
+    "badge_expires": "Valid until {date}",
+    "badge_password": "Password",
+    "badge_visits": "{n} visit(s)",
+    "badge_visits_capped": "{n}/{max} visit(s)"
   },
   "chunk": {
     "enabled_toast": "Enabled (rejoin retrieval)",

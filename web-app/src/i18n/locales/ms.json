@@ -34,6 +34,7 @@
     "eval_run_not_found": "Rekod regresi tidak wujud: {id}",
     "connector_not_found": "Penyambung tidak wujud: {id}",
     "invalid_credentials": "Nama pengguna atau kata laluan salah, atau akaun telah dilumpuhkan",
+    "too_many_requests": "Terlalu banyak permintaan. Sila cuba lagi dalam {retry_after} saat",
     "old_password_wrong": "Kata laluan lama tidak betul",
     "apikey_not_found": "Kunci API tidak wujud: {id}",
     "username_exists": "Nama pengguna sudah wujud: {name}",
@@ -85,7 +86,8 @@
     "role_not_found": "Peranan tidak wujud: {name}",
     "role_exists": "Peranan sudah wujud: {name}",
     "role_builtin": "Peranan terbina tidak boleh dicipta/diubah/dipadam",
-    "role_in_use": "Masih terdapat {n} pengguna menggunakan peranan ini, sila tukar tugasan dahulu"
+    "role_in_use": "Masih terdapat {n} pengguna menggunakan peranan ini, sila tukar tugasan dahulu",
+    "share_password_required": "Pautan perkongsian ini memerlukan kata laluan akses"
   },
   "login": {
     "continue": "Log masuk untuk meneruskan",
@@ -164,7 +166,12 @@
     "based_on": "Berdasarkan bahan daripada '{kb}' dan disertakan rujukan asal",
     "generating": "Menjana jawapan...",
     "input_placeholder": "Masukkan soalan...",
-    "disclaimer": "Jawapan berdasarkan bahan pangkalan pengetahuan dan disertakan rujukan, sila rujuk sumber asal"
+    "disclaimer": "Jawapan berdasarkan bahan pangkalan pengetahuan dan disertakan rujukan, sila rujuk sumber asal",
+    "password_title": "Pautan ini memerlukan kata laluan akses",
+    "password_hint": "Sila minta kata laluan daripada rakan sekerja yang berkongsi pautan ini",
+    "password_placeholder": "Kata laluan akses",
+    "password_submit": "Masuk",
+    "password_wrong": "Kata laluan salah, sila cuba lagi"
   },
   "pwd": {
     "changed": "Kata laluan telah ditukar, sila gunakan kata laluan baharu semasa log masuk seterusnya",
@@ -559,7 +566,18 @@
     "link": "Pautan",
     "embed": "Kod benam",
     "joint_pick": "Carian bersama lebih banyak pangkalan (pilihan, tandakan untuk carian serentak)",
-    "joint_badge": "Carian bersama {n} pangkalan"
+    "joint_badge": "Carian bersama {n} pangkalan",
+    "policy": "Had akses (pilihan)",
+    "expires": "Tamat tempoh",
+    "password": "Kata laluan akses",
+    "password_ph": "Kosong = tanpa kata laluan",
+    "max_visits": "Had lawatan",
+    "unlimited": "Tanpa had",
+    "policy_hint": "Tamat tempoh hanya sehingga hari yang dipilih; kata laluan sekurang-kurangnya 4 aksara; hanya soalan tanpa log masuk dikira lawatan (memuatkan imej tidak dikira).",
+    "badge_expires": "Sah sehingga {date}",
+    "badge_password": "Perlu kata laluan",
+    "badge_visits": "{n} lawatan",
+    "badge_visits_capped": "{n}/{max} lawatan"
   },
   "chunk": {
     "enabled_toast": "Diaktifkan (disertakan semula dalam carian)",
