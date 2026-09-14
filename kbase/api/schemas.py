@@ -201,15 +201,19 @@ class FeedbackBody(BaseModel):
 
 class EvalCaseIn(BaseModel):
     """评测用例（B）：question 必填，expect_doc（命中文档名）与 expect_text
-    （命中块含此子串）至少给一个——两个都没有的用例永远判不中，直接拒收。"""
+    （命中块含此子串）至少给一个——两个都没有的用例永远判不中，直接拒收。
+    T13 追加 expected_answer（参考答案，可选）：标问回灌评测集时带上它，供
+    答案级判分（T15）用；它**不是检索期望**——只带它的用例进不了检索口径的
+    分母（见 evals.run_eval），代替不了上面两个字段。"""
     question: str
     expect_doc: str | None = None
     expect_text: str | None = None
+    expected_answer: str | None = None
 
     @model_validator(mode="after")
     def _require_expectation(self):
-        if not self.expect_doc and not self.expect_text:
-            raise ValueError("用例必须给 expect_doc 或 expect_text 之一")
+        if not self.expect_doc and not self.expect_text and not self.expected_answer:
+            raise ValueError("用例必须给 expect_doc / expect_text / expected_answer 之一")
         return self
 
 
@@ -577,3 +581,46 @@ class ForgotBody(BaseModel):
 class ResetPasswordBody(BaseModel):
     token: str = Field(min_length=10)
     new_password: str = Field(min_length=6)
+
+
+class StandardAnswerIn(BaseModel):
+    """POST /api/kb/{id}/standard-answers（T13）：标问手工录入。没有 status
+    字段——**创建恒为 pending_review**，审核只能走 review 端点（不能自录自过）。
+    answer 可留空：先登记问题、审核时再补标准答案。"""
+    question: str = Field(min_length=1)
+    answer: str = ""
+    # 相似问法：同一意图的其他说法，供人工策展与后续维护（不参与检索）
+    similar_questions: list[str] = []
+    category: str | None = None
+    # T14：提交来源。默认 manual（管理端手工录入）；MCP 工具提交时传 mcp，
+    # 让运营能区分"人提的"与"Agent 提的"——两者在同一审核队列里混着，
+    # 但追溯责任方完全不同。取值与 models.StandardAnswer 的注释一致。
+    source: Literal["manual", "mcp"] = "manual"
+
+
+class StandardAnswerReview(BaseModel):
+    """PUT /api/standard-answers/{id}/review（T13）：人工审核，照抄文档审核
+    的 409 语义（非 pending_review 再审核一律 409）。decision=approve 时可用
+    answer 覆盖标准答案（人工核对稿为准）；reject 是终态。"""
+    decision: Literal["approve", "reject"]
+    answer: str | None = None
+
+
+class OutcomeToStandardAnswer(BaseModel):
+    """POST /api/stats/outcomes/{id}/standard-answer（T13）：从 T12 归因行
+    一键提取标问——question 由归因行预填（不在请求体里），运营补答案即可。
+    多库联查的归因行 kb_id 为 NULL，此时必须显式给 kb_id 才能归属到库。"""
+    answer: str = ""
+    kb_id: str | None = None
+    similar_questions: list[str] = []
+    category: str | None = None
+
+
+class StandardAnswerToEvalSet(BaseModel):
+    """POST /api/standard-answers/{id}/to-eval-set（T13）：把审核通过的标问
+    追加为一条评测用例（红线出口 a）。expect_doc / expect_text 是检索期望，
+    至少给一个才判得中；expected_answer 是参考答案，缺省用标问自己的答案。"""
+    set_id: str
+    expect_doc: str | None = None
+    expect_text: str | None = None
+    expected_answer: str | None = None
