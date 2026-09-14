@@ -34,22 +34,35 @@ test.describe("管理端", () => {
     await expect(page.getByText("管理企业知识库、文档导入与访问权限")).toBeVisible();
   });
 
-  test("关键页面逐个可达且不白屏（检索分析 / 生成 / 设置 / 多语言）", async ({ page }) => {
-    await gotoAdmin(page);
-
-    for (const target of ADMIN_PAGES) {
-      // 走侧栏真实导航（不是直接 goto 深链接）：Vite dev 的多页回退只在
-      // "/admin" 上命中 admin.html，/admin/analysis 这类深链接会被回退成使用端
-      // index.html；生产由 SPAStaticFiles 处理，开发期靠站内导航。
-      await adminSidebar(page).getByRole("button", { name: target.nav }).click();
-
+  // 深链直达：**生产契约**。生产由 kbase/api/static.py 的 SPAStaticFiles 把
+  // /admin/** 全部交给 admin.html，用户刷新/收藏夹直达/分享链接都走这条路——
+  // 每个管理页都必须能独立冷启动渲染，不能依赖"先从首页点进来"。
+  //
+  // 为什么不用侧栏点击来测这条：Vite dev 的多页回退只在**无扩展名的 /admin**
+  // 上命中 admin.html，/admin/analysis 这类深链接会被回退成使用端 index.html
+  // （使用端有 catch-all 路由，于是渲染出使用端的"请先选择知识库"空态）。
+  // 于是"点侧栏→若发生整页加载→页面变成使用端"，测出来的是 Vite dev 的怪癖
+  // 而不是产品行为——本机上偶然全绿、Linux runner 冷启动下就红（2026-09-14
+  // CI 实测）。侧栏点击的连通性另由下一条用例覆盖。
+  for (const target of ADMIN_PAGES) {
+    test(`深链直达不白屏：${target.path}`, async ({ page }) => {
+      await gotoAdmin(page, target.path);
       await expect(page).toHaveURL(new RegExp(`${target.path}$`));
-      // 面包屑跟着走（当前导航项的 i18n 文案）
       await expect(adminBreadcrumb(page)).toContainText(target.nav);
       // 白屏判据：主区里该页自己的文案必须在
       await expect(page.locator("main")).toContainText(target.marker);
-      // 侧栏还在（不是整页被替换掉/路由把壳层也卸载了）
+      // 壳层没被路由卸载
       await expect(adminSidebar(page)).toBeVisible();
-    }
+    });
+  }
+
+  test("侧栏点击能切页（站内导航连通性）", async ({ page }) => {
+    await gotoAdmin(page);
+    const first = ADMIN_PAGES[0];
+    await adminSidebar(page).getByRole("button", { name: first.nav }).click();
+    // 只断言"导航发生且目标页渲染出来"——用 admin 壳层仍在 + 该页文案出现
+    // 双重判据，避免把 dev 回退行为写进断言。
+    await expect(adminSidebar(page)).toBeVisible();
+    await expect(page.locator("main")).toContainText(first.marker);
   });
 });

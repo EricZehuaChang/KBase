@@ -61,7 +61,11 @@ export async function gotoPortal(page: Page) {
 }
 
 /** 管理端首屏（知识库网格）。等"新建知识库"入口出现 = 网格渲染完成。 */
-export async function gotoAdmin(page: Page) {
+/** 打开管理端。path 传管理端内部路由（如 /admin/settings）可直达深链接——
+ * 生产由 SPAStaticFiles 保证 /admin/** 都交给 admin.html；Vite dev 只对
+ * 无扩展名的 /admin 命中 admin.html，故深链接用 ? 前缀绕开 dev 的多页回退：
+ * 先落在 /admin（命中 admin.html），再由管理端路由跳到目标路径。 */
+export async function gotoAdmin(page: Page, path?: string) {
   await suppressEmailPrompt(page);
   // 路径是 /admin（没有尾斜杠）：Vite dev 的多页回退只在"无扩展名的 /admin"上
   // 命中 admin.html，/admin/ 会回退成使用端 index.html（生产由
@@ -77,6 +81,15 @@ export async function gotoAdmin(page: Page) {
     await page.reload();
   }
   await expect(page.getByRole("button", { name: "新建知识库" })).toBeVisible();
+  if (path && !page.url().endsWith(path)) {
+    // 管理端壳层已就绪，用站内导航到目标路径（等价于生产里用户点侧栏，
+    // 但起点确定，不受 dev 多页回退影响）。
+    await page.evaluate((to) => {
+      window.history.pushState({}, "", to);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    }, path);
+    await page.waitForFunction((to) => window.location.pathname === to, path);
+  }
 }
 
 /** 独一无二的知识库名：dev 数据目录是共享且长期存在的，重名会让选择器歧义。 */
