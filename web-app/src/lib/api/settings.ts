@@ -288,24 +288,60 @@ export function inviteUser(
   return req(`/api/users/${id}/invite`, jsonInit(body));
 }
 
-// ---- API Key 管理（M4-1 G6，admin）----
+// ---- API Key 管理（M4-1 G6，admin；T09 追加有效期/白名单/配额/用量）----
 
 export interface ApiKeyItem {
   id: string;
   name: string;
   prefix: string;
   role: string;
-  revoked: boolean;
+  revoked: boolean;              // 吊销（不可恢复，DELETE 端点）
+  disabled: boolean;             // 停用（可恢复，PATCH 开关）
+  scope_kb_ids: string[] | null; // 库白名单；null=不限
+  ip_allow: string[] | null;     // 来源 IP 白名单（精确 IP 或 CIDR）；null=不限
+  rpm: number | null;            // 每分钟请求上限；null=不限
+  daily_quota: number | null;    // 每日请求上限；null=不限
+  expires_at: string | null;     // 过期时间（naive UTC ISO）；null=永不过期
+  last_used_at: string | null;   // 最近使用（naive UTC ISO）；null=从未使用
   created_at: string;
 }
 
-export interface ApiKeyCreateBody {
+/** 策略字段（T09）：创建与 PATCH 共用。null 一律=该维度不限——PATCH 时
+ * 显式传 null 即"清除该项限制"（缺省字段才是"不动"，见 buildApiKeyPolicy）。 */
+export interface ApiKeyPolicyBody {
+  expires_at?: string | null;
+  rpm?: number | null;
+  daily_quota?: number | null;
+  ip_allow?: string[] | null;
+}
+
+export interface ApiKeyCreateBody extends ApiKeyPolicyBody {
   name: string;
   role: string;
+  scope_kb_ids?: string[] | null;
 }
 
 export interface ApiKeyCreated extends ApiKeyItem {
   key: string; // 完整 key，仅创建时返回一次
+}
+
+export interface ApiKeyUsageDay {
+  day: string;                   // UTC 日期 YYYY-MM-DD
+  requests: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  tokens_estimated: boolean;     // true=token 数为按字符数的估算值
+}
+
+export interface ApiKeyUsage {
+  key_id: string;
+  name: string;
+  days: number;
+  rpm: number | null;
+  daily_quota: number | null;
+  items: ApiKeyUsageDay[];
+  totals: { requests: number; prompt_tokens: number; completion_tokens: number };
+  tokens_estimated: boolean;
 }
 
 export function listApiKeys(): Promise<ApiKeyItem[]> {
@@ -314,6 +350,19 @@ export function listApiKeys(): Promise<ApiKeyItem[]> {
 
 export function createApiKey(body: ApiKeyCreateBody): Promise<ApiKeyCreated> {
   return req("/api/settings/api-keys", jsonInit(body));
+}
+
+/** 改 Key 策略（T09）：启停/配额/延期/IP 白名单。role 与 scope_kb_ids 不在
+ * 其中——换角色、换库白名单等于换一把钥匙，重建更清楚。 */
+export function updateApiKey(
+  id: string, body: ApiKeyPolicyBody & { disabled?: boolean },
+): Promise<ApiKeyItem> {
+  return req(`/api/settings/api-keys/${id}`, jsonInit(body, "PATCH"));
+}
+
+/** 某 Key 的近 N 天用量（T09）；per-key 用量只在管理端鉴权接口暴露。 */
+export function getApiKeyUsage(id: string, days = 30): Promise<ApiKeyUsage> {
+  return req(`/api/settings/api-keys/${id}/usage?days=${days}`);
 }
 
 export function revokeApiKey(id: string): Promise<{ ok: boolean }> {

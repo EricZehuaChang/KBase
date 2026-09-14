@@ -2,6 +2,7 @@ from sqlalchemy import inspect, text
 
 from kbase.db import make_session_factory
 from kbase.migrations import run_migrations
+from kbase.models import ApiKey
 
 
 def test_migrations_add_columns_and_tables(tmp_path):
@@ -88,6 +89,51 @@ def test_migration_dedups_legacy_duplicate_rows_before_index(tmp_path):
         insp = inspect(s.get_bind())
         idx_names = {ix["name"] for ix in insp.get_indexes("documents")}
         assert "uq_doc_kb_hash" in idx_names
+
+
+def test_existing_api_keys_table_gets_t09_columns(tmp_path):
+    """模拟 T09 之前的旧库：api_keys 只有原来的 8 列（含 scope_kb_ids），
+    没有任何有效期/最近使用/IP 白名单/配额/停用列。迁移后六列补齐，且
+    **存量行一律 NULL**——新列不设 DEFAULT（SQLite ALTER 也回填不了），
+    "不限"语义由读取端解释：NULL=永不过期/从未使用/不限来源/不限流/未停用
+    （见 kbase/migrations.py 的注释与 kbase/ratelimit.py、auth/deps.py）。"""
+    import sqlite3
+    db = tmp_path / "pre-t09.sqlite"
+    conn = sqlite3.connect(db)
+    conn.executescript("""
+        CREATE TABLE api_keys (id VARCHAR(36) PRIMARY KEY, name VARCHAR(200),
+            prefix VARCHAR(20), key_hash VARCHAR(64), role VARCHAR(20),
+            revoked BOOLEAN, scope_kb_ids TEXT, created_at DATETIME);
+    """)
+    conn.execute(
+        "INSERT INTO api_keys (id, name, prefix, key_hash, role, revoked,"
+        " scope_kb_ids, created_at) VALUES ('k1', '旧 Key', 'abcd1234', 'hash1',"
+        " 'viewer', 0, NULL, '2026-01-01 00:00:00')")
+    conn.commit()
+    conn.close()
+
+    factory = make_session_factory(f"sqlite:///{db}")
+    with factory() as s:
+        insp = inspect(s.get_bind())
+        cols = {c["name"] for c in insp.get_columns("api_keys")}
+        assert {"expires_at", "last_used_at", "ip_allow", "rpm",
+                "daily_quota", "disabled"} <= cols
+        row = s.execute(text(
+            "SELECT expires_at, last_used_at, ip_allow, rpm, daily_quota, disabled "
+            "FROM api_keys WHERE id='k1'")).one()
+        assert tuple(row) == (None, None, None, None, None, None)
+        # 新表由 create_all 建（新表不需要列迁移条目）
+        assert "api_key_usage_daily" in inspect(s.get_bind()).get_table_names()
+        assert insp.get_pk_constraint("api_key_usage_daily")[
+            "constrained_columns"] == ["key_id", "day"]
+
+    # NULL 语义的读取端解释：未停用/未过期 → 仍可用（新库与老库同一个路径）
+    with factory() as s:
+        key = s.query(ApiKey).filter_by(id="k1").one()
+        assert not key.disabled          # None → 未停用
+        assert key.expires_at is None    # None → 永不过期
+        assert key.rpm is None and key.daily_quota is None   # None → 不限流
+        assert key.ip_allow is None      # None → 不限来源
 
 
 def test_existing_m1_db_upgrades(tmp_path):
@@ -247,3 +293,40 @@ def test_run_migrations_postgresql_unique_index_ddl_is_pg_compatible(monkeypatch
     run_migrations(engine)
     sql = "\n".join(engine.conn.executed)
     assert "create unique index if not exists uq_doc_kb_hash" in sql.lower()
+
+
+def test_column_migration_types_are_dialect_safe():
+    """T09 回归：迁移里的列类型必须在**两种方言**下都存在。
+
+    真事故（2026-09-14）：T09 给 api_keys 加 expires_at/last_used_at 时写了
+    SQLite 的 DATETIME，PG 没有这个类型，真 PG 上直接
+    `UndefinedObject: type "datetime" does not exist`——表现为 PG 集成测试
+    在 fixture 建表阶段整批 error。SQLite 测试全绿，只有真 PG 能发现。
+
+    这里不需要数据库：列出每种方言下"必须能被接受"的类型名集合，逐个断言
+    映射后的结果不落在方言禁用的名单里。DATETIME 是 PG 的禁用词，新增类型
+    时若引入别的方言专有名字，把禁用词加进来即可。
+    """
+    from kbase.migrations import _COLUMN_MIGRATIONS, _ddl_type_for
+
+    banned = {"postgresql": {"datetime"}, "sqlite": set()}
+    for table, column, ddl_type in _COLUMN_MIGRATIONS:
+        for dialect, forbidden in banned.items():
+            rendered = _ddl_type_for(dialect, ddl_type)
+            lowered = rendered.lower()
+            for word in forbidden:
+                assert word not in lowered, (
+                    f"{dialect} 不支持类型 {word!r}："
+                    f"{table}.{column} 声明为 {ddl_type!r}，"
+                    f"映射后是 {rendered!r}——用 _DIALECT_TYPE_NAMES 补映射")
+            assert rendered.strip(), f"{table}.{column} 的类型不能为空"
+
+
+def test_datetime_maps_to_timestamp_on_postgres():
+    """具体映射本身也钉住：DATETIME→TIMESTAMP（PG），sqlite 原样。"""
+    from kbase.migrations import _ddl_type_for
+
+    assert _ddl_type_for("postgresql", "DATETIME") == "TIMESTAMP"
+    assert _ddl_type_for("sqlite", "DATETIME") == "DATETIME"
+    # 带后缀的写法只替换类型词，不破坏后缀
+    assert _ddl_type_for("postgresql", "INTEGER DEFAULT 0") == "INTEGER DEFAULT 0"

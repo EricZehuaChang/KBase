@@ -24,6 +24,7 @@ from kbase.auth import security
 from kbase.auth.bootstrap import ensure_admin
 from kbase.auth.deps import (make_get_current_actor, make_origin_guard_middleware,
                              make_synthetic_admin_actor_dependency, require_role)
+from kbase.ratelimit import make_rate_limit_dependency
 
 
 def create_app(config_path="config/kbase.yaml", *, embedder=None,
@@ -112,7 +113,13 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
         actor_dependency = get_current_actor
     else:
         actor_dependency = make_synthetic_admin_actor_dependency()
-    router = APIRouter(prefix="/api", dependencies=[Depends(actor_dependency)])
+    # T09 限流：路由级依赖，必须挂在 actor 依赖**之后**（依赖按声明顺序解析，
+    # 它读 request.state.actor 上的 key_id/rpm/daily_quota）。只有 API Key 身份
+    # 受限；会话 Cookie 与 auth="off" 的合成 actor 无 key_id → 无操作。同一份
+    # 依赖也挂在 /v1 router 上（见下方 openai_routes.register）。
+    rate_limit_dependency = make_rate_limit_dependency(svc.sf)
+    router = APIRouter(prefix="/api", dependencies=[
+        Depends(actor_dependency), Depends(rate_limit_dependency)])
 
     # 各路由的最低角色依赖，按 spec §3 表 + 落地细则预先建好（viewer < editor < admin）：
     # viewer：只读 GET 与问答/检索/会话查询 POST；
@@ -191,7 +198,8 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
 
     # M6-5 OpenAI 兼容 API：挂在 /v1（不在 /api 前缀下），鉴权与 /api 相同
     # （Bearer API Key / 会话 Cookie），供 OpenAI 生态客户端零改造接入。
-    openai_routes.register(app, svc, actor_dependency)
+    # T09：限流依赖与 /api 用同一份实现（配额判定/用量记录一致）。
+    openai_routes.register(app, svc, actor_dependency, rate_limit_dependency)
 
     web_dir = Path(__file__).resolve().parents[2] / "web"
     if web_dir.exists():

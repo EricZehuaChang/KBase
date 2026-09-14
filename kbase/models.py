@@ -191,11 +191,46 @@ class ApiKey(Base):
     prefix: Mapped[str] = mapped_column(String(20), index=True)   # 前8字符明文，列表展示用
     key_hash: Mapped[str] = mapped_column(String(64), index=True)  # sha256 hex
     role: Mapped[str] = mapped_column(String(20))
+    # 吊销=不可恢复（DELETE 端点只置这一位）；disabled=可恢复的临时停用。
+    # 两者在 Bearer 通道上同样是 401，但语义与操作路径不同（见 routes/admin.py
+    # 的 PATCH 与 DELETE）。
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+    # T09：恢复性停用开关。NULL（老库补列）=未停用——读取端按"仅显式 True 才
+    # 拒"解释（SQLite ALTER 无法带 DEFAULT false 回填存量行）。
+    disabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     # 库级 scope（JSON 数组=允许访问的 kb_id 白名单；NULL=不限）。scope 由
     # 服务端强制：受限 key 越权查询静默返回空集（不报错不提示，防探测）。
     scope_kb_ids: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # T09：NULL=永不过期（老库/未设置）。naive UTC，与 created_at 同口径。
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # T09：最近使用时间。写侧节流到每分钟至多一次（见 kbase/ratelimit.py），
+    # 不在每个请求上写库。
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # T09：来源 IP 白名单（JSON 数组，精确 IP 或 CIDR，最多 20 条）；
+    # NULL=不限来源。校验在写入侧（api/schemas.py），匹配在 kbase/ratelimit.py。
+    ip_allow: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # T09：每分钟请求上限 / 每日请求上限；NULL=不限。进程内滑窗+逐日计数判定
+    # （kbase/ratelimit.py），lite 单进程精确、standard 多 worker 为每进程近似。
+    rpm: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    daily_quota: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ApiKeyUsageDaily(Base):
+    """T09：API Key 逐日用量（(key_id, day) 主键，day=UTC 日期 YYYY-MM-DD）。
+
+    只经管理端鉴权接口读出（GET /api/settings/api-keys/{id}/usage）；
+    无鉴权的 /metrics 绝不暴露任何 per-key 数据（见 kbase/metrics.py）。
+    tokens_estimated=false 表示 token 数是上游回传的真实 usage；true=上游没
+    回传（端点不认 stream_options.include_usage 等）时的字符数兜底估算
+    ——见 kbase/ratelimit.py 与 kbase/api/routes/openai_compat.py。"""
+    __tablename__ = "api_key_usage_daily"
+    key_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    day: Mapped[str] = mapped_column(String(10), primary_key=True)
+    requests: Mapped[int] = mapped_column(Integer, default=0)
+    prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    completion_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    tokens_estimated: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
 class AuditLog(Base):

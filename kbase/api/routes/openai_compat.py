@@ -9,17 +9,25 @@
 
 鉴权与 /api 一致（Bearer API Key 或会话 Cookie），无权/不存在的库统一按
 OpenAI 错误格式返回 404 model_not_found（不泄漏"存在但无权"）。
+
+T09：/v1 router 与 /api 一样挂限流依赖（kbase/ratelimit.py），生成的 token
+用量按 Key 落库（api_key_usage_daily）。usage **优先取上游真实值**（provider
+流式带 stream_options.include_usage，末块回传 usage）；只有端点不认该参数或
+末块没带 usage 时才回退字符估算，并在响应里如实标注（非流式：
+x-kbase-usage-estimated 响应头 + usage_estimated 字段；流式响应头来不及改判，
+以末块 usage_estimated 字段为准）。
 """
 import json
 import time
 import uuid
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 
 from kbase import kb_acl
+from kbase import ratelimit
 from kbase import retrieval_strategy as rs
 from kbase.api.schemas import ChatCompletionsBody
 from kbase.api.services import Services
@@ -46,9 +54,12 @@ def _extract_text(content) -> str:
     return ""
 
 
-def register(app, svc: Services, actor_dependency) -> None:
+def register(app, svc: Services, actor_dependency, rate_limit_dependency) -> None:
     sf, cfg, retriever = svc.sf, svc.cfg, svc.retriever
-    router = APIRouter(prefix="/v1", dependencies=[Depends(actor_dependency)])
+    # 依赖顺序：actor 在前（写 request.state.actor），限流在后（读它判定配额）
+    # ——与 /api router 同构，见 kbase/api/main.py。
+    router = APIRouter(prefix="/v1", dependencies=[
+        Depends(actor_dependency), Depends(rate_limit_dependency)])
 
     def _resolve_kb(model: str, actor: dict) -> str | None:
         """model → kb_id：先按 id 精确匹配，再按库名匹配（仅当唯一时）。
@@ -92,7 +103,8 @@ def register(app, svc: Services, actor_dependency) -> None:
         return {"object": "list", "data": data}
 
     @router.post("/chat/completions")
-    async def chat_completions(body: ChatCompletionsBody, request: Request):
+    async def chat_completions(body: ChatCompletionsBody, request: Request,
+                              response: Response):
         actor = getattr(request.state, "actor", None) or {"role": "admin"}
         kb_id = _resolve_kb(body.model, actor)
         if kb_id is None:
@@ -146,6 +158,46 @@ def register(app, svc: Services, actor_dependency) -> None:
         completion_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
         created = int(time.time())
 
+        # ---- T09 用量计量 ----
+        # **真实用量优先**：调用 provider 时带 usage_sink，拿到上游真实
+        # usage（OpenAI 兼容端点经 stream_options.include_usage 在末块透出，
+        # 2026-09-14 于 DashScope 实测 prompt=14/completion=1 与逐字一致）
+        # 就直接记真实值；只有端点不接受该参数（provider 内部已降级重试，
+        # 见 kbase/plugins/llm/openai_compat.py）或本次根本没调 LLM 时，
+        # 才退回字符估算并置 tokens_estimated / 加 x-kbase-usage-estimated。
+        key_id = actor.get("key_id")
+        prompt_text = "\n".join([question, *[b.text for b in usable],
+                                 *[m["content"] for m in history]])
+
+        def _usage(answer: str, real: dict | None = None) -> tuple[dict, bool]:
+            """(usage 对象, 是否估算)。优先级：上游真实值 > 字符估算。
+            无可用依据=拒答短路、根本没调 LLM，token 记 0 且**不算估算**
+            ——0 是精确值，不是估出来的。"""
+            if not usable:
+                return {"prompt_tokens": 0, "completion_tokens": 0,
+                        "total_tokens": 0}, False
+            if real:
+                return dict(real), False
+            prompt_tokens = ratelimit.estimate_tokens(prompt_text)
+            completion_tokens = ratelimit.estimate_tokens(answer)
+            return {"prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": prompt_tokens + completion_tokens}, True
+
+        def _meter(prompt_tokens: int, completion_tokens: int,
+                   estimated: bool) -> None:
+            """按 Key 记用量；会话 Cookie 身份没有 key_id → 不记（用量是
+            per-key 概念）。写入失败不应影响回答本身。"""
+            if not key_id or not (prompt_tokens or completion_tokens):
+                return
+            try:
+                ratelimit.record_tokens(sf, key_id, prompt_tokens=prompt_tokens,
+                                        completion_tokens=completion_tokens,
+                                        tokens_estimated=estimated)
+            except Exception:      # noqa: BLE001 计量是旁路，绝不拖垮问答
+                import logging
+                logging.getLogger(__name__).exception("API Key 用量落库失败")
+
         def _chunk(delta: dict, finish: str | None = None,
                    extra: dict | None = None) -> str:
             payload = {"id": completion_id, "object": "chat.completion.chunk",
@@ -158,25 +210,58 @@ def register(app, svc: Services, actor_dependency) -> None:
 
         if body.stream:
             async def events():
-                yield {"data": _chunk({"role": "assistant", "content": ""})}
-                async for piece in gen.answer_stream(question, usable, history):
-                    yield {"data": _chunk({"content": piece})}
-                # 末块带引用（KBase 扩展字段，标准客户端忽略不影响兼容）
+                pieces: list[str] = []
+                # provider 拿到真实 usage 就写进这里（usage_sink 回调）
+                real_usage: dict = {}
+                usage = {"prompt_tokens": 0, "completion_tokens": 0,
+                         "total_tokens": 0}
+                try:
+                    yield {"data": _chunk({"role": "assistant", "content": ""})}
+                    async for piece in gen.answer_stream(
+                            question, usable, history, usage_sink=real_usage.update):
+                        pieces.append(piece)
+                        yield {"data": _chunk({"content": piece})}
+                finally:
+                    # 客户端中断也走这里：已生成的部分答案照实计量（与
+                    # query.py 会话落库的 finally 同一考虑）。真实 usage 只在
+                    # 上游把末块发完时才拿得到，中断时自然退回估算。
+                    usage, estimated = _usage("".join(pieces), real_usage or None)
+                    _meter(usage["prompt_tokens"], usage["completion_tokens"],
+                           estimated)
+                # 末块带引用与用量（KBase 扩展字段，标准客户端忽略不影响兼容；
+                # OpenAI 的流式 usage 也出现在末块，位置一致）。
+                # usage_estimated：本响应的口径标记，**流式下这是权威来源**——
+                # SSE 响应头在首个 chunk 之前就已发出，那时还不知道上游会不会
+                # 回传 usage（端点不认 stream_options 时 provider 会内部降级），
+                # 事后无法改判响应头，所以流式不发 x-kbase-usage-estimated，
+                # 改由这里如实标注（true=按字符数估算，false=上游真实值）。
                 yield {"data": _chunk({}, finish="stop",
-                                      extra={"citations": citations})}
+                                      extra={"citations": citations,
+                                             "usage": usage,
+                                             "usage_estimated": estimated})}
                 yield {"data": "[DONE]"}
+            # 事件序列（chunk*→末块→[DONE]）与引入计量前完全一致。
             return EventSourceResponse(events())
 
-        pieces = [p async for p in gen.answer_stream(question, usable, history)]
+        real_usage: dict = {}
+        pieces = [p async for p in gen.answer_stream(
+            question, usable, history, usage_sink=real_usage.update)]
         answer = "".join(pieces)
+        usage, estimated = _usage(answer, real_usage or None)
+        _meter(usage["prompt_tokens"], usage["completion_tokens"], estimated)
+        # 非流式在响应发出前就已知口径，除 usage_estimated 字段外再给一个
+        # 响应头（流式给不了，理由见上）。
+        if estimated:
+            response.headers["x-kbase-usage-estimated"] = "1"
         return {"id": completion_id, "object": "chat.completion",
                 "created": created, "model": body.model,
                 "choices": [{"index": 0, "finish_reason": "stop",
                              "message": {"role": "assistant",
                                          "content": answer}}],
-                # token 用量上游 provider 未透出，按 OpenAI 惯例给 0 值占位
-                "usage": {"prompt_tokens": 0, "completion_tokens": 0,
-                          "total_tokens": 0},
+                # token 用量：上游真实值优先，拿不到才按字符数估算
+                # （估算时带 x-kbase-usage-estimated 头标注，见上）
+                "usage": usage,
+                "usage_estimated": estimated,
                 "citations": citations}
 
     app.include_router(router)

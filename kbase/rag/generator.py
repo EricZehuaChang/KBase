@@ -94,12 +94,21 @@ class Generator:
         return messages
 
     async def answer_stream(self, question: str, blocks: list[ContextBlock],
-                            history: list[dict] | None = None) -> AsyncIterator[str]:
+                            history: list[dict] | None = None,
+                            usage_sink=None) -> AsyncIterator[str]:
+        """流式回答。usage_sink（可选，T09 计量）：provider 拿到上游真实
+        usage 时回调一次 dict；不传（默认）行为与改造前逐字节一致——不向
+        上游请求用量，也就不改变任何既有调用方的流式契约。"""
         usable = self.usable_blocks(blocks)
         if not usable:
             yield refusal_for(question)
             return
         # 直接 async for 委托：客户端断开时 GeneratorExit 沿链传播，
         # LLM provider 的信号量随之释放（勿改为手动驱动 __anext__）。
-        async for piece in self._llm.stream(self._build_messages(question, usable, history)):
+        messages = self._build_messages(question, usable, history)
+        if usage_sink is None:
+            async for piece in self._llm.stream(messages):
+                yield piece
+            return
+        async for piece in self._llm.stream(messages, usage_sink=usage_sink):
             yield piece

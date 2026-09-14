@@ -10,6 +10,8 @@ create_all 只建缺失的表；本模块补既有表的缺列、关键词索引
 get_table_names/get_columns 底层对 PG 走 information_schema.columns 反射，
 无需为 PG 单独写列探测 SQL。
 """
+import re
+
 from sqlalchemy import inspect, text
 
 _COLUMN_MIGRATIONS = [
@@ -56,6 +58,17 @@ _COLUMN_MIGRATIONS = [
     # API Key 库级 scope（JSON 数组=白名单；NULL=不限，与升级前行为一致）。
     # MCP agent 用受限 key 越权查询时服务端静默返回空集。
     ("api_keys", "scope_kb_ids", "TEXT"),
+    # T09：API Key 有效期/最近使用/IP 白名单/配额/停用开关。老库补列一律
+    # NULL，读取端解释这套 NULL 语义（与 chunks.enabled 同一约定）：
+    # expires_at=NULL 永不过期；last_used_at=NULL 从未使用；ip_allow=NULL
+    # 不限来源；rpm/daily_quota=NULL 不限流；disabled=NULL 视作未停用
+    # （只有显式 True 才拒——SQLite ALTER 无法带 DEFAULT 回填存量行）。
+    ("api_keys", "expires_at", "DATETIME"),
+    ("api_keys", "last_used_at", "DATETIME"),
+    ("api_keys", "ip_allow", "TEXT"),
+    ("api_keys", "rpm", "INTEGER"),
+    ("api_keys", "daily_quota", "INTEGER"),
+    ("api_keys", "disabled", "BOOLEAN"),
 ]
 
 _FTS_DDL = (
@@ -132,20 +145,45 @@ _PROMOTE_BOOTSTRAP_SUPERADMIN_SQL = (
 )
 
 
-def _run_column_guards(conn, insp) -> None:
+# 列类型名跨方言映射：SQLite 与 PG 的类型名并不完全通用。
+# **DATETIME 是 SQLite 方言，PG 没有这个类型**——2026-09-14 加 T09 的
+# api_keys.expires_at/last_used_at 时在真 PG 上直接炸了
+# （`psycopg.errors.UndefinedObject: type "datetime" does not exist`，
+# 表现为 PG 集成测试 6 个用例在 fixture 建表阶段 error）。
+# 这张表只放"两边名字不同"的类型，其余（TEXT/INTEGER/REAL/BOOLEAN）
+# 两种方言都认，原样透传。
+_DIALECT_TYPE_NAMES = {
+    "postgresql": {"DATETIME": "TIMESTAMP"},
+}
+
+
+def _ddl_type_for(dialect: str, ddl_type: str) -> str:
+    """把 _COLUMN_MIGRATIONS 里写的类型名翻成目标方言可用的名字。
+
+    只替换独立的类型词（保留 "INTEGER DEFAULT 0" 这类带后缀的写法）。
+    """
+    mapping = _DIALECT_TYPE_NAMES.get(dialect, {})
+    out = ddl_type
+    for src, dst in mapping.items():
+        out = re.sub(rf"\b{src}\b", dst, out)
+    return out
+
+
+def _run_column_guards(conn, insp, dialect: str) -> None:
     tables = insp.get_table_names()
     for table, column, ddl_type in _COLUMN_MIGRATIONS:
         if table in tables:
             cols = {c["name"] for c in insp.get_columns(table)}
             if column not in cols:
                 conn.execute(text(
-                    f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}"))
+                    f"ALTER TABLE {table} ADD COLUMN {column} "
+                    f"{_ddl_type_for(dialect, ddl_type)}"))
     if "users" in tables:
         conn.execute(text(_PROMOTE_BOOTSTRAP_SUPERADMIN_SQL))
 
 
 def _run_sqlite_migrations(conn, insp) -> None:
-    _run_column_guards(conn, insp)
+    _run_column_guards(conn, insp, "sqlite")
     conn.execute(text(_FTS_DDL))
     if "documents" in insp.get_table_names():
         conn.execute(text(_DEDUP_ROWS_SQL_SQLITE))
@@ -153,7 +191,7 @@ def _run_sqlite_migrations(conn, insp) -> None:
 
 
 def _run_postgresql_migrations(conn, insp) -> None:
-    _run_column_guards(conn, insp)
+    _run_column_guards(conn, insp, "postgresql")
     conn.execute(text(_CHUNKS_KW_TABLE_DDL))
     conn.execute(text(_CHUNKS_KW_GIN_DDL))
     conn.execute(text(_CHUNKS_KW_KB_IDX_DDL))

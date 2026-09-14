@@ -3,6 +3,7 @@ import {
   validateParamsJson, paramsSummary, healthDot, licenseBannerInfo, isLastEnabledAdmin,
   auditDailyCounts, parseAuditTs,
   buildProviderBody, keySource, PROVIDER_PRESETS, vendorBadge,
+  parseIpAllow, buildApiKeyPolicy, apiKeyPolicyFormFrom, apiKeyState, formatKeyTime,
 } from "../settings-utils";
 
 describe("buildProviderBody（M5-2 密钥字段规则）", () => {
@@ -287,5 +288,97 @@ describe("vendorBadge 厂商识别", () => {
     expect(v.icon).toBeUndefined();
     expect(v.short).toBe("API");
     expect(v.color).toBeTruthy();
+  });
+});
+
+// ---- T09：API Key 策略表单/状态 -------------------------------------------
+
+describe("parseIpAllow（T09 IP 白名单文本框）", () => {
+  it("逗号/换行/分号/中文逗号都能分隔，去空去重保序", () => {
+    expect(parseIpAllow(" 10.0.0.1, 192.168.0.0/16\n10.0.0.1；\n\n::1 "))
+      .toEqual(["10.0.0.1", "192.168.0.0/16", "::1"]);
+  });
+
+  it("空文本 → 空数组（=不限来源）", () => {
+    expect(parseIpAllow("")).toEqual([]);
+    expect(parseIpAllow("   \n , ; ")).toEqual([]);
+  });
+
+  it("不做 IP 合法性判断（校验统一在后端，避免两套口径）", () => {
+    expect(parseIpAllow("not-an-ip")).toEqual(["not-an-ip"]);
+  });
+});
+
+describe("buildApiKeyPolicy（T09 表单 → 请求体）", () => {
+  it("四项全给：空串=null（创建=不限；PATCH=清除该项限制）", () => {
+    expect(buildApiKeyPolicy({ expiresAt: "", rpm: "", dailyQuota: "", ipAllow: "" }))
+      .toEqual({ expires_at: null, rpm: null, daily_quota: null, ip_allow: null });
+  });
+
+  it("填了就带上，日期串原样传（后端按当日 23:59:59 收口）", () => {
+    const body = buildApiKeyPolicy({
+      expiresAt: "2030-01-31", rpm: "30", dailyQuota: "500",
+      ipAllow: "10.0.0.1, 192.168.0.0/16",
+    });
+    expect(body).toEqual({
+      expires_at: "2030-01-31", rpm: 30, daily_quota: 500,
+      ip_allow: ["10.0.0.1", "192.168.0.0/16"],
+    });
+  });
+
+  it("数字前导零/空白按数字解析（Number 而不是字符串拼接）", () => {
+    expect(buildApiKeyPolicy({ expiresAt: "", rpm: " 030 ", dailyQuota: "0", ipAllow: "" }))
+      .toEqual({ expires_at: null, rpm: 30, daily_quota: 0, ip_allow: null });
+  });
+});
+
+describe("apiKeyPolicyFormFrom（T09 编辑回填）", () => {
+  it("日期取前 10 位；null 维度回落空串（=不限）", () => {
+    expect(apiKeyPolicyFormFrom({
+      expires_at: "2030-01-31T23:59:59", rpm: 30, daily_quota: null,
+      ip_allow: ["10.0.0.1"],
+    })).toEqual({
+      expiresAt: "2030-01-31", rpm: "30", dailyQuota: "", ipAllow: "10.0.0.1",
+    });
+  });
+
+  it("改造前的老行（新列全 NULL）回填成全空=不限", () => {
+    const form = apiKeyPolicyFormFrom({});
+    expect(form).toEqual({ expiresAt: "", rpm: "", dailyQuota: "", ipAllow: "" });
+    // 回填后原样提交 = 显式清除（PATCH 语义），不会把老行的"不限"改成别的
+    expect(buildApiKeyPolicy(form))
+      .toEqual({ expires_at: null, rpm: null, daily_quota: null, ip_allow: null });
+  });
+});
+
+describe("apiKeyState（T09 状态裁决：吊销 > 停用 > 过期 > 有效）", () => {
+  const now = Date.parse("2027-01-15T08:00:00Z");
+
+  it("各状态判定", () => {
+    expect(apiKeyState({ revoked: true, disabled: true }, now)).toBe("revoked");
+    expect(apiKeyState({ revoked: false, disabled: true }, now)).toBe("disabled");
+    expect(apiKeyState({ revoked: false, expires_at: "2027-01-15T07:59:59" }, now))
+      .toBe("expired");
+    expect(apiKeyState({ revoked: false, expires_at: "2027-01-15T08:00:01" }, now))
+      .toBe("valid");
+    expect(apiKeyState({ revoked: false, expires_at: null }, now)).toBe("valid");
+  });
+
+  it("后端时间是 naive UTC：补 Z 之后按时区无关的方式比较", () => {
+    // 同一时刻，本地时区不影响判定结果
+    expect(apiKeyState({ revoked: false, expires_at: "2027-01-15T07:00:00" }, now))
+      .toBe("expired");
+  });
+});
+
+describe("formatKeyTime（T09 时间展示）", () => {
+  it("空值返回 null（调用方用 i18n 兜底文案）", () => {
+    expect(formatKeyTime(null)).toBeNull();
+    expect(formatKeyTime(undefined)).toBeNull();
+  });
+
+  it("naive UTC ISO 按 UTC 解析后本地化", () => {
+    const s = formatKeyTime("2027-01-15T08:00:00")!;
+    expect(s).toBe(new Date("2027-01-15T08:00:00Z").toLocaleString());
   });
 });

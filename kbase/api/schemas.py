@@ -2,9 +2,12 @@
 
 只放"请求体的形状与校验"，不放业务逻辑——路由端点在 kbase/api/routes/ 各
 领域模块，服务装配在 kbase/api/services.py。"""
+from datetime import datetime
+from ipaddress import ip_network
 from typing import Literal
 
-from pydantic import BaseModel, Field, StrictBool, StrictInt, model_validator
+from pydantic import (BaseModel, Field, StrictBool, StrictInt, field_validator,
+                      model_validator)
 
 from kbase import params as params_mod
 
@@ -415,12 +418,80 @@ class RoleUpdate(BaseModel):
     permissions: list[str] | None = None
 
 
-class ApiKeyCreate(BaseModel):
+# API Key 来源 IP 白名单条数上限（T09）：到量就该用网段，逐条列举 20 个
+# 以上 IP 是配置事故多于需求（见 kbase/ratelimit.py 的匹配实现）。
+MAX_API_KEY_IP_ALLOW = 20
+
+
+class _ApiKeyPolicyFields(BaseModel):
+    """T09：API Key 的策略字段（创建与 PATCH 共用同一套校验与 NULL 语义）。
+
+    NULL 语义由读取端解释（老库补列即 NULL，行为与升级前一致）：
+    expires_at=NULL 永不过期；ip_allow=NULL/空 不限来源；
+    rpm/daily_quota=NULL 不限流。
+    """
+    # 有效期：NULL=永不过期。
+    expires_at: datetime | None = None
+    # 来源 IP 白名单（精确 IP 或 CIDR）；NULL/空列表=不限来源。
+    ip_allow: list[str] | None = None
+    # 每分钟 / 每日请求上限；NULL=不限。下限 1——0 没有"限流"语义，
+    # 要停用请用 disabled。
+    rpm: int | None = Field(default=None, ge=1, le=100000)
+    daily_quota: int | None = Field(default=None, ge=1, le=10000000)
+
+    @field_validator("expires_at", mode="before")
+    @classmethod
+    def _date_only_means_end_of_day(cls, v):
+        """日期选择器给的是 YYYY-MM-DD：按当日 23:59:59 处理，否则管理员选
+        "今天"会得到一个存进去就已过期的 Key（立刻 401，看起来像功能坏了）。
+        带时间的 ISO 串原样解析。"""
+        if isinstance(v, str) and len(v.strip()) == 10:
+            return v.strip() + "T23:59:59"
+        return v
+
+    @field_validator("ip_allow")
+    @classmethod
+    def _check_ip_allow(cls, v):
+        """逐条校验 IP/CIDR，去重、丢弃空白项，最多 MAX_API_KEY_IP_ALLOW 条。
+
+        必须在写入侧拦住非法值：鉴权通道对白名单脏数据 fail closed
+        （kbase/ratelimit.py 的 ip_allowed），放进库里等于把这条 Key 锁死。
+        """
+        if v is None:
+            return None
+        cleaned: list[str] = []
+        for raw in v:
+            item = str(raw).strip()
+            if not item:
+                continue
+            try:
+                # strict=False：裸 IP 也当 /32（IPv6 则 /128），与匹配侧同一口径
+                ip_network(item, strict=False)
+            except ValueError:
+                raise ValueError(f"不是合法的 IP 或 CIDR: {item}") from None
+            if item not in cleaned:
+                cleaned.append(item)
+        if len(cleaned) > MAX_API_KEY_IP_ALLOW:
+            raise ValueError(f"IP 白名单最多 {MAX_API_KEY_IP_ALLOW} 条")
+        return cleaned or None      # 空列表归一成 NULL=不限来源
+
+
+class ApiKeyCreate(_ApiKeyPolicyFields):
     name: str
     role: Role
     # 库级 scope（ztenith MCP）：白名单=允许访问的 kb_id；None/缺省=不限。
     # 受限 key 越权查询由服务端静默返回空集（不报错不提示）。
     scope_kb_ids: list[str] | None = None
+
+
+class ApiKeyUpdate(_ApiKeyPolicyFields):
+    """PATCH /api/settings/api-keys/{id}（T09）：启停、改配额、延期、改白名单。
+
+    字段缺省=不动；显式传 null=清除该项限制（如 expires_at: null 回到永不过期）
+    ——路由按 model_dump(exclude_unset=True) 区分"没提到"与"要清空"。
+    role/scope_kb_ids 不在此列：换角色/换库白名单属于换一把钥匙，重新建更清楚。
+    """
+    disabled: bool | None = None
 
 
 class UserCreate(BaseModel):

@@ -269,3 +269,86 @@ export function vendorBadge(baseUrl: string): VendorBadge {
   }
   return { label: "", short: "API", color: "#64748B" };
 }
+
+// ---- API Key 策略与状态（T09）-------------------------------------------
+// 管理端 API Key 卡片的纯逻辑：表单 ↔ 请求体转换、显示状态裁决、时间格式化。
+// 放这里而不是组件内，是为了能单测（见 __tests__/settings-utils.test.ts）——
+// "空输入=清除限制"这类规则最容易在改动中悄悄丢掉。
+
+/** IP 白名单文本框 → 数组：逗号/分号/空白（含换行）分隔，去空、去重、保序。
+ * 前端不做 IP 合法性判断——后端写入侧统一校验（精确 IP 或 CIDR、最多 20 条），
+ * 两处各写一套必然出现"前端放行后端拒绝"的口径差。 */
+export function parseIpAllow(text: string): string[] {
+  const out: string[] = [];
+  for (const raw of text.split(/[\s,;，；、]+/)) {
+    const item = raw.trim();
+    if (item && !out.includes(item)) out.push(item);
+  }
+  return out;
+}
+
+/** 策略表单（全字符串；空串=该维度不限）：日期选择器与数字输入天然是字符串，
+ * 统一在 buildApiKeyPolicy 里转成请求体，省掉 v-model.number 清空时给 null
+ * 与后端"显式 null=清除"语义的纠缠。 */
+export interface ApiKeyPolicyForm {
+  expiresAt: string;
+  rpm: string;
+  dailyQuota: string;
+  ipAllow: string;
+}
+
+export interface ApiKeyPolicyRequestBody {
+  expires_at: string | null;
+  rpm: number | null;
+  daily_quota: number | null;
+  ip_allow: string[] | null;
+}
+
+/** 策略表单 → 请求体（创建与 PATCH 共用）：**四项一律显式给出**。
+ * 创建时 null=不限；PATCH 时 null=清除该项限制（后端按 exclude_unset 语义，
+ * 这里"全给"正好表达"以表单当前内容为准"，编辑界面清空输入框即清除限制）。 */
+export function buildApiKeyPolicy(form: ApiKeyPolicyForm): ApiKeyPolicyRequestBody {
+  const ipAllow = parseIpAllow(form.ipAllow);
+  return {
+    // 只传日期（YYYY-MM-DD）：后端按当日 23:59:59 收口，选"今天"不会立刻过期
+    expires_at: form.expiresAt.trim() || null,
+    rpm: form.rpm.trim() ? Number(form.rpm) : null,
+    daily_quota: form.dailyQuota.trim() ? Number(form.dailyQuota) : null,
+    ip_allow: ipAllow.length ? ipAllow : null,
+  };
+}
+
+/** 用现有 Key 回填编辑表单：日期取前 10 位（后端存的是当日 23:59:59，
+ * 直接回填日期串即可保持"选同一天=不变"）。 */
+export function apiKeyPolicyFormFrom(k: {
+  expires_at?: string | null; rpm?: number | null;
+  daily_quota?: number | null; ip_allow?: string[] | null;
+}): ApiKeyPolicyForm {
+  return {
+    expiresAt: k.expires_at ? k.expires_at.slice(0, 10) : "",
+    rpm: k.rpm == null ? "" : String(k.rpm),
+    dailyQuota: k.daily_quota == null ? "" : String(k.daily_quota),
+    ipAllow: (k.ip_allow ?? []).join(", "),
+  };
+}
+
+/** 卡片上的状态裁决：吊销 > 停用 > 过期 > 有效。
+ * 优先级按"管理员下一步该做什么"排：吊销了的 Key 显示"已过期"会误导。 */
+export type ApiKeyState = "revoked" | "disabled" | "expired" | "valid";
+
+export function apiKeyState(
+  k: { revoked: boolean; disabled?: boolean; expires_at?: string | null },
+  now: number = Date.now(),
+): ApiKeyState {
+  if (k.revoked) return "revoked";
+  if (k.disabled) return "disabled";
+  // 后端时间是 naive UTC ISO（无 Z），必须补 Z 再比，否则本地时区会误判
+  if (k.expires_at && new Date(`${k.expires_at}Z`).getTime() <= now) return "expired";
+  return "valid";
+}
+
+/** naive UTC ISO → 本地化展示串；空值返回 null（调用方用 i18n 文案兜底，
+ * 如"从未使用"）。与 ConnectorsDialog.fmtTime 同一口径。 */
+export function formatKeyTime(iso: string | null | undefined): string | null {
+  return iso ? new Date(`${iso}Z`).toLocaleString() : null;
+}

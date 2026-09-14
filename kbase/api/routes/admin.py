@@ -6,9 +6,10 @@ import uuid
 from fastapi import BackgroundTasks, Query, Request
 
 from kbase import qa_stats
+from kbase import ratelimit
 from kbase.api.routes import RouteDeps
-from kbase.api.schemas import (ApiKeyCreate, InviteBody, RoleCreate, RoleUpdate,
-                               UserCreate, UserUpdate)
+from kbase.api.schemas import (ApiKeyCreate, ApiKeyUpdate, InviteBody,
+                               RoleCreate, RoleUpdate, UserCreate, UserUpdate)
 from kbase.api.services import Services
 from kbase.audit import list_audit
 from kbase.auth import security
@@ -62,6 +63,33 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         return {**feedback.feedback_stats(sf),
                 "items": feedback.negative_list(sf, limit=limit)}
 
+    def _json_list(raw: str | None) -> list | None:
+        """JSON 数组列 → list。空值不算错（NULL=未配置）；脏数据/非数组同样
+        当"未配置"返回 None，不因一行脏数据把列表端点打成 500。"""
+        if not raw:
+            return None
+        try:
+            value = json.loads(raw)
+        except (ValueError, TypeError):
+            return None
+        return value if isinstance(value, list) else None
+
+    def _api_key_out(r: ApiKey) -> dict:
+        """API Key 的对外投影：**任何端点都不得包含 key_hash**（完整 key 只在
+        创建响应里额外挂一次，见 create_api_key）。统一走这一处，避免某个
+        端点自己拼响应体时漏一手把哈希/明文带出去。"""
+        return {"id": r.id, "name": r.name, "prefix": r.prefix, "role": r.role,
+                "revoked": bool(r.revoked),
+                # disabled：可恢复的停用（PATCH 开/关）；老库补列 NULL → False
+                "disabled": bool(r.disabled),
+                "scope_kb_ids": _json_list(r.scope_kb_ids),
+                "ip_allow": _json_list(r.ip_allow),
+                "rpm": r.rpm, "daily_quota": r.daily_quota,
+                "expires_at": r.expires_at.isoformat() if r.expires_at else None,
+                "last_used_at": (r.last_used_at.isoformat()
+                                 if r.last_used_at else None),
+                "created_at": r.created_at.isoformat()}
+
     @router.post("/settings/api-keys",
                  dependencies=[deps.require_admin, deps.audit_mutation])
     def create_api_key(body: ApiKeyCreate):
@@ -69,12 +97,18 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         row = ApiKey(id=str(uuid.uuid4()), name=body.name, prefix=prefix,
                     key_hash=key_hash, role=body.role, revoked=False,
                     scope_kb_ids=(json.dumps(body.scope_kb_ids)
-                                  if body.scope_kb_ids else None))
+                                  if body.scope_kb_ids else None),
+                    # T09：策略字段的可空语义见 migrations.py / schemas.py——
+                    # 一律 NULL=该维度不限（与升级前行为一致）。
+                    expires_at=body.expires_at,
+                    ip_allow=(json.dumps(body.ip_allow)
+                              if body.ip_allow else None),
+                    rpm=body.rpm, daily_quota=body.daily_quota)
         with sf() as s:
             s.add(row)
             s.commit()
-        return {"id": row.id, "name": row.name, "role": row.role,
-                "scope_kb_ids": body.scope_kb_ids, "key": full_key}
+        # key：完整 key 的唯一一次返回（关闭弹窗后永远拿不回来，库里只有哈希）。
+        return {**_api_key_out(row), "key": full_key}
 
     @router.get("/settings/api-keys", dependencies=[deps.require_admin])
     def list_api_keys():
@@ -82,17 +116,67 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         # 只在创建的那一刻返回一次（见 create_api_key）。
         with sf() as s:
             rows = s.query(ApiKey).order_by(ApiKey.created_at.desc()).all()
-            return [{"id": r.id, "name": r.name, "prefix": r.prefix,
-                     "role": r.role, "revoked": r.revoked,
-                     "scope_kb_ids": (json.loads(r.scope_kb_ids)
-                                      if r.scope_kb_ids else None),
-                     "created_at": r.created_at.isoformat()} for r in rows]
+            return [_api_key_out(r) for r in rows]
+
+    @router.patch("/settings/api-keys/{key_id}",
+                  dependencies=[deps.require_admin, deps.audit_mutation])
+    def update_api_key(key_id: str, body: ApiKeyUpdate):
+        """改 Key 的策略（T09）：启用/停用、改配额、延期、改 IP 白名单。
+
+        字段缺省=不动；显式传 null=清除该项限制（exclude_unset 区分两者，
+        与 settings.py 的 PATCH 同一套语义）。**不含** revoked 与
+        role/scope_kb_ids：吊销走 DELETE（不可恢复），换角色/换库白名单
+        等于换一把钥匙，重新建更清楚。"""
+        with sf() as s:
+            row = s.get(ApiKey, key_id)
+            if row is None:
+                raise AppError("error.apikey_not_found", "API Key 不存在: {id}",
+                               status=404, id=key_id)
+            fields = body.model_dump(exclude_unset=True)
+            if "disabled" in fields:
+                row.disabled = bool(fields["disabled"])
+            if "rpm" in fields:
+                row.rpm = fields["rpm"]
+            if "daily_quota" in fields:
+                row.daily_quota = fields["daily_quota"]
+            if "expires_at" in fields:
+                row.expires_at = fields["expires_at"]
+            if "ip_allow" in fields:
+                row.ip_allow = (json.dumps(fields["ip_allow"])
+                                if fields["ip_allow"] else None)
+            s.commit()
+            return _api_key_out(row)
+
+    @router.get("/settings/api-keys/{key_id}/usage",
+                dependencies=[deps.require_admin])
+    def api_key_usage(key_id: str, days: int = Query(default=30, ge=1, le=365)):
+        """某 Key 近 N 天用量（T09）：逐日请求数 + token 数（含估算口径标记）。
+
+        per-key 用量**只在这里**（require_admin 之后）暴露：无鉴权的 /metrics
+        绝不出现 Key 维度的数据。"""
+        with sf() as s:
+            row = s.get(ApiKey, key_id)
+            if row is None:
+                raise AppError("error.apikey_not_found", "API Key 不存在: {id}",
+                               status=404, id=key_id)
+            name, rpm, quota = row.name, row.rpm, row.daily_quota
+        items = ratelimit.usage_days(sf, key_id, days=days)
+        return {"key_id": key_id, "name": name, "days": days,
+                "rpm": rpm, "daily_quota": quota, "items": items,
+                "totals": {
+                    "requests": sum(i["requests"] for i in items),
+                    "prompt_tokens": sum(i["prompt_tokens"] for i in items),
+                    "completion_tokens": sum(i["completion_tokens"]
+                                             for i in items)},
+                # 任一天含估算值就置位：口径提示不逐日给（前端一行说明即可）
+                "tokens_estimated": any(i["tokens_estimated"] for i in items)}
 
     @router.delete("/settings/api-keys/{key_id}",
                    dependencies=[deps.require_admin, deps.audit_mutation])
     def revoke_api_key(key_id: str):
         # 软删除：吊销后 Bearer 通道立即拒绝（get_current_actor 校验 revoked
         # 字段，见 kbase/auth/deps.py），但保留行本身供审计/历史查询。
+        # 吊销**不可恢复**（与 PATCH 的 disabled 相对：临时停用请用 PATCH）。
         with sf() as s:
             row = s.get(ApiKey, key_id)
             if row is None:

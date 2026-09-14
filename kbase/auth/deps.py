@@ -4,6 +4,10 @@ require_role（角色序校验）、Origin 同源中间件（CSRF 防护）。
 actor 统一表示为 {"name": str, "role": str}：Cookie 通道 name=用户名，
 Bearer 通道 name=API Key 的 name（供审计落 actor 字段，G3 用）。
 
+T09 给 Bearer 通道补的字段（Cookie 通道没有它们，故一律用 .get 读）：
+key_id（Key 行 id，限流/用量按它归档）、scope_kb_ids（库级白名单）、
+rpm/daily_quota（配额，仅 kbase/ratelimit.py 的限流依赖读取，不参与授权）。
+
 G3 角色矩阵：get_current_actor 解析出 actor 后会把它写进
 request.state.actor（副作用），require_role(min_role) 不再自己发起鉴权，
 而是读 request.state.actor——这样它可以在路由级按需 Depends，且能配合
@@ -13,11 +17,14 @@ rank 最高的合成 admin，令所有 require_role 检查天然放行（角色�
 off 模式下是无操作，行为与鉴权改造前一致）。
 """
 import json
+from datetime import datetime
 
 from fastapi import HTTPException, Request
 
+from kbase import ratelimit
 from kbase.auth import security
 from kbase.models import ApiKey, User
+from kbase.ratelimit import ip_allowed
 
 SESSION_COOKIE_NAME = "kbase_session"
 API_KEY_HEADER_PREFIX = "Bearer "
@@ -38,10 +45,43 @@ def role_rank(role: str) -> int:
     return _ROLE_RANK.get(role, 0)
 
 
+def client_ip(request: Request) -> str | None:
+    """请求来源 IP = 传输层对端地址（request.client.host）。
+
+    与 routes/auth.py 登录处理器**逐字同算法**（审计的 ip 字段同一口径）：
+    **不信任 X-Forwarded-For / X-Real-IP**——没有可信反代配置时任何客户端
+    都能自带这两个头，用它做 API Key 的 IP 白名单等于没做。反代部署要拿到
+    真实客户端 IP，正确做法是让反代改写对端地址（或在引入可信代理配置后
+    统一在这里解析）——当前仓库无该配置，故一律用对端地址。
+    """
+    client = request.client
+    return client.host if client is not None else None
+
+
 def _unauthorized() -> HTTPException:
     return HTTPException(
         status_code=401, detail="未认证：请提供有效的会话 Cookie 或 API Key",
         headers={"WWW-Authenticate": "Bearer"})
+
+
+def _api_key_expired() -> HTTPException:
+    """API Key 过期：仍是 401（凭据不可用），但带 code=api_key_expired——
+    集成方/前端据此区分"该换 Key 了"与"Key 根本不对"。detail 用
+    {code,message} 结构化对象，与 AppError 的响应形状一致（核心逻辑见
+    kbase/errors.py，前端 core.ts 的 detail.code 分支直接消费）。"""
+    return HTTPException(
+        status_code=401,
+        detail={"code": "api_key_expired", "message": "API Key 已过期"},
+        headers={"WWW-Authenticate": "Bearer"})
+
+
+def _ip_not_allowed() -> HTTPException:
+    """来源 IP 不在该 Key 的白名单内：403（身份有效、位置不对）——
+    与"凭据无效"的 401 分开，便于集成方定位是换网络还是换 Key。"""
+    return HTTPException(
+        status_code=403,
+        detail={"code": "ip_not_allowed",
+                "message": "来源 IP 不在该 API Key 的 IP 白名单内"})
 
 
 def make_get_current_actor(sf, secret: str):
@@ -74,24 +114,49 @@ def make_get_current_actor(sf, secret: str):
         if auth_header and auth_header.startswith(API_KEY_HEADER_PREFIX):
             full_key = auth_header[len(API_KEY_HEADER_PREFIX):]
             key_hash = security.hash_api_key(full_key)
+            ip = client_ip(request)
             with sf() as s:
                 row = s.query(ApiKey).filter_by(key_hash=key_hash).first()
-            if row is None or row.revoked:
-                raise _unauthorized()
-            # user_id 显式置 None（而不是漏掉这个 key）：API Key 是集成方/MCP
-            # 用的独立凭据，不代表某个具体登录用户，没有可归属的 user_id——
-            # 这类 actor 建的会话落 NULL，语义上等同"历史遗留/无归属"，
-            # 只有它自己和后续任何人都能在归属过滤下看到（见 _visible_filter）。
-            actor = {"name": row.name, "role": row.role, "user_id": None}
-            # 库级 scope（ztenith MCP）：JSON 数组→白名单进 actor，越权查询由
-            # 查询路由静默空集处理；NULL/脏数据=不限（与升级前行为一致）。
-            if row.scope_kb_ids:
-                try:
-                    scope = json.loads(row.scope_kb_ids)
-                    if isinstance(scope, list):
-                        actor["scope_kb_ids"] = [str(x) for x in scope]
-                except (ValueError, TypeError):
-                    pass
+                # T09 校验顺序（先身份后来源，且每一步都给得出最具体的判定）：
+                # 1) 吊销或停用 → 401。revoked 不可恢复（DELETE 端点只置位）；
+                #    disabled 可恢复（PATCH 端点）——两者对外表现一致（不区分，
+                #    免得泄漏"这把 Key 只是被临时停用，等会儿还能用"）。
+                #    老库补列 disabled=NULL → falsy → 未停用（见 migrations.py）。
+                if row is None or row.revoked or row.disabled:
+                    raise _unauthorized()
+                # 2) 过期 → 401 + code=api_key_expired。NULL=永不过期。
+                #    expires_at 是 naive UTC，与写入口径一致（见 admin.py）。
+                if (row.expires_at is not None
+                        and row.expires_at <= datetime.utcnow()):
+                    raise _api_key_expired()
+                # 3) 来源 IP 不在白名单 → 403 + code=ip_not_allowed。
+                #    ip_allow=NULL=不限来源（老库/未配置，行为与升级前一致）。
+                if not ip_allowed(row.ip_allow, ip):
+                    raise _ip_not_allowed()
+                # user_id 显式置 None（而不是漏掉这个 key）：API Key 是集成方/MCP
+                # 用的独立凭据，不代表某个具体登录用户，没有可归属的 user_id——
+                # 这类 actor 建的会话落 NULL，语义上等同"历史遗留/无归属"，
+                # 只有它自己和后续任何人都能在归属过滤下看到（见 _visible_filter）。
+                actor = {"name": row.name, "role": row.role, "user_id": None,
+                         # key_id：限流与用量按它归档（kbase/ratelimit.py）；
+                         # rpm/daily_quota 仅供限流依赖读，不参与授权判定。
+                         "key_id": row.id,
+                         "rpm": row.rpm, "daily_quota": row.daily_quota}
+                # 库级 scope（ztenith MCP）：JSON 数组→白名单进 actor，越权查询由
+                # 查询路由静默空集处理；NULL/脏数据=不限（与升级前行为一致）。
+                if row.scope_kb_ids:
+                    try:
+                        scope = json.loads(row.scope_kb_ids)
+                        if isinstance(scope, list):
+                            actor["scope_kb_ids"] = [str(x) for x in scope]
+                    except (ValueError, TypeError):
+                        pass
+                # 最近使用时间：写侧节流到每 Key 每分钟至多一次（kbase/ratelimit.py
+                # 记账）——鉴权在每请求的关键路径上，不能每个请求都写库。同一
+                # 会话内顺手提交，不额外开一次连接。
+                if ratelimit.limiter.allow_last_used_write(row.id):
+                    row.last_used_at = datetime.utcnow()
+                    s.commit()
             request.state.actor = actor
             return actor
 
