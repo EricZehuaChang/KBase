@@ -107,6 +107,12 @@ class RetrievalConfig(BaseModel):
     min_include_score: float = 0.1   # 收录底线：低于它的块视为噪声剔除（拒答门另看最高分）
     rewrite: RewriteConfig = Field(default_factory=RewriteConfig)
     max_parent_chars: int = 4000   # D6：父块截窗上限
+    # T17 上下文预算（字符）：一次检索交给生成层的上下文**总量**上限。None
+    # （缺省）=不限，组装层整条预算分支不生效，检索输出与 T17 之前逐字节一致。
+    # 与 max_parent_chars 的区别：后者是单块各自的上限（每块都可能给到 4000 字），
+    # 这里是所有块**加起来**的预算——块多就得每块少放。全局默认值，可按库
+    # （KnowledgeBase.config 的 retrieval.context_budget）或按请求覆盖。
+    context_budget: int | None = None
 
 
 class EnrichConfig(BaseModel):
@@ -164,8 +170,15 @@ class SsoConfig(BaseModel):
     issuer: str = ""                     # 如 https://idp.corp.com/realms/main
     client_id: str = ""
     client_secret_env: str = "KBASE_OIDC_CLIENT_SECRET"
-    # IdP 回调后新用户的默认角色；已有同名用户直接复用其现有角色
+    # IdP 回调后新用户的默认角色
     default_role: str = "viewer"
+    # T16/SsoConfig：是否允许 IdP 身份「接管」已存在的同名本地账号。
+    # **默认 false**：SSO 回调只用 (issuer, sub) 绑定过的本地账号；首次见到某
+    # IdP 身份时若本地已有同名账号，直接 403 + 审计 sso_account_conflict——
+    # 否则任何能在 IdP 里改名/建号的人（或 IdP 里恰好叫 admin 的账号）登录一次
+    # 就能拿到该本地账号的角色（实测可拿到 superadmin，属提权）。
+    # 打开它的唯一正当场景：运维预建好账号、想让 IdP 身份与之绑定。
+    allow_existing_users: bool = False
 
 
 class LoginGuardConfig(BaseModel):
