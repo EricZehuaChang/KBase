@@ -2,6 +2,8 @@
 // 模型目录、向量模型密钥、用户与 API Key 管理、许可证、健康检查、
 // 运营看板统计（问答量/拒答/反馈）。
 import { jsonInit, req } from "./core";
+// T12 归因下钻的 citations 复用问答域的 Citation 定义（同一份引用结构，不另造）
+import type { Citation } from "./chat";
 
 export interface Provider {
   name: string;
@@ -454,6 +456,142 @@ export interface FeedbackStats {
 
 export function getFeedbackStats(limit = 20): Promise<FeedbackStats> {
   return req(`/api/stats/feedback?limit=${limit}`);
+}
+
+// ---- 问答归因（T12）：每次问答一行，四个互斥桶 ----
+//
+// 数据只能从上线后开始积累：历史问答当时没记命中数/最高分，**无法回填**（重跑
+// 历史问题拿到的是今天的检索结果，不是当时的事故现场）。所以面板上线初期行数
+// 会很少，第一份有意义的报告要等数据攒够（周量级）——不要在界面上写"立刻可见"。
+
+/** 归因桶。取值与后端 kbase/qa_outcomes.py 的模块常量一一对应（不是自由文本）：
+ * empty_retrieval=检索为空（可能没这份资料）；below_threshold=检索到了但全低于
+ * 阈值（资料在库里却捞不起来，与前者运营动作完全不同）；scope_denied=API Key
+ * 越权静默空集（安全事件）；answered=正常作答。点踩不单列成桶——它是同一行上的
+ * feedback=-1。 */
+export type OutcomeBucket =
+  | "empty_retrieval" | "below_threshold" | "scope_denied" | "answered";
+
+export interface OutcomeItem {
+  id: string;
+  ts: string;
+  channel: string;
+  kb_id: string | null;
+  kb_ids: string[] | null;
+  conv_id: string | null;
+  message_id: string | null;
+  actor: string | null;
+  bucket: OutcomeBucket;
+  retrieved_count: number;
+  usable_count: number;
+  /** 本轮最高检索分；检索为空时为 null（不是 0——阈值量纲随检索模式变，0 未必是低分） */
+  top_score: number | null;
+  question: string;
+  /** null=未评，1=赞，-1=踩（后端 feedback.upsert_feedback 同步归因行） */
+  feedback: number | null;
+}
+
+export interface OutcomePage {
+  items: OutcomeItem[];
+  total: number;
+  /** 按桶分布。**不叠加 bucket 过滤**（其余过滤照用）——否则按桶点进去就只看得到
+   * 自己那一格，等于没有分布。 */
+  buckets: Record<string, number>;
+  buckets_known: OutcomeBucket[];
+  limit: number;
+  offset: number;
+}
+
+/** 下钻：归因行 + 该轮助手消息原文与 citations。非会话渠道（/v1、飞书、直问）
+ * 没有 message_id，answer/citations 为 null（不是空串——空串会被读成"答了但答案
+ * 是空的"）。 */
+export interface OutcomeDetail extends OutcomeItem {
+  answer: string | null;
+  citations: Citation[] | null;
+}
+
+export interface OutcomeQuery {
+  bucket?: string;
+  channel?: string;
+  kbId?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+  offset?: number;
+}
+
+function outcomeQueryString(opts: OutcomeQuery): string {
+  const q = new URLSearchParams();
+  if (opts.bucket) q.set("bucket", opts.bucket);
+  if (opts.channel) q.set("channel", opts.channel);
+  if (opts.kbId) q.set("kb_id", opts.kbId);
+  if (opts.from) q.set("from", opts.from);
+  if (opts.to) q.set("to", opts.to);
+  q.set("limit", String(opts.limit ?? 50));
+  q.set("offset", String(opts.offset ?? 0));
+  return q.toString();
+}
+
+export function listOutcomes(opts: OutcomeQuery = {}): Promise<OutcomePage> {
+  return req(`/api/stats/outcomes?${outcomeQueryString(opts)}`);
+}
+
+export function getOutcome(id: string): Promise<OutcomeDetail> {
+  return req(`/api/stats/outcomes/${encodeURIComponent(id)}`);
+}
+
+/** CSV 导出的直链（列完整：含问题全文与 feedback）。用 <a download> 触发，不走
+ * fetch——导出是文件下载，交给浏览器处理进度与另存（与 T18 批次导出同一手法）。 */
+export function outcomeExportUrl(opts: OutcomeQuery = {}): string {
+  return `/api/stats/outcomes/export.csv?${outcomeQueryString(opts)}`;
+}
+
+// ---- 渠道身份映射（T19）：外部渠道账号 ↔ KBase 用户 ----
+//
+// 这一层决定"渠道里的某个人在 KBase 里是谁"：映射后库级权限与登录态问答一致
+// （有权的人查得到、无权的人被静默拒答）；未映射按匿名 viewer 处理——公开库
+// 能问、收紧过的库问不到（**不是全放行**）。全部端点 admin 门槛。
+
+export interface ChannelOption {
+  /** 渠道码：feishu（现役）。取值与后端 channels.core.CHANNELS 一致 */
+  channel: string;
+  label: string;
+}
+
+export interface ChannelIdentity {
+  id: string;
+  channel: string;
+  /** 渠道内的外部账号 id（飞书=sender open_id，本服务只当不透明字符串比对） */
+  external_user_id: string;
+  user_id: string;
+  /** 绑定的用户被删除后为 null（绑定行保留，界面显示缺失态提示清理） */
+  username: string | null;
+  role: string | null;
+  disabled: boolean | null;
+  created_at: string;
+}
+
+export function listChannels(): Promise<{ items: ChannelOption[] }> {
+  return req("/api/channels");
+}
+
+export function listChannelIdentities(channel?: string):
+    Promise<{ items: ChannelIdentity[] }> {
+  const q = channel ? `?channel=${encodeURIComponent(channel)}` : "";
+  return req(`/api/channels/identities${q}`);
+}
+
+/** 绑定（同一渠道内同一个外部账号 = 改绑，后端覆盖那一行不留双份）。 */
+export function bindChannelIdentity(body: {
+  channel: string; external_user_id: string; user_id: string;
+}): Promise<ChannelIdentity> {
+  return req("/api/channels/identities", jsonInit(body));
+}
+
+/** 解绑：该外部账号立刻回落默认策略（后端每次问答现查，不缓存）。 */
+export function unbindChannelIdentity(id: string): Promise<{ ok: boolean }> {
+  return req(`/api/channels/identities/${encodeURIComponent(id)}`,
+             { method: "DELETE" });
 }
 
 // 审计日志（admin 及以上；后端按查看者分层——超管看全量，普通 admin 的

@@ -98,7 +98,10 @@
     "license_feature_denied": "Your license does not include this feature: {feature}",
     "license_bad_file": "License verification failed (not valid JSON or bad signature). The current file was not replaced.",
     "license_file_required": "Please choose a license.json file to upload",
-    "license_write_failed": "Failed to write the license file: {msg}"
+    "license_write_failed": "Failed to write the license file: {msg}",
+    "outcome_not_found": "Attribution record not found: {id}",
+    "bad_bucket": "Unknown attribution bucket: {bucket}",
+    "bad_time_param": "{field} is not a valid time: {value}"
   },
   "login": {
     "continue": "Log in to continue",
@@ -274,7 +277,37 @@
     "downvote_title": "Recent Downvoted Answers (consider reviewing documentation or retrieval config)",
     "downvote_badge": "Downvote",
     "question_missing": "(Missing Question)",
-    "note": "Note: {note}"
+    "note": "Note: {note}",
+    "attr_title": "Q&A Attribution (by bucket)",
+    "attr_total": "{n} records",
+    "attr_export": "Export CSV",
+    "attr_caveat": "Note: attribution data only accumulates from the release of this feature onward — historical Q&A never recorded hit counts or top scores, so it cannot be backfilled (re-running old questions yields today's retrieval results, not the original incident). A low row count early on is expected; the first meaningful report needs weeks of data.",
+    "attr_empty": "No attribution data yet (collection starts now; historical Q&A cannot be backfilled)",
+    "attr_channel_all": "All channels",
+    "attr_kb_all": "All knowledge bases",
+    "attr_filtered": "Filtered by bucket: {bucket}",
+    "attr_downvoted": "downvoted",
+    "attr_question": "Question",
+    "attr_answer": "Answer",
+    "attr_no_answer": "No assistant message stored for this channel (direct query / v1 / Feishu — non-conversation entry points)",
+    "attr_citations": "Citations for this round",
+    "attr_counts": "Retrieved / usable / top score",
+    "attr_counts_value": "{retrieved} / {usable} / {score}",
+    "attr_actor": "Asker",
+    "attr_actor_none": "(entry point without identity)",
+    "attr_kb": "Knowledge base",
+    "bucket": {
+      "empty_retrieval": "Empty retrieval",
+      "below_threshold": "Below threshold",
+      "scope_denied": "Out of scope",
+      "answered": "Answered"
+    },
+    "bucket_hint": {
+      "empty_retrieval": "Retrieval returned nothing: the material is most likely not in the KB at all → add documents",
+      "below_threshold": "Something was retrieved but the top score did not clear the refusal threshold: the material exists yet cannot be surfaced → check query phrasing / chunking / threshold",
+      "scope_denied": "API Key KB-level scope violation, silent empty set: a security event, not a knowledge gap",
+      "answered": "Answered normally (a downvote is not a separate bucket — it is feedback layered on this row)"
+    }
   },
   "embedder": {
     "saved": "Key saved; will take effect on next embedding/retrieval",
@@ -1115,5 +1148,21 @@
       "title": "Tour Complete 🎉",
       "desc": "Core features covered: knowledge in (upload/sync), answers out (cite/share), quality managed, permissions governed. Restart this tour anytime from the user menu at the top right."
     }
+  },
+  "channel": {
+    "title": "Channel Identity Mapping",
+    "desc": "Bind an external channel account (Feishu open_id) to a KBase user: after binding, questions from that account are retrieved with that user's KB-level permissions — authorized people get answers, unauthorized ones are refused silently just like on the web. Unbound accounts (or events with no identity) are treated as an anonymous viewer: public KBs are answerable, restricted ones are not; unbinding or disabling the user reverts to that default immediately. Submitting the same external account again rebinds it.",
+    "channel": "Channel",
+    "external_id": "External account id",
+    "external_id_ph": "Feishu open_id, e.g. ou_xxxxxxxx",
+    "user": "KBase user",
+    "user_ph": "Select a user",
+    "bind": "Bind",
+    "unbind": "Unbind",
+    "bound": "Bound (same external account rebinds)",
+    "unbound": "Unbound; this account now follows the default policy",
+    "empty": "No bindings yet: everyone in the channel is treated as unbound (public KBs answerable, restricted ones not)",
+    "disabled": "disabled (treated as unbound)",
+    "user_missing": "Bound user was deleted, unbind to clean up"
   }
 }

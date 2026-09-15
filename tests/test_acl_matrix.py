@@ -98,6 +98,24 @@ class Fixture:
                             kb_id=self.kb_b, bucket="empty_retrieval",
                             question="他库未命中问题"))
             s.commit()
+        # T18 导入批次：路由覆盖闸门要一条"他库资源"的真实 id（CLI 是写侧，
+        # 夹具直插 DB 造这一行）。
+        from kbase.models import ImportBatch
+        self.batch_id_b = str(_uuid.uuid4())
+        with app.state.svc.sf() as s:
+            s.add(ImportBatch(id=self.batch_id_b, kb_id=self.kb_b,
+                              manifest_path="import-b.jsonl", status="done",
+                              counts="{}"))
+            s.commit()
+        # T19 渠道身份绑定：闸门要一条真实存在的绑定行 id（绑定是全局配置、
+        # 不归属任何库，故这条测的是"非 admin 一律进不来"）。
+        from kbase.models import ChannelIdentity
+        self.identity_id = str(_uuid.uuid4())
+        with app.state.svc.sf() as s:
+            s.add(ChannelIdentity(id=self.identity_id, channel="feishu",
+                                  external_user_id="ou-matrix",
+                                  user_id="any-user-id"))
+            s.commit()
 
     def _upload(self, kb, name, text):
         """上传并返回落库的 doc_id（摄取是同步 bg task，响应返回时已完成，
@@ -421,6 +439,13 @@ _ID_SCOPED_FAMILIES = {
     # kb_id，无授权调用方必须拿不到。注意过滤类端点（列表/导出）不带 id 参数，
     # 由各自的查询过滤覆盖，不在本闸门的枚举范围内。
     "/api/stats/outcomes/": "editor",
+    # T18 批量导入批次：以 batch_id 为参数的只读端点（明细 / CSV 导出）。批次行
+    # 带 kb_id，无授权调用方一律 404；写侧只有 CLI，没有 HTTP 触发入口。
+    "/api/import-batches/": "editor",
+    # T19 渠道身份绑定：以 identity_id 为参数的解绑端点（写类）。绑定表是全局
+    # 配置、不归属任何库，所以这里守的不是 KbGuard 而是 admin 门槛——非 admin
+    # 调用方拿到 403（同样不是 2xx），闸门要求的"非越权调用方不得成功"成立。
+    "/api/channels/identities/": "editor",
 }
 
 # 有意豁免：这些路径虽然带 id，但语义上不以"某个库的资源"为授权单位
@@ -457,6 +482,8 @@ def test_all_id_scoped_routes_are_guarded(fx):
                         .replace("{connector_id}", fx.connector_id_b)
                         .replace("{sa_id}", fx.sa_id_b)
                         .replace("{outcome_id}", fx.outcome_id_b)
+                        .replace("{batch_id}", fx.batch_id_b)
+                        .replace("{identity_id}", fx.identity_id)
                         .replace("{filename}", "nope.png"))
         assert "{" not in concrete, f"{path} 的路径参数没在夹具里登记"
         caller = fx.unauthorized_editor if _ID_SCOPED_FAMILIES[family] == "editor" \
@@ -477,7 +504,10 @@ def test_all_id_scoped_routes_are_guarded(fx):
                  "/api/jobs/{job_id}",
                  "/api/eval-sets/{set_id}/run",
                  "/api/standard-answers/{sa_id}/review",       # T13
-                 "/api/stats/outcomes/{outcome_id}/standard-answer"):  # T13
+                 "/api/stats/outcomes/{outcome_id}/standard-answer",  # T13
+                 "/api/stats/outcomes/{outcome_id}",            # T12 归因下钻
+                 "/api/import-batches/{batch_id}/export.csv",   # T18
+                 "/api/channels/identities/{identity_id}"):     # T19 渠道绑定解绑
         assert must in covered, (
             f"{must} 没有被这条闸门覆盖——家族前缀表漏登记或路由已改名，"
             f"该端点现在无人守")

@@ -200,6 +200,9 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
     # T12 问答归因：清单 / 下钻 / CSV 导出（admin 门槛，含超管审计分层）
     from kbase.api.routes import stats_outcomes as stats_outcomes_routes
     stats_outcomes_routes.register(router, svc, deps)
+    # T19 渠道身份映射：外部渠道账号 ↔ KBase 用户的绑定管理（admin）
+    from kbase.api.routes import channels as channels_routes
+    channels_routes.register(router, svc, deps)
     app.include_router(router)
 
     # 连接器定时同步调度器（对标#3）：startup 起 daemon 线程（TestClient

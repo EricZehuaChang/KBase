@@ -98,7 +98,10 @@
     "license_feature_denied": "Lesen anda tidak merangkumi ciri ini: {feature}",
     "license_bad_file": "Pengesahan lesen gagal (JSON tidak sah atau tandatangan salah). Fail semasa tidak diganti.",
     "license_file_required": "Sila pilih fail license.json untuk dimuat naik",
-    "license_write_failed": "Gagal menulis fail lesen: {msg}"
+    "license_write_failed": "Gagal menulis fail lesen: {msg}",
+    "outcome_not_found": "Rekod atribusi tidak wujud: {id}",
+    "bad_bucket": "Baldi atribusi tidak dikenali: {bucket}",
+    "bad_time_param": "{field} bukan masa yang sah: {value}"
   },
   "login": {
     "continue": "Log masuk untuk meneruskan",
@@ -274,7 +277,37 @@
     "downvote_title": "Jawapan undi negatif terkini (disarankan semak dokumen atau konfigurasi carian)",
     "downvote_badge": "Undi negatif",
     "question_missing": "(Soalan hilang)",
-    "note": "Nota: {note}"
+    "note": "Nota: {note}",
+    "attr_title": "Atribusi S&J (mengikut baldi)",
+    "attr_total": "{n} rekod",
+    "attr_export": "Eksport CSV",
+    "attr_caveat": "Nota: data atribusi hanya terkumpul sejak ciri ini dikeluarkan — S&J lampau tidak pernah merekod bilangan hits atau skor tertinggi, jadi ia tidak boleh diisi semula (menjalankan semula soalan lama memberi hasil carian hari ini, bukan keadaan insiden asal). Bilangan baris yang kecil pada peringkat awal adalah normal; laporan pertama yang bermakna memerlukan data beberapa minggu.",
+    "attr_empty": "Belum ada data atribusi (pengumpulan bermula sekarang; S&J lampau tidak boleh diisi semula)",
+    "attr_channel_all": "Semua saluran",
+    "attr_kb_all": "Semua pangkalan pengetahuan",
+    "attr_filtered": "Ditapis mengikut baldi: {bucket}",
+    "attr_downvoted": "undian turun",
+    "attr_question": "Soalan",
+    "attr_answer": "Jawapan",
+    "attr_no_answer": "Tiada mesej pembantu disimpan untuk saluran ini (soalan terus / v1 / Feishu — saluran bukan perbualan)",
+    "attr_citations": "Petikan untuk pusingan ini",
+    "attr_counts": "Diperoleh / boleh guna / skor tertinggi",
+    "attr_counts_value": "{retrieved} / {usable} / {score}",
+    "attr_actor": "Penanya",
+    "attr_actor_none": "(saluran tanpa identiti)",
+    "attr_kb": "Pangkalan pengetahuan",
+    "bucket": {
+      "empty_retrieval": "Carian kosong",
+      "below_threshold": "Bawah ambang",
+      "scope_denied": "Luar skop",
+      "answered": "Dijawab"
+    },
+    "bucket_hint": {
+      "empty_retrieval": "Carian tidak menemui apa-apa: bahan itu kemungkinan besar tiada dalam pangkalan → tambah dokumen",
+      "below_threshold": "Ada hasil carian tetapi skor tertinggi tidak melepasi ambang penolakan: bahan ada tetapi tidak dapat dikeluarkan → semak gaya soalan / pemotongan / ambang",
+      "scope_denied": "Pelanggaran skop peringkat pangkalan oleh API Key, set kosong senyap: ini peristiwa keselamatan, bukan jurang pengetahuan",
+      "answered": "Dijawab seperti biasa (undian turun bukan baldi berasingan — ia maklum balas pada baris ini)"
+    }
   },
   "embedder": {
     "saved": "Kunci telah disimpan, berkuat kuasa pada vektorisasi/carian seterusnya",
@@ -1115,5 +1148,21 @@
       "title": "Panduan Selesai 🎉",
       "desc": "Fungsi teras telah dilengkapkan: pengetahuan masuk (muat naik/segerak), jawapan keluar (rujukan/kongsi), kualiti diurus, kebenaran ditadbir. Anda boleh memulakan semula lawatan ini dari menu pengguna di penjuru kanan atas."
     }
+  },
+  "channel": {
+    "title": "Pemetaan Identiti Saluran",
+    "desc": "Ikat akaun saluran luaran (open_id Feishu) pada pengguna KBase: selepas diikat, soalan daripada akaun itu dicari mengikut kebenaran peringkat pangkalan pengguna tersebut — yang dibenarkan mendapat jawapan, yang tidak dibenarkan ditolak secara senyap sama seperti di web. Akaun tidak diikat (atau peristiwa tanpa identiti) dianggap sebagai viewer tanpa nama: pangkalan awam boleh ditanya, pangkalan terhad tidak; nyahikat atau lumpuhkan pengguna akan kembali kepada dasar lalai ini serta-merta. Menghantar akaun luaran yang sama sekali lagi bermakna ikat semula.",
+    "channel": "Saluran",
+    "external_id": "Id akaun luaran",
+    "external_id_ph": "open_id Feishu, cth. ou_xxxxxxxx",
+    "user": "Pengguna KBase",
+    "user_ph": "Pilih pengguna",
+    "bind": "Ikat",
+    "unbind": "Nyahikat",
+    "bound": "Telah diikat (akaun luaran sama = ikat semula)",
+    "unbound": "Telah dinyahikat; akaun ini kini mengikut dasar lalai",
+    "empty": "Belum ada ikatan: semua orang dalam saluran dianggap tidak diikat (pangkalan awam boleh ditanya, yang terhad tidak)",
+    "disabled": "dilumpuhkan (dianggap tidak diikat)",
+    "user_missing": "Pengguna yang diikat telah dipadam, nyahikat untuk bersihkan"
   }
 }

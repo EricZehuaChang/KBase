@@ -98,7 +98,10 @@
     "license_feature_denied": "当前授权未包含该功能：{feature}",
     "license_bad_file": "许可证校验失败（文件不是合法 JSON 或签名不合法），原文件未被替换",
     "license_file_required": "请选择要上传的 license.json 文件",
-    "license_write_failed": "许可证写入失败：{msg}"
+    "license_write_failed": "许可证写入失败：{msg}",
+    "outcome_not_found": "归因记录不存在: {id}",
+    "bad_bucket": "未知的归因桶: {bucket}",
+    "bad_time_param": "{field} 不是合法时间: {value}"
   },
   "login": {
     "continue": "登录以继续",
@@ -274,7 +277,37 @@
     "downvote_title": "最近差评回答（建议核查文档或检索配置）",
     "downvote_badge": "差评",
     "question_missing": "（问题缺失）",
-    "note": "备注：{note}"
+    "note": "备注：{note}",
+    "attr_title": "问答归因（按桶）",
+    "attr_total": "共 {n} 条",
+    "attr_export": "导出 CSV",
+    "attr_caveat": "说明：归因数据只能从本功能上线后开始积累——历史问答当时未记录命中数与最高分，无法回填（重跑历史问题得到的是今天的检索结果，不是当时的事故现场）。因此初期行数很少属正常，第一份有意义的报告需要数周数据。",
+    "attr_empty": "暂无归因数据（数据从现在开始积累，历史问答无法回填）",
+    "attr_channel_all": "全部渠道",
+    "attr_kb_all": "全部知识库",
+    "attr_filtered": "已按桶筛选：{bucket}",
+    "attr_downvoted": "已点踩",
+    "attr_question": "问题",
+    "attr_answer": "回答",
+    "attr_no_answer": "本入口没有留存助手消息（直问 / v1 / 飞书等非会话渠道）",
+    "attr_citations": "当次引用",
+    "attr_counts": "检索 / 可用 / 最高分",
+    "attr_counts_value": "{retrieved} / {usable} / {score}",
+    "attr_actor": "提问者",
+    "attr_actor_none": "（无身份入口）",
+    "attr_kb": "知识库",
+    "bucket": {
+      "empty_retrieval": "检索为空",
+      "below_threshold": "低于阈值",
+      "scope_denied": "越权（scope）",
+      "answered": "已作答"
+    },
+    "bucket_hint": {
+      "empty_retrieval": "检索没有任何命中：库里很可能压根没有这份资料 → 补文档",
+      "below_threshold": "检索到了东西但最高分没过拒答阈值：资料在库里却捞不起来 → 查提问口径/切块/阈值",
+      "scope_denied": "API Key 库级 scope 越权，静默空集：这是安全事件，不是知识缺口",
+      "answered": "正常作答（点踩不单列成桶，它是叠加在这一行上的反馈）"
+    }
   },
   "embedder": {
     "saved": "密钥已保存，下次向量化/检索即生效",
@@ -1103,5 +1136,21 @@
       "title": "导览完成 🎉",
       "desc": "核心功能已走完：知识进得来（上传/同步）、答案出得去（引用/分享）、质量可运营、权限可治理。随时可从右上角用户菜单再次启动本导览。"
     }
+  },
+  "channel": {
+    "title": "渠道身份映射",
+    "desc": "把外部渠道账号（飞书 open_id）绑到 KBase 用户：绑定后群里提问的人按该用户的库级权限检索——有权的人查得到，无权的人与网页端一样被静默拒答。未绑定（或事件里没有身份）按匿名 viewer 处理：公开库能问，收紧过的库问不到；解绑/停用用户后立刻回落这条默认策略。同一个外部账号再次提交即为改绑。",
+    "channel": "渠道",
+    "external_id": "外部账号 id",
+    "external_id_ph": "飞书 open_id，如 ou_xxxxxxxx",
+    "user": "KBase 用户",
+    "user_ph": "选择用户",
+    "bind": "绑定",
+    "unbind": "解绑",
+    "bound": "已绑定（同一外部账号为改绑）",
+    "unbound": "已解绑，该账号已回落默认策略",
+    "empty": "暂无绑定：渠道里所有人按未绑定处理（公开库可问，收紧过的库问不到）",
+    "disabled": "已停用（按未绑定处理）",
+    "user_missing": "绑定的用户已被删除，请解绑清理"
   }
 }

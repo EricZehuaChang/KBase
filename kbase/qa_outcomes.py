@@ -28,7 +28,7 @@ import json
 import uuid
 from datetime import datetime
 
-from sqlalchemy import func, or_
+from sqlalchemy import false, func, or_
 
 from kbase.auth.deps import role_rank
 from kbase.models import Message, QaOutcome, User
@@ -186,15 +186,27 @@ def _row_out(r: QaOutcome) -> dict:
 
 def _filtered(q, *, bucket: str | None, channel: str | None, kb_id: str | None,
               since: datetime | None, until: datetime | None,
-              exclude_actors: set[str] | None):
+              exclude_actors: set[str] | None,
+              kb_ids_in: set[str] | None = None):
     """清单/导出/分布共用的过滤条件（三种读法口径必须完全一致，否则"分布说
-    3 条、清单只有 2 条"这种对不上的账最招人烦）。"""
+    3 条、清单只有 2 条"这种对不上的账最招人烦）。
+
+    kb_id 与 kb_ids_in 是两种不同的问题（都给了就同时生效）：
+    - kb_id：运营在面板上选了"只看某个库"，精确匹配该行归属的库；
+    - kb_ids_in：查看者**可见性**过滤——不带 kb_id 的清单要挡掉他无权看的库的
+      行（与 routes/import_batches.py 逐行复核 ACL 同一手法，只是收敛成一条
+      SQL 条件）。空集合=一条都不可见：`IN ()` 在 SQLAlchemy 上会退化成恒真，
+      所以这里显式短路，避免"无权反而是看得最多"这种最坏的反转。
+    """
     if bucket:
         q = q.filter(QaOutcome.bucket == bucket)
     if channel:
         q = q.filter(QaOutcome.channel == channel)
     if kb_id:
         q = q.filter(QaOutcome.kb_id == kb_id)
+    if kb_ids_in is not None:
+        q = q.filter(QaOutcome.kb_id.in_(sorted(kb_ids_in)) if kb_ids_in
+                     else false())
     if since is not None:
         q = q.filter(QaOutcome.ts >= since)
     if until is not None:
@@ -211,7 +223,8 @@ def list_outcomes(sf, *, bucket: str | None = None, channel: str | None = None,
                   kb_id: str | None = None, since: datetime | None = None,
                   until: datetime | None = None, limit: int = 50,
                   offset: int = 0,
-                  exclude_actors: set[str] | None = None) -> dict:
+                  exclude_actors: set[str] | None = None,
+                  kb_ids_in: set[str] | None = None) -> dict:
     """归因清单（新→旧）+ 同条件总数 + 按桶分布。
 
     buckets 分布**不叠加 bucket 过滤**（其余过滤照用）：看板要能"按渠道/库看
@@ -219,17 +232,19 @@ def list_outcomes(sf, *, bucket: str | None = None, channel: str | None = None,
     一格，等于没有分布。
     排序补一个 id desc 兜底：ts 在 SQLite 上刻度粗，同一刻多行时分页会跳行/
     重行（顺序本身无意义，稳定才是要求）。
+    kb_ids_in 是查看者可见性过滤（见 _filtered），三处读法一致地生效。
     """
     with sf() as s:
         base = _filtered(s.query(QaOutcome), bucket=bucket, channel=channel,
                          kb_id=kb_id, since=since, until=until,
-                         exclude_actors=exclude_actors)
+                         exclude_actors=exclude_actors, kb_ids_in=kb_ids_in)
         total = base.count()
         rows = (base.order_by(QaOutcome.ts.desc(), QaOutcome.id.desc())
                 .limit(limit).offset(offset).all())
         dist = _filtered(s.query(QaOutcome.bucket, func.count(QaOutcome.id)),
                          bucket=None, channel=channel, kb_id=kb_id, since=since,
-                         until=until, exclude_actors=exclude_actors)
+                         until=until, exclude_actors=exclude_actors,
+                         kb_ids_in=kb_ids_in)
         counts = {b: 0 for b in BUCKETS}
         # 未知值（未来新增的桶）也照实带上，不要悄悄吞掉
         counts.update({str(b): int(c) for b, c in
@@ -266,9 +281,13 @@ def get_outcome(sf, outcome_id: str, *,
 def export_rows(sf, *, bucket: str | None = None, channel: str | None = None,
                 kb_id: str | None = None, since: datetime | None = None,
                 until: datetime | None = None,
-                exclude_actors: set[str] | None = None) -> list[dict]:
+                exclude_actors: set[str] | None = None,
+                kb_ids_in: set[str] | None = None) -> list[dict]:
     """导出用行（新→旧，上限 EXPORT_MAX_ROWS）。与 list_outcomes 同口径，
-    只是不分页：CSV 是一次性产物，分页导出只会让人拿到半份数据还以为全了。"""
+    只是不分页：CSV 是一次性产物，分页导出只会让人拿到半份数据还以为全了。
+    kb_ids_in 一并透传：导出与清单必须"看到同一批行"，否则导出来的 CSV 比
+    面板上多（或少）几行，对账时无从解释。"""
     return list_outcomes(sf, bucket=bucket, channel=channel, kb_id=kb_id,
                          since=since, until=until, limit=EXPORT_MAX_ROWS,
-                         exclude_actors=exclude_actors)["items"]
+                         exclude_actors=exclude_actors,
+                         kb_ids_in=kb_ids_in)["items"]
