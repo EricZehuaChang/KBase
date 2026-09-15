@@ -120,11 +120,9 @@ export KBASE_OIDC_CLIENT_SECRET="$CLIENT_SECRET"
 export KBASE_ADMIN_PASSWORD="$ADMIN_PW"
 export KBASE_SSO_APP_PORT="$APP_PORT"
 export KBASE_TEST_REPO="$REPO"
-# ⚠️ 临时补丁：main 分支当前缺 kbase/qa_outcomes.py（T12 半成品被 stash 收走），
-#    导致 `import kbase.api.main` 直接失败、app 起不来。这里只挂一个含占位模块的
-#    目录（不往仓库写文件、不动任何 stash），真文件回仓库后自动失效。
-#    详见 scripts/dev/qa_outcomes_shim/sitecustomize.py
-export PYTHONPATH="${REPO}/scripts/dev/qa_outcomes_shim${PYTHONPATH:+:${PYTHONPATH}}"
+# 注：2026-09-15 曾需要挂 scripts/dev/qa_outcomes_shim 绕开"main 缺
+# kbase/qa_outcomes.py"的断链（T12 半成品被 stash 收走）。该断链已修复
+# （见提交 "fix: 修复主干两处断裂"），占位目录已删除，这里不再需要任何补丁。
 # 启动脚本落成文件（而不是 heredoc 到后台进程）：报错能看见、pid 可精确回收
 cat > "${RUN_DIR}/run_app.sh" <<'SH'
 #!/usr/bin/env bash
