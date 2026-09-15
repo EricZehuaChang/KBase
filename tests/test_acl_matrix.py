@@ -84,6 +84,20 @@ class Fixture:
                                 "source": "http://example.invalid/wiki"})
         self.connector_id_b = (conn.json()["id"] if conn.status_code == 200
                                else "conn-not-exist")
+        # T13 标问 / T12 归因：路由覆盖闸门要用"他库资源"的真实 id。
+        # 标问直插 DB（创建端点走审核流，夹具不需要这一层）；归因行同理。
+        from kbase.models import QaOutcome, StandardAnswer
+        import uuid as _uuid
+        self.sa_id_b = str(_uuid.uuid4())
+        self.outcome_id_b = str(_uuid.uuid4())
+        with app.state.svc.sf() as s:
+            s.add(StandardAnswer(id=self.sa_id_b, kb_id=self.kb_b,
+                                 question="他库标问", answer="他库答案",
+                                 status="pending_review", source="manual"))
+            s.add(QaOutcome(id=self.outcome_id_b, channel="web",
+                            kb_id=self.kb_b, bucket="empty_retrieval",
+                            question="他库未命中问题"))
+            s.commit()
 
     def _upload(self, kb, name, text):
         """上传并返回落库的 doc_id（摄取是同步 bg task，响应返回时已完成，
@@ -400,6 +414,13 @@ _ID_SCOPED_FAMILIES = {
     "/api/connectors/": "editor",
     "/api/eval-sets/": "editor",
     "/api/eval-runs/": "editor",
+    # T13 标问库：以标问 id 为参数的端点（审核 / 回灌评测集）必须同样过库守卫。
+    # 这是 T13 交付时主动指出的缺口——闸门表不登记新家族，等于新端点没被覆盖。
+    "/api/standard-answers/": "editor",
+    # T12 归因下钻：以归因记录 id 为参数（含审核通过的标问提取）；归因记录带
+    # kb_id，无授权调用方必须拿不到。注意过滤类端点（列表/导出）不带 id 参数，
+    # 由各自的查询过滤覆盖，不在本闸门的枚举范围内。
+    "/api/stats/outcomes/": "editor",
 }
 
 # 有意豁免：这些路径虽然带 id，但语义上不以"某个库的资源"为授权单位
@@ -419,6 +440,7 @@ def test_all_id_scoped_routes_are_guarded(fx):
     """
     paths = fx.app.openapi()["paths"]
     checked = 0
+    checked_paths: list[str] = []
     failures = []
     for path, ops in sorted(paths.items()):
         if path in _EXEMPT or "{" not in path:
@@ -433,16 +455,32 @@ def test_all_id_scoped_routes_are_guarded(fx):
                         .replace("{run_id}", fx.run_id_b)
                         .replace("{job_id}", fx.job_id_b)
                         .replace("{connector_id}", fx.connector_id_b)
+                        .replace("{sa_id}", fx.sa_id_b)
+                        .replace("{outcome_id}", fx.outcome_id_b)
                         .replace("{filename}", "nope.png"))
         assert "{" not in concrete, f"{path} 的路径参数没在夹具里登记"
         caller = fx.unauthorized_editor if _ID_SCOPED_FAMILIES[family] == "editor" \
             else fx.viewer_client
+        checked_paths.append(path)
         for method in ops:
             checked += 1
             r = _call(caller, method.upper(), concrete, {})
             if 200 <= r.status_code < 300:
                 failures.append(f"{method.upper()} {concrete} → {r.status_code}")
+    # 非空转守卫：家族表若被改坏（前缀写错、被误删），checked 会悄悄变小却仍然
+    # 全绿——那是"以为在守、其实没守"。除最低数量外，还断言几个**具名端点**
+    # 必须在枚举结果里（新增卡往这里加名字即可）。
     assert checked >= 12, f"枚举到的端点数异常（{checked}），夹具或前缀表可能要更新"
+    covered = "\n".join(checked_paths)
+    for must in ("/api/documents/{doc_id}/content",
+                 "/api/chunks/{chunk_id}",
+                 "/api/jobs/{job_id}",
+                 "/api/eval-sets/{set_id}/run",
+                 "/api/standard-answers/{sa_id}/review",       # T13
+                 "/api/stats/outcomes/{outcome_id}/standard-answer"):  # T13
+        assert must in covered, (
+            f"{must} 没有被这条闸门覆盖——家族前缀表漏登记或路由已改名，"
+            f"该端点现在无人守")
     assert not failures, (
         "以下以资源 id 为参数的端点对无授权调用方返回了成功——"
         "检查是否漏挂 KbGuard（kbase/api/guards.py）：\n  "
