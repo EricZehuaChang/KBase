@@ -41,10 +41,26 @@ case "${1:-run}" in
   run)
     MODE="${2:-all}"
     sync_repo
-    echo "== 在服务器上跑 ${MODE}（前台，输出实时回传）=="
-    # 注意：不能给 ssh 加 nohup+&（ssh 会等管道关闭而挂住）；这里就前台跑，
-    # 需要后台时用 tmux：ssh kbase-test 'tmux new -d "bash /opt/kbase-test/run_remote_tests.sh all"'
-    ssh "${SSH_OPTS[@]}" "$HOST" "mkdir -p /opt/kbase-test/logs && bash /opt/kbase-test/run_remote_tests.sh ${MODE}"
+    echo "== 在服务器上后台跑 ${MODE}（nohup，避免 SSH 空闲被掐）=="
+    # 全量要 6-7 分钟，SSH 长时间无输出会被中间设备掐断（本会话已踩三次：
+    # 看起来"任务结束"，其实远端还在跑）。所以这里 nohup 后台启动 + 轮询日志。
+    STAMP="$(date +%Y%m%d-%H%M%S)"
+    ssh "${SSH_OPTS[@]}" "$HOST" "mkdir -p /opt/kbase-test/logs \
+        && cd /opt/kbase-test \
+        && setsid nohup bash run_remote_tests.sh ${MODE} \
+           > /opt/kbase-test/logs/run-${STAMP}.out 2>&1 < /dev/null & echo \\$!"
+    echo "已启动，开始轮询日志（Ctrl-C 只退出轮询，不影响远端测试）..."
+    while :; do
+      sleep 30
+      LINE=$(ssh "${SSH_OPTS[@]}" "$HOST" \
+        "tail -c 4000 /opt/kbase-test/logs/run-${STAMP}.out 2>/dev/null | grep -E '^(===|---)' | tail -4")
+      echo "[$(date +%H:%M:%S)] ${LINE:-（无新输出）}"
+      case "$LINE" in
+        *"=== 日志："*) echo "轮询结束（远端已写完总结）"; break;;
+      esac
+    done
+    echo "== 完整日志：/opt/kbase-test/logs/run-${STAMP}.out =="
+    ssh "${SSH_OPTS[@]}" "$HOST" "grep -E '^[0-9]+ (passed|failed)' /opt/kbase-test/logs/run-${STAMP}.out | tail -4"
     ;;
   tunnel)
     # 远端 PG 只监听 127.0.0.1，本机要用就走隧道（本机 5433 → 服务器 5433）

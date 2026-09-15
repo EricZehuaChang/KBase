@@ -2,6 +2,11 @@
 # 在服务器 182.61.137.91 上跑 KBase 的全量门禁（= ci-core.yml 的 backend +
 # backend-pg 两个 job），把本机的内存压力卸载出去。
 #
+# ⚠️ 从 Mac 侧调用时**不要**直接 `ssh host 'bash run_remote_tests.sh all'`：
+# 全量要 6-7 分钟，SSH 空闲连接会被掐（Operation timed out / broken pipe），
+# 看起来像"任务结束"其实远端还在跑（已经踩过三次，bash-14/17/37）。
+# 正确姿势见 scripts/dev/remote_test.sh run：nohup 后台 + 轮询日志。
+#
 # 用法（服务器上）：
 #   bash /opt/kbase-test/run_remote_tests.sh            # 全量 + PG
 #   bash /opt/kbase-test/run_remote_tests.sh backend    # 只跑全量
