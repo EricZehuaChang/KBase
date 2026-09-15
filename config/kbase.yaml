@@ -40,6 +40,15 @@ chunker:
   chunk_overlap: 64
 # retrieval 各键默认值见 kbase/config.py RetrievalConfig，按需在此覆盖。
 # 注意：rewrite.mode 必须带引号（"off" 不加引号会被 YAML 解析为布尔 False，启动时报校验错误）。
+# T17 上下文预算 retrieval.context_budget（字符，缺省不写=不限）：一次检索交给
+# 生成层的上下文**总量**上限——块少可以多给，块多就得少给。与 max_parent_chars
+# 的区别是后者管单块（每块各自 4000 字），这里管所有块加起来。超预算时表格块
+# 退化为「表头+命中行+共 N 行（已截断）」、普通文本块按剩余预算截窗，前端引用
+# 旁标「已截断」。可按库覆盖（KB 配置 retrieval.context_budget）或按请求覆盖
+# （/api/kb/{id}/search 的 context_budget）。定值时按所选 LLM 的上下文窗口留出
+# 问题+历史+回答的余量：中文 1 字符≈1 token，中英混排按 1.5 倍估更稳。
+# retrieval:
+#   context_budget: 8000
 llm:
   # 四厂商 × 两档（性价比 + 最强），2026-07-15 按各家 /models 端点实测清单选定。
   # 关键经验：2026 代旗舰默认开思考模式，首 token 会拖到 5~10s+，非深推理
@@ -179,3 +188,12 @@ evals:
   answer_judge:
     enabled: false
     # provider: qwen-turbo
+
+# 许可证（T16）。**负责人拍板：当前不启用拦截，但开关留着**——所以这里显式写
+# enforce: false，不是漏配。改为 true 即启用"到期超出宽限期后业务端点返回
+# 402"，放行名单见 kbase/license.py（登录/状态/healthz/metrics/静态资源），
+# 保证管理员仍能登录并上传新证书完成离线续期。
+# 无已交付客户，故不需要过渡方案；开启前请确认这一点仍然成立。
+license:
+  enforce: false
+  grace_days: 14
