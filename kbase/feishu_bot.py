@@ -129,6 +129,24 @@ def extract_question(event: dict) -> tuple[str, str] | None:
     return text, message_id
 
 
+# ---- 提问者身份（T19 渠道身份映射的输入） ----
+
+def extract_sender_id(event: dict) -> str | None:
+    """im.message.receive_v1 → 提问者的外部账号 id（sender.sender_id.open_id）。
+
+    为什么用 open_id 而不是 union_id/user_id：open_id 是"同一个应用内同一个人"
+    的稳定标识，与飞书开发者后台能看到的值一致，管理员在管理页上填的就是它；
+    union_id 需要企业内多应用权限、user_id 需要通讯录权限，绑定流程会复杂一大截
+    而收益为零（KBase 只有一个飞书应用）。
+
+    取不到（事件形态变化/机器人自己发的消息/权限不足）返回 None，由渠道层走
+    未映射默认策略——不抛异常：拿不到身份不该让整条问答失败。
+    """
+    sender = (event.get("event") or {}).get("sender") or {}
+    sender_id = sender.get("sender_id") or {}
+    return sender_id.get("open_id") or None
+
+
 # ---- 回复（卡片） ----
 
 def build_answer_card(answer: str, citations: list[dict]) -> dict:

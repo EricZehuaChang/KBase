@@ -22,6 +22,8 @@ import EmbedderKeysCard from "@/components/EmbedderKeysCard.vue";
 import FeishuCard from "@/components/FeishuCard.vue";
 import FeishuBotCard from "@/components/FeishuBotCard.vue";
 import SmtpCard from "@/components/SmtpCard.vue";
+// T19 渠道身份映射：外部渠道账号（飞书 open_id）↔ KBase 用户的绑定
+import ChannelIdentitiesCard from "@/components/ChannelIdentitiesCard.vue";
 import LicenseCard from "@/components/LicenseCard.vue";
 import OpsDashboardCard from "@/components/OpsDashboardCard.vue";
 import AuditLogCard from "@/components/AuditLogCard.vue";
@@ -250,6 +252,7 @@ onMounted(async () => {
           <template v-if="canAdminister(currentRole ?? '')">
             <FeishuCard />
             <FeishuBotCard />
+            <ChannelIdentitiesCard />
           </template>
         </section>
 

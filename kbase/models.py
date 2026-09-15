@@ -1,6 +1,7 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import (Boolean, DateTime, Float, ForeignKey, Integer, String,
+                        Text, UniqueConstraint)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -508,3 +509,38 @@ class ImportBatch(Base):
     # 逐文件明细不在这里（那在清单文件里，本表只做批次汇总，避免万行级
     # JSON 撑爆一行）。
     counts: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class ChannelIdentity(Base):
+    """渠道身份映射（T19）：外部渠道的用户 → KBase 用户。
+
+    为什么需要这张表：渠道入口（飞书机器人，将来钉钉/企微同构）进来的提问者
+    在 KBase 里**没有身份**——飞书事件里只有一个 open_id（应用内唯一、跨应用
+    不同），拿它当 actor 既认不出人也没法做库级授权，机器人只能用一个笼统的
+    "feishu-bot" 身份查库。把外部 id 映射到 KBase 用户后，同一句提问由不同的人
+    发出会**得到不同的结果**（有权的人查得到、无权的人查不到），这与登录态问答
+    的权限语义完全对齐——渠道适配层不该是权限旁路。
+
+    唯一约束 (channel, external_user_id)：一个外部账号在一个渠道里只能绑一个
+    KBase 用户（改绑就是覆盖那一行，不留双份——否则"这人到底是谁"有两个答案）。
+    反向不唯一：一个 KBase 用户可以绑多个外部账号（同一个人在不同群里的两个
+    飞书号），这是允许的。
+
+    external_user_id 的取值语义由渠道决定（飞书=事件 sender.sender_id.open_id，
+    应用内唯一）；本表只当它是渠道内的不透明字符串，不做任何格式解析。
+    user_id 指向 users.id（不加数据库外键：SQLite 默认不强制外键，加了也只是
+    装饰）：用户被删除后凭这行查不到用户，resolve_actor 即按未映射处理（回落
+    默认策略，不会越权），脏行由 channels.purge_orphans 在清单读取时顺手清理。
+    """
+    __tablename__ = "channel_identities"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    # 渠道名：feishu（现役）/ 将来 dingtalk、wecom。取值写死在渠道注册表里
+    # （kbase/channels/core.py 的 CHANNELS），不是自由文本。
+    channel: Mapped[str] = mapped_column(String(20), index=True)
+    external_user_id: Mapped[str] = mapped_column(String(200))
+    user_id: Mapped[str] = mapped_column(String(36), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # 复合唯一：同一渠道内一个外部账号只能绑一个 KBase 用户（跨渠道互不影响，
+    # 同一个人在不同渠道是两条独立的绑定）
+    __table_args__ = (UniqueConstraint("channel", "external_user_id",
+                                       name="uq_channel_identity"),)

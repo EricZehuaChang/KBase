@@ -644,3 +644,16 @@ class StandardAnswerToEvalSet(BaseModel):
     expect_doc: str | None = None
     expect_text: str | None = None
     expected_answer: str | None = None
+
+
+class ChannelIdentityBind(BaseModel):
+    """POST /api/channels/identities（T19）：把外部渠道账号绑到 KBase 用户。
+
+    channel 由后端按在册渠道校验（kbase/channels/core.py 的 CHANNELS），不是
+    自由文本；external_user_id 是渠道内的不透明 id（飞书=open_id），本服务不做
+    格式解析——只当字符串比对，所以这里只限长度与非空。绑定是**覆盖式**：
+    同一渠道内同一个外部账号再绑就是改绑（见 channels.bind_identity）。
+    """
+    channel: str
+    external_user_id: str
+    user_id: str

@@ -3,25 +3,30 @@
 事件回调必须 3 秒内响应，检索+生成放 BackgroundTasks 异步执行、完成后
 调飞书 reply 接口——与免登录分享同一"公开端点+后台重活"结构。
 安全：加密模式验签+解密；明文模式核对 verification token；两者都不过=403。
+
+T19：检索+生成换成渠道适配层（kbase/channels/core.py 的 answer_for_channel），
+本文件不再自己拼 rs.resolve_strategy/Generator——渠道入口与网页问答共用同一套
+检索/拒答语义，机器人只负责"事件怎么解析、卡片怎么回"。协议层（验签/解密/
+握手/去重/解析）一行未动。
 """
 import json
 import logging
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
-from fastapi.concurrency import run_in_threadpool
 
 from kbase import feishu, feishu_bot
-from kbase import qa_outcomes
-from kbase import retrieval_strategy as rs
 from kbase.api.routes import RouteDeps
 from kbase.api.schemas import FeishuBotSettingsBody
 from kbase.api.services import Services
 from kbase.audit import write_audit
+from kbase.channels import core as channels
 from kbase.errors import AppError
 from kbase.models import KnowledgeBase
-from kbase.rag.generator import Generator
 
 logger = logging.getLogger(__name__)
+
+# T19 渠道名（归因行的 channel 取值来源；注册表见 channels.core.CHANNELS）
+CHANNEL = "feishu"
 
 
 def register(app: FastAPI, router, svc: Services, deps: RouteDeps) -> None:
@@ -46,34 +51,34 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps) -> None:
 
     # ---- 后台：检索+生成+回复（非流式——IM 场景一次性出完整答案） ----
 
-    async def _answer_and_reply(question: str, message_id: str) -> None:
+    async def _answer_and_reply(question: str, message_id: str,
+                                external_user_id: str | None) -> None:
+        """一条群消息 → 渠道适配层问答 → 卡片回复。
+
+        T19 身份：external_user_id 是飞书事件里的 sender open_id（没有则 None）。
+        经 channels.resolve_actor 映射成渠道 Actor——**同一句提问由不同的人发出
+        会拿到不同结果**（有权的人查得到、无权的人被静默拒答），库级权限与登录态
+        问答口径一致；未映射的人走默认策略（只看公开库）。归因行因此记的也是
+        "谁问的"（已映射=用户名，未映射=feishu:<open_id>）。
+        """
         cfg_bot = feishu_bot.get_settings(sf)
         kb_id = cfg_bot["kb_id"]
+        actor = channels.resolve_actor(sf, channel=CHANNEL,
+                                       external_user_id=external_user_id)
         try:
-            llm = svc.get_llm(cfg_bot["provider"] or None)
-            strategy = rs.resolve_strategy(
-                svc.cfg, rs.kb_retrieval_config(sf, kb_id))
-            min_score = rs.pick_min_score(svc.cfg, strategy,
-                                          svc.retriever.rerank_active)
-            blocks = await run_in_threadpool(
-                svc.retriever.retrieve, kb_id, question, 5, False, strategy)
-            gen = Generator(llm, min_score=min_score,
-                            min_include_score=svc.cfg.retrieval.min_include_score)
-            usable = gen.usable_blocks(blocks)
-            citations = gen.citations(usable)
-            # T12 归因：IM 入口单独记渠道——同一批问题从群里进来（往往是非
-            # 专业用户的白话提问）与从问答页进来，缺口的含义不一样。actor 用
-            # 机器人标识（群里没有可辨认的提问者身份，与同一路径的审计行一致）。
-            qa_outcomes.record_query_outcome(
-                sf, channel="feishu", kb_id=kb_id, question=question,
-                blocks=blocks, usable=usable, actor="feishu-bot")
-            pieces = [p async for p in gen.answer_stream(question, usable, None)]
-            answer = "".join(pieces).strip() or "（未能生成回答）"
+            answer, citations = await channels.answer_for_channel(
+                svc, kb_id=kb_id, question=question, actor=actor,
+                provider=cfg_bot["provider"] or None)
+            # T12 归因行由 answer_for_channel 统一落（channel=feishu）：
+            # 越权也落（bucket=scope_denied），不在这里重复记一笔。
+            answer = answer.strip() or "（未能生成回答）"
             app_id, app_secret = feishu.get_credentials(sf)
             token = feishu._get_token(app_id, app_secret)
             feishu_bot.reply_card(
                 token, message_id,
                 feishu_bot.build_answer_card(answer, citations))
+            # 审计 actor 保持 "feishu-bot"（机器人是执行方）；提问者身份在归因行
+            # 的 actor 里，两处不是一回事，不合并。
             write_audit(sf, actor="feishu-bot", action="feishu_bot_answer",
                         resource=f"kb_id={kb_id}", detail=question[:100])
         except Exception:  # noqa: BLE001 —— IM 场景吞错记日志，不能让飞书重推风暴
@@ -135,5 +140,8 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps) -> None:
         if not cfg_bot["kb_id"]:
             return {}                      # 未绑定库：静默确认（管理页会提示）
         question, message_id = parsed
-        bg.add_task(_answer_and_reply, question, message_id)
+        # T19：提问者的外部身份（sender open_id）随任务带下去。取不到 sender 的
+        # 事件（少数形态）传 None，由 resolve_actor 走未映射默认策略。
+        bg.add_task(_answer_and_reply, question, message_id,
+                    feishu_bot.extract_sender_id(payload))
         return {}
