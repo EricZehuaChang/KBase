@@ -90,7 +90,12 @@
     "role_exists": "角色已存在: {name}",
     "role_builtin": "内置角色不可创建/修改/删除",
     "role_in_use": "仍有 {n} 个用户在使用该角色，请先改派",
-    "share_password_required": "该分享链接需要访问口令"
+    "share_password_required": "该分享链接需要访问口令",
+    "license_expired": "授权已到期（含 {grace} 天宽限期），请在设置 → 许可证状态上传新的 license.json 续期",
+    "license_feature_denied": "当前授权未包含该功能：{feature}",
+    "license_bad_file": "许可证校验失败（文件不是合法 JSON 或签名不合法），原文件未被替换",
+    "license_file_required": "请选择要上传的 license.json 文件",
+    "license_write_failed": "许可证写入失败：{msg}"
   },
   "login": {
     "continue": "登录以继续",
@@ -161,7 +166,10 @@
     "full_text": "查看文档全文",
     "download": "下载原文件",
     "located": "已定位到第 {page} 页附近",
-    "preview_title": "原始文件预览"
+    "preview_title": "原始文件预览",
+    "truncated": "已截断",
+    "truncated_hint": "该引用只保留了部分内容（受上下文预算限制），完整内容请查看原文",
+    "truncated_note": "截断详情：{note}"
   },
   "share": {
     "invalid_title": "链接不存在或已失效",
@@ -398,7 +406,18 @@
     "banner_expiring": "许可证将于 {date} 到期（剩余 {days} 天），请提前联系供应商续期",
     "banner_trial": "当前为试用模式，功能不受限，建议尽快导入正式许可证",
     "banner_expired": "许可证已过期（{date}），请联系管理员更新",
-    "banner_invalid": "许可证无效，请检查 license.json 是否被篡改或损坏"
+    "banner_invalid": "许可证无效，请检查 license.json 是否被篡改或损坏",
+    "edition": "版本：{edition}",
+    "seats": "授权席位：{seats}",
+    "format": "证书格式：{format}",
+    "grace_left": "宽限期剩余 {days} 天",
+    "grace_used": "宽限期已用尽",
+    "enforce_on": "到期拦截已启用",
+    "enforce_off": "到期拦截未启用",
+    "upload_hint": "离线续期：上传供应商签发的新 license.json（签名校验通过才生效，原文件不会被坏证书覆盖）",
+    "upload_button": "上传许可证",
+    "upload_done": "许可证已更新：{org}（到期 {date}）",
+    "upload_pick_json": "请选择 license.json 文件"
   },
   "provider": {
     "default_badge": "默认",

@@ -140,6 +140,16 @@ function reask(index: number) {
                     <p class="mt-1 line-clamp-3 text-xs leading-relaxed text-[var(--text-2)]">
                       {{ citationFor(message, seg.index)!.snippet }}
                     </p>
+                    <!-- T17：这块上下文被预算裁剪过（表格只留了表头+命中行），
+                         角标旁直接标出来——popover 里的片段本就只是节选，
+                         不标会让人以为这就是全文 -->
+                    <span
+                      v-if="citationFor(message, seg.index)!.truncated"
+                      class="mt-1 inline-block rounded-full bg-[var(--accent-weak)] px-2 py-0.5 text-[10px] font-medium text-[var(--accent-text)]"
+                      :title="t('citation.truncated_hint')"
+                    >
+                      {{ t("citation.truncated") }}
+                    </span>
                     <Button
                       variant="outline"
                       size="sm"

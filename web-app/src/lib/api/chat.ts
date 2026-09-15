@@ -17,6 +17,13 @@ export interface Citation {
   // 多模态回答（图片一期）：命中页的文档内嵌插图（文本层 PDF 才有）。
   // 前端在答案下方渲染缩略图；图片不进 LLM prompt，纯检索事实关联。
   images?: { url: string; name: string; width: number; height: number }[];
+  // T17 上下文预算：该引用对应的上下文块被预算裁剪过（表格退化为"表头+命中
+  // 行"、或文本按剩余预算截窗）。为 true 时引用旁标「已截断」——用户必须知道
+  // 引用不完整，否则会把"表里没这一项"当成事实。未开预算的部署与老消息没有
+  // 这个字段（可选，渲染层按 falsy 处理）。
+  truncated?: boolean;
+  // 截断说明（如「共 30 行（已截断）」），随截断一起下发，用作角标 tooltip。
+  truncated_note?: string | null;
 }
 
 export interface ContextBlock {

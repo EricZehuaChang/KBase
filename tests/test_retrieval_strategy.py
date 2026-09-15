@@ -146,3 +146,24 @@ def test_kb_rewrite_off_skips_rewriter_llm(tmp_path, fake_embedder):
             for _ in r.iter_lines():
                 pass
     assert SpyLLM.calls == 0      # off 策略下改写 LLM 从未被调用
+
+# ---------------- T17 上下文预算三层合并 ----------------
+
+
+def test_resolve_context_budget_three_layers(tmp_path):
+    """预算三层合并：全局默认 → KB 配置 → 请求覆盖（与其余策略键同款规则）。
+    脏值（0/负数/非数字）一律归 None=不限：预算算不准不该让检索整体失败，
+    更不能把上下文静默砍空（见 retrieval_strategy._budget_or_none）。"""
+    cfg = _cfg(tmp_path)
+    assert resolve_strategy(cfg, None).context_budget is None      # 缺省=不限
+
+    cfg.retrieval.context_budget = 5000                            # 全局默认
+    assert resolve_strategy(cfg, None).context_budget == 5000
+    assert resolve_strategy(cfg, {"context_budget": 2000}).context_budget == 2000
+    assert resolve_strategy(cfg, {"context_budget": 2000},
+                            overrides={"context_budget": 600}).context_budget == 600
+    # 未覆盖的键（None）仍取 KB 层/全局层——与 use_keyword 等键同语义
+    assert resolve_strategy(cfg, {"context_budget": 2000}).candidates == cfg.retrieval.candidates
+    # 脏值归一为 None（不限），不是 0（0 会让组装层一个块都放不进去）
+    for bad in (0, -1, "", "abc"):
+        assert resolve_strategy(cfg, {"context_budget": bad}).context_budget is None

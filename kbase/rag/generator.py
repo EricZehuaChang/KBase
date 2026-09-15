@@ -78,7 +78,14 @@ class Generator:
                  # 前端据此在原文件预览里 #page= 跳页。
                  "page": b.page,
                  # M6-2 多库联合：命中块所属库（多库会话时前端标注来源库）。
-                 "kb_id": b.kb_id}
+                 "kb_id": b.kb_id,
+                 # T17 上下文预算：该块因预算被裁剪过（表格退化/按预算截窗）
+                 # ——引用载荷必须带上，用户在引用旁才知道「已截断」，否则会
+                 # 把"表里没这一项"当成事实。标记存在 ContextBlock 的**非字段**
+                 # 属性上（见 retriever 模块顶部注释），所以这里 getattr 兜底：
+                 # 预算没开时该属性不存在，取到 None/False，载荷形状不变。
+                 "truncated": bool(getattr(b, "truncated_note", None)),
+                 "truncated_note": getattr(b, "truncated_note", None)}
                 for i, b in enumerate(blocks)]
 
     def _build_messages(self, question: str, blocks: list[ContextBlock],

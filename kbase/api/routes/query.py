@@ -12,6 +12,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from kbase import conversations as conv_store
 from kbase import kb_acl
+from kbase import qa_outcomes
 from kbase import retrieval_strategy as rs
 from kbase.api.routes import RouteDeps
 from kbase.api.schemas import (ConversationCreate, ConversationRename,
@@ -28,22 +29,38 @@ def register(router, svc: Services, deps: RouteDeps):
     async def _run_query(kb_id: str, body: QueryBody, *,
                          history: list[dict] | None = None,
                          on_complete=None, retrieval_query: str | None = None,
-                         request=None, kb_ids: list[str] | None = None):
+                         request=None, kb_ids: list[str] | None = None,
+                         channel: str = "web", conv_id: str | None = None):
         """共享检索+生成编排：会话端点与旧的 /api/kb/{id}/query 端点复用同一份
         逻辑，保证事件序列（citations→token*→done）与拒答语义完全一致。
 
-        on_complete(answer_text, citations, provider): 流结束（含客户端中断）
-        后调用，用于会话落库；旧端点不传，行为与改造前完全相同。
+        on_complete(answer_text, citations, provider, outcome_id): 流结束
+        （含客户端中断）后调用，用于会话落库；旧端点不传，行为与改造前完全相同。
+        outcome_id 是本轮归因行的 id（T12）——助手消息 id 要在 append_round 里
+        才生成，回调拿到它回填 message_id，归因行与消息才连得上。
         retrieval_query: 检索实际使用的问题文本；默认 None 时等同 body.question
         （旧端点 /api/kb/{id}/query 不传，行为字节级不变）。会话端点在触发
         QueryRewrite 时传入改写后的问题——生成（answer_stream）与落库
         （on_complete）仍固定使用 body.question（原文），只有检索这一步换词。
+        channel/conv_id: 归因行（T12）的渠道与所属会话。渠道由入口决定——本编排
+        被 web 直问/会话、分享页、以及各入口复用，默认 web；分享路由显式传
+        share。conv_id 只有会话端点有（直问/分享为 None）。
         """
+        actor_name = _actor_name(request)
         # API Key 库级 scope：越权查询静默返回空集语义——事件序列与"检索
         # 无依据"完全一致（citations []→拒答文案→done），外部无法区分
         # "库不存在/无权/真没答案"（不报错不提示，防探测）。联查列表里的
         # 越权库直接裁掉，只查剩余在权库。
         if _out_of_scope(request, kb_id):
+            # T12：对外仍然"静默"（事件序列一个字都不变），对内必须留痕——
+            # 越权询问是安全事件，归因行是它唯一的可见记录（这条路径不落
+            # query_refused：用户并没有"问了没答案"，是压根没让他问）。
+            qa_outcomes.record_query_outcome(
+                sf, channel=channel, kb_id=kb_id, question=body.question,
+                blocks=[], usable=[],
+                bucket=qa_outcomes.BUCKET_SCOPE_DENIED,
+                kb_ids=kb_ids, conv_id=conv_id, actor=actor_name)
+
             async def _empty_events():
                 yield {"event": "citations", "data": "[]"}
                 yield {"event": "token", "data": refusal_for(body.question)}
@@ -97,6 +114,15 @@ def register(router, svc: Services, deps: RouteDeps):
                         detail=body.question[:100],
                         ip=(client.host if client else None))
 
+        # T12 归因：每一次问答（含"检索为空"与"检索到但全低于阈值"两种拒答）
+        # 都落一行，桶由 qa_outcomes 统一判定。与上面的 query_refused 审计
+        # **并存**：审计是安全留痕（100 字前缀），归因是运营口径（完整问题 +
+        # 命中数/最高分，能聚桶能下钻），既有看板继续读审计，不迁移不双删。
+        outcome_id = qa_outcomes.record_query_outcome(
+            sf, channel=channel, kb_id=kb_id, question=body.question,
+            blocks=blocks, usable=usable, kb_ids=kb_ids, conv_id=conv_id,
+            actor=actor_name)
+
         async def events():
             pieces: list[str] = []
             try:
@@ -110,8 +136,11 @@ def register(router, svc: Services, deps: RouteDeps):
                 # 客户端中断（GeneratorExit）时也执行：已生成的部分答案（可能为空）
                 # 连同引用一并落库，拒答场景（usable 为空）同样落库。
                 if on_complete is not None:
+                    # 归因行 id 一并回传（T12）：助手消息 id 此刻才生成，
+                    # 由回调回填，见 _persist。
                     on_complete("".join(pieces), citations,
-                               getattr(llm, "model", body.provider or cfg.llm.active))
+                               getattr(llm, "model", body.provider or cfg.llm.active),
+                               outcome_id)
 
         return EventSourceResponse(events())
 
@@ -120,6 +149,16 @@ def register(router, svc: Services, deps: RouteDeps):
         actor = getattr(request.state, "actor", None) or {"role": "admin"}
         if not kb_acl.can_access(sf, kb_id, actor):
             raise AppError("error.kb_not_found", "知识库不存在: {id}", status=404, id=kb_id)
+
+    def _actor_name(request) -> str | None:
+        """归因行（T12）的 actor：取鉴权依赖写入的 request.state.actor["name"]。
+
+        与审计行的 "unknown" 兜底不同，归因表 actor 允许 NULL——NULL 的含义是
+        "这个入口本来就没有身份"，比编一个查无此人的 "unknown" 更诚实。
+        """
+        actor = (getattr(request.state, "actor", None)
+                 if request is not None else None)
+        return (actor.get("name") or None) if actor else None
 
     def _out_of_scope(request, kb_id: str) -> bool:
         """API Key 库级 scope（ztenith MCP）：受限 key 越权访问返回 True。
@@ -142,14 +181,17 @@ def register(router, svc: Services, deps: RouteDeps):
     async def search(kb_id: str, body: SearchBody, request: Request):
         """检索调试端点：debug=False 只返回 blocks（不含 trace key，向后兼容展示用途）；
         debug=True 额外返回各阶段 trace（dense/keyword/fused[/reranked]），用于排查召回质量。
-        body 的 use_keyword/use_rerank/candidates 为请求级策略覆盖（试跑对比用，
-        不落库；缺省=KB 策略/全局默认）。检索进线程池避免阻塞事件循环。"""
+        body 的 use_keyword/use_rerank/candidates/context_budget 为请求级策略覆盖
+        （试跑对比用，不落库；缺省=KB 策略/全局默认）。检索进线程池避免阻塞事件循环。"""
         _guard_kb(kb_id, request)
         strategy = rs.resolve_strategy(
             cfg, rs.kb_retrieval_config(sf, kb_id),
             overrides={"use_keyword": body.use_keyword,
                        "use_rerank": body.use_rerank,
-                       "candidates": body.candidates})
+                       "candidates": body.candidates,
+                       # T17 上下文预算的请求级覆盖：不同预算各跑一次即可量出
+                       # "上下文砍到多少字，召回开始掉"（分析页试跑场景）。
+                       "context_budget": body.context_budget})
         if _out_of_scope(request, kb_id):
             # 静默空集（与"检索无命中"同形状），见 _out_of_scope 注释
             return ({"blocks": [], "trace": {}} if body.debug
@@ -253,16 +295,22 @@ def register(router, svc: Services, deps: RouteDeps):
             rewrite_res = await svc.rewriter.rewrite(body.question, history,
                                                      mode=strategy.rewrite_mode)
 
-        def _persist(answer: str, citations: list[dict], provider: str):
-            conv_store.append_round(sf, conv_id, body.question, answer,
-                                    citations, provider)
+        def _persist(answer: str, citations: list[dict], provider: str,
+                     outcome_id: str | None = None):
+            # T12 消息 id 回环：append_round 现在返回 (user_msg_id,
+            # assistant_msg_id)，助手消息 id 回填到本轮归因行——点踩/下钻都靠
+            # 它把"这条归因"和"那条消息"对上（反馈同步见 feedback.upsert_feedback）。
+            _, assistant_id = conv_store.append_round(
+                sf, conv_id, body.question, answer, citations, provider)
+            if outcome_id:
+                qa_outcomes.backfill_message_id(sf, outcome_id, assistant_id)
 
         # M6-2：多库会话跨其绑定的全部库联合检索（conv_store 已解析 kb_ids）。
         conv_kb_ids = conv_store.conversation_kb_ids(sf, conv_id)
         return await _run_query(conv.kb_id, body, history=history,
                                retrieval_query=rewrite_res.query,
                                on_complete=_persist, request=request,
-                               kb_ids=conv_kb_ids)
+                               kb_ids=conv_kb_ids, conv_id=conv_id)
 
     # 分享路由（routes/share.py）复用同一编排：事件序列/拒答语义完全一致
     return _run_query

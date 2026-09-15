@@ -51,17 +51,39 @@ RetrievalResult.rerank_status 冗余暴露一份（非 debug 调用方——如 
 Retriever 实例上（单进程 uvicorn 部署下等价于"进程级"，见 rerank_stats
 property），用一把 threading.Lock 保护自增——多线程同时命中同一个
 Retriever 实例是常态（那正是这个降级机制要处理的场景）。
+
+上下文预算（T17）：_assemble 原先是"凑满 top_k 个不同父块即止"，不看这些
+父块加起来多长——单块上限（max_parent_chars，D6）只管每块各自不超 4000 字，
+10 个块就是 4 万字，长表格类文档很容易把 prompt 顶到模型上限附近，还稀释掉
+真正的命中内容。RetrievalStrategy.context_budget（字符）= 一次检索交给生成层
+的上下文总量上限，三层可配（全局/按库/按请求）。**None（缺省）时整条预算
+分支不生效**，输出与 T17 之前逐字节一致（验收契约）。
+给了预算则停止条件变成"预算耗尽 **或** 凑满 top_k"：命中表格块时表格优先
+（整表放得下就给整表，放不下退化为表头+命中行+「共 N 行（已截断）」），普通
+文本块按剩余预算截窗。被裁剪过的块上挂一个**非字段**属性 truncated_note
+（说明行文本），经 Generator.citations 传给前端在引用旁标「已截断」。
+
+标记为什么走非字段属性而不是 ContextBlock 新增字段：ContextBlock 是
+dataclass，`asdict()` 会无条件序列化全部字段（包括默认值），加一个
+`truncated: bool = False` 就会让 /api/kb/{id}/search 的**每一个** block
+多出一个键——预算没开也照加，既有调用方的响应形状被改。普通实例属性不进
+asdict、不进 == 比较、不在 dataclass 字段表里，预算为 None 时它压根不存在，
+读它的唯一入口是 getattr(block, "truncated_note", None)。
 """
 import json
 import logging
 import math
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from kbase.models import Chunk, Document
 from kbase.params import (group_matches_range, is_range_condition,
                           layout_param_bounds, numeric_bounds)
 from kbase.plugins.base import Embedder, VectorStore
+# T17 表格降级复用分块器自己的表格解析/重建（parse_table / _table_markdown）：
+# 解析口径必须与摄取时是**同一个**实现，否则"检索看到的表"与"索引里的表"
+# 可能对不上（跨页断表合并等已在摄取侧处理过）。
+from kbase.plugins.chunkers.structure import _table_markdown, parse_table
 
 logger = logging.getLogger(__name__)
 
@@ -178,6 +200,91 @@ def _window_parent_text(parent_text: str, leaf_text: str, max_chars: int) -> str
     return windowed
 
 
+def _window_within(text: str, leaf_text: str, max_chars: int) -> str:
+    """T17 预算版截窗：与 _window_parent_text 同思路（以命中叶子为中心，两端
+    被截处加 …），但**保证结果长度 <= max_chars**。
+
+    为什么不直接复用 _window_parent_text：它按"上限 + 少量 … 余量"设计（D6
+    那边是单块上限，超一两个字符无所谓），预算却是硬上限。它还有第二个偏差：
+    窗口两端都被截时会加两个 …，于是 max_chars 较小时实际返回可能超过上限
+    若干字符（甚至少切一大截内容）。这里把「窗口 + 至多两个 …」当成整体去
+    拟合预算：先按预算减掉两个 … 的占位，再取窗口；正好顶着预算就只在必要
+    的那一端加 …。
+
+    找不到叶子文本（理论上不应发生）时退化为头部截断——预算之下宁可按头截，
+    也不返回超预算的全文。max_chars 太小以致一个字符都放不下（<1）时返回空串，
+    由调用方跳过这一块。"""
+    if len(text) <= max_chars:
+        return text
+    payload = max_chars - 2 * len(_ELLIPSIS)
+    if payload < 1:
+        return ""
+    idx = text.find(leaf_text)
+    if idx == -1:
+        return text[:max_chars]
+    center = idx + len(leaf_text) // 2
+    start = max(0, center - payload // 2)
+    end = min(len(text), start + payload)
+    start = max(0, end - payload)       # 尾部不够时把窗口往前挪，窗口尽量吃满
+    lead = _ELLIPSIS if start > 0 else ""
+    tail = _ELLIPSIS if end < len(text) else ""
+    room = max_chars - len(lead) - len(tail)
+    windowed = text[start:end][:room] if room >= 1 else ""
+    if not windowed:
+        return ""
+    return f"{lead}{windowed}{tail}"
+
+
+# T17 表格降级后的说明行格式（也是前端「已截断」标的数据来源）。
+_TRUNCATED_NOTE = "共 {n} 行（已截断）"
+# 普通文本块按预算截窗的说明（与表格的区分开：文本截的是"窗口"，不是行数）。
+_TEXT_TRUNCATED_NOTE = "本段已按上下文预算截断（已截断）"
+
+
+def _table_layout_kind(layout_json: str | None) -> str | None:
+    """块级版式元数据里的 kind（摄取时写：表格块为 "table"，见
+    StructureChunker）。缺失/解析失败返回 None——按普通文本块处理，
+    版式元数据永远不该成为检索能否工作的前提。"""
+    if not layout_json:
+        return None
+    try:
+        kind = json.loads(layout_json).get("kind")
+    except (ValueError, TypeError, AttributeError):
+        return None
+    return kind if isinstance(kind, str) else None
+
+
+def _truncated_table(leaf_text: str, budget: int) -> tuple[str, str] | None:
+    """T17 表格降级：整表放不进预算时，退化为「表头 + 命中行 + 共 N 行（已截断）」。
+
+    为什么不直接按字符砍：Markdown 表被从中间砍断后，剩下的行会脱离表头变成
+    "| 350 | 500 |" 这类裸值组，模型据此作答等于让它猜列义——比少给几行更危险
+    （M6 表格感知要消灭的正是这种裸行组）。退化版保留**表头**（列名↔值的绑定）
+    与**命中行**（叶子块本身就是检索命中的那组数据行），并把总行数写进说明行，
+    让模型知道表被截过，而不是"表里没有这一项"。
+
+    返回 (重建文本, 说明行)；放不下（连"表头+一行"都塞不进预算）、或叶子文本
+    不是合法表格 → None，调用方按别的路径处理，绝不因解析失败丢内容。"""
+    parsed = parse_table(leaf_text)
+    if parsed is None:
+        return None
+    header, rows = parsed
+    if not rows:
+        return None
+    note = _TRUNCATED_NOTE.format(n=len(rows))
+    kept: list[list[str]] = []
+    for row in rows:
+        candidate = _table_markdown(header, [*kept, row])
+        if len(candidate) + 1 + len(note) > budget:
+            break
+        kept.append(row)
+    if not kept:
+        # 连"表头+一行"都放不进预算：降级版本身就没意义（模型会拿着一张没有
+        # 数据行的表作答，比不给更糟），交给调用方跳过这一块。
+        return None
+    return f"{_table_markdown(header, kept)}\n{note}", note
+
+
 class Retriever:
     def __init__(self, session_factory, embedder: Embedder, store: VectorStore,
                  keyword_index=None, reranker=None,
@@ -239,7 +346,14 @@ class Retriever:
         列表内 OR，作用于 chunk 元数据（front matter 摄取时落库）。稠密路
         由向量库原生过滤（两档适配器语义已对齐）；关键词路 BM25 索引没有
         元数据概念，检索后按 Chunk.meta 后过滤——两路进融合的候选集口径
-        一致，融合排序逻辑不动。"""
+        一致，融合排序逻辑不动。
+
+        T17 上下文预算从 strategy.context_budget 取（三层合并在
+        resolve_strategy 完成，这里不再另立请求级参数）：None=不限，组装层
+        整条预算分支不生效，返回形状与 T17 之前逐字节一致；非 None 时被裁剪
+        过的块会在 trace["truncated"] 里留一条说明（debug=True 可见），
+        会话链路的「已截断」标走 Generator.citations 的旁路载荷。
+        """
         trace: dict = {}
         use_keyword = strategy.use_keyword if strategy is not None else True
         use_rerank = strategy.use_rerank if strategy is not None else True
@@ -306,8 +420,19 @@ class Retriever:
         # top_k 语义 = 去重后的父块数：全量候选按序喂给组装层，凑满 top_k 个
         # 不同父块即止。若在叶子层截断，单文档多叶子霸榜时去重会把结果收缩到
         # 少于 top_k 块，挤掉排位靠后的其他来源。
-        blocks = self._assemble(ordered, top_k)
+        # T17：strategy 带了上下文预算时，停止条件追加"预算耗尽"（见 _assemble）；
+        # 预算为 None（缺省）时这次调用的参数与 T17 之前逐字节相同。
+        context_budget = (getattr(strategy, "context_budget", None)
+                          if strategy is not None else None)
+        blocks = self._assemble(ordered, top_k, context_budget)
+        # 截断说明只进 trace（debug=True 可见），不进 ContextBlock 的字段——
+        # 保持既有响应形状分毫不动，见模块顶部注释。
         if debug:
+            truncated = {str(i + 1): b.truncated_note
+                         for i, b in enumerate(blocks)
+                         if getattr(b, "truncated_note", None)}
+            if truncated:
+                trace["truncated"] = truncated
             return RetrievalResult(blocks=blocks, trace=trace, rerank_status=rerank_status)
         return blocks
 
@@ -340,20 +465,50 @@ class Retriever:
             return {c.id: f"{c.heading_path}\n{c.text}" for c in leaves}
 
     def _assemble(self, ordered: list[tuple[str, float]],
-                  top_k: int) -> list[ContextBlock]:
+                  top_k: int, context_budget: int | None = None
+                  ) -> list[ContextBlock]:
         """叶子命中 -> 父块上下文组装（small-to-big，M1 既有逻辑）。
         按 ordered 顺序遍历，同一父块下的多个叶子命中去重，只返回一次；
         score 取 ordered 中该叶子对应的分数（融合/重排/余弦，视管道档位而定）。
         凑满 top_k 个不同父块即停（top_k 语义 = 父块数，见 retrieve 注释）。
         父块全文超过 max_parent_chars 时按命中叶子的位置截窗（D6，见
         _window_parent_text），避免超长父块把 prompt 撑爆或稀释掉真正相关
-        的叶子内容。"""
+        的叶子内容。
+
+        返回 blocks；被预算裁剪过的块上多挂一个**非字段**属性
+        `truncated_note`（说明行文本），预算为 None 时该属性根本不存在。
+
+        标记为什么走"非字段属性"而不是 ContextBlock 新增字段：ContextBlock 是
+        dataclass，`asdict()` 会无条件序列化**全部**字段（含默认值），加一个
+        `truncated: bool = False` 就会让 /api/kb/{id}/search 的每一个 block
+        多出一个键——预算没开也照加。而普通实例属性不进 `asdict`、不进
+        `==` 比较、不进 dataclass 字段表：预算为 None 时读它的 read 侧
+        （Generator.citations 的 getattr）拿到 False，序列化形状分毫不动。
+        这正是上一次尝试踩中的坑（见模块顶部注释）。
+
+        T17（context_budget 非 None 时）加了什么：
+        - 停止条件从"凑满 top_k"变成"**预算耗尽 或** 凑满 top_k"（任一先到即停）；
+        - 预算是**硬上限**：预算按 text 字符数累计（= 真正进 prompt 的那段，
+          标题/snippet 只是展示字段，不占模型的上下文预算）；
+        - 表格块优先：整表放得进剩余预算就给整表；放不进才退化为「表头 +
+          命中行 + 共 N 行（已截断）」，并记一条说明（前端引用旁标「已截断」）；
+        - 普通文本块超预算时按剩余预算截窗（复用 D6 的 _window_parent_text，
+          保证窗口仍以命中叶子为中心，答案不会因为截断而丢命中句）；
+        - 放不下的块（截窗后仍无内容、或表格连表头都塞不进）**不进入**结果：
+          宁可少给一块，也不给一块只有占位符的空上下文。
+
+        context_budget=None 时上面整段分支都不执行，下面的循环体与 T17 之前
+        逐字节同参（验收契约，见 tests/test_retriever.py 的 None 预算用例）。"""
+        budgeted = context_budget is not None
+        consumed = 0
         blocks: list[ContextBlock] = []
         seen_parents: set[str] = set()
         with self._sf() as s:
             for chunk_id, score in ordered:
                 if len(blocks) >= top_k:
                     break
+                if budgeted and consumed >= context_budget:
+                    break             # 预算耗尽（停止条件之一，另一个是 top_k）
                 leaf = s.get(Chunk, chunk_id)
                 if leaf is None:
                     continue
@@ -364,10 +519,20 @@ class Retriever:
                 parent = s.get(Chunk, leaf.parent_id) if leaf.parent_id else leaf
                 if parent.id in seen_parents:
                     continue
-                seen_parents.add(parent.id)
                 doc = s.get(Document, leaf.doc_id)
                 text = _window_parent_text(parent.text, leaf.text, self._max_parent_chars)
-                blocks.append(ContextBlock(
+                note = None
+                if budgeted:
+                    text, note = self._fit_to_budget(
+                        text, leaf, context_budget - consumed)
+                    if text is None:
+                        # 放不下就跳过（不占 seen_parents：同一父块下更短的
+                        # 叶子之后仍有机会以完整窗口进来）。
+                        continue
+                seen_parents.add(parent.id)
+                if budgeted:
+                    consumed += len(text)
+                block = ContextBlock(
                     doc_id=leaf.doc_id,
                     doc_name=doc.filename if doc else "未知文档",
                     heading_path=parent.heading_path,
@@ -376,8 +541,36 @@ class Retriever:
                     score=score,
                     page=leaf.page,
                     kb_id=leaf.kb_id,
-                ))
+                )
+                if note is not None:
+                    block.truncated_note = note      # 非字段属性，见方法注释
+                blocks.append(block)
         return blocks
+
+    def _fit_to_budget(self, text: str, leaf: Chunk, remaining: int
+                       ) -> tuple[str | None, str | None]:
+        """T17：把一块文本压进剩余预算，返回 (文本, 截断说明)。文本放不下且
+        无法优雅降级时返回 (None, None) 表示"这一块不要了"。
+
+        预算为硬上限（不像 D6 的 max_parent_chars 允许"上限 + … 余量"），
+        所以预算内的文本原样返回——常态是"放得下"，那条路径一次字符串操作
+        都不做。"""
+        if remaining <= 0:
+            return None, None
+        if len(text) <= remaining:
+            return text, None
+        if _table_layout_kind(leaf.layout) == "table":
+            # 表格优先：整表放不下才降级（表的价值在完整性，且截断后的裸行组
+            # 会让模型猜列义，见 _truncated_table）。
+            degraded = _truncated_table(leaf.text, remaining)
+            if degraded is not None:
+                return degraded
+            return None, None         # 降级版也放不下：跳过，不留空表壳
+        # 普通文本：按剩余预算截窗，窗口仍以命中叶子为中心（D6 同源规则）。
+        windowed = _window_within(text, leaf.text, remaining)
+        if not windowed:
+            return None, None
+        return windowed, _TEXT_TRUNCATED_NOTE
 
     def _union_weight(self, kb_id: str) -> float:
         """多库联查的库级权重（对标#8，阿里云百炼"按库配权重"）：读
@@ -407,14 +600,39 @@ class Retriever:
         每库先取 top_k 个候选块再合并，保证任一库的强命中不会被别库淹没。
 
         库级权重（对标#8）：各库分数乘以其 union_weight 后再全局排序——
-        运营侧把权威库调高/杂讯库调低的旋钮；默认全 1.0，行为与 M6-2 不变。"""
+        运营侧把权威库调高/杂讯库调低的旋钮；默认全 1.0，行为与 M6-2 不变。
+
+        **多库预算规则（T17）：预算是按库平分的，不是各库共享一整份。**
+        规则：单库份额 = strategy.context_budget // len(kb_ids)（向下取整，
+        余数不进任何库——预算因此是**严格不大于**配置值的硬上限）。
+        为什么平分而不是共享：库枚举顺序不该决定谁拿到上下文。共享一份时，
+        排在 kb_ids 前面的库先把预算吃光，后面的库无论多相关都拿不到东西；
+        这等于让"调用方传参顺序"变成一个隐式的、无人知晓的排序旋钮，而
+        retrieve_multi 的合并语义是**全局按分数**重排（散射-聚合）——按库
+        平分是唯一与"库之间对等、只由分数分胜负"这条既有契约一致的分法。
+        代价：命中集中在某一库时，别的库的份额用不上，总量可能远低于配置值
+        ——这是**有意**偏保守（少给上下文，不会给错上下文），且各库词法上
+        都能拿到自己最相关的块；要"按需再分配"就得引入两轮检索（先探每库
+        实际需要多少），那是另一张卡的取舍。
+        单库调用（retrieve）不受影响：那一份全额给该库。
+        strategy.context_budget 为 None 时下面一切照旧（M6-2 行为不变）。"""
+        kb_budget = (getattr(strategy, "context_budget", None)
+                     if strategy is not None else None)
+        if kb_budget is not None and kb_ids:
+            kb_budget = max(1, kb_budget // len(kb_ids))
         merged: list[ContextBlock] = []
         for kb_id in kb_ids:
             weight = self._union_weight(kb_id)
-            for block in self.retrieve(kb_id, query, top_k, strategy=strategy,
+            # 逐库把份额塞进策略副本（frozen dataclass 用 dataclasses.replace
+            # 派生，不原地改调用方传进来的对象——请求级策略是共享的）。
+            sub = (replace(strategy, context_budget=kb_budget)
+                   if kb_budget is not None else strategy)
+            for block in self.retrieve(kb_id, query, top_k, strategy=sub,
                                        filters=filters):
                 if weight != 1.0:
                     block.score = block.score * weight
                 merged.append(block)
         merged.sort(key=lambda b: b.score, reverse=True)
+        # 各库份额之和 <= 总预算（除法向下取整），合并后已经天然在预算内，
+        # 无需再截；这里仍只按 top_k 取。
         return merged[:top_k]

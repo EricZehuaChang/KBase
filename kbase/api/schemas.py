@@ -262,6 +262,11 @@ class SearchBody(BaseModel):
     candidates: StrictInt | None = Field(default=None, ge=1, le=100)
     # ztenith 流水线/方案卡：chunk 元数据过滤（{字段: 值|[值,...]}，AND/OR）
     filters: dict | None = None
+    # T17 请求级上下文预算覆盖（字符）：None=按 KB 策略/全局默认（不限时行为与
+    # 升级前逐字节一致）。这是**试跑旋钮**——同一份语料用不同预算各跑一次就能
+    # 看出"上下文砍到多少字，检索指标/回答质量开始掉"。与 KB 配置同量纲（字符），
+    # 下限同样 256（理由见 KBRetrievalBody.context_budget）。
+    context_budget: StrictInt | None = Field(default=None, ge=256)
 
     @model_validator(mode="after")
     def _check_filters(self):
@@ -277,6 +282,11 @@ class KBRetrievalBody(BaseModel):
     rerank: StrictBool | None = None      # 重排用不用
     rewrite: Literal["off", "conditional", "always"] | None = None
     candidates: StrictInt | None = Field(default=None, ge=1, le=100)
+    # T17 上下文预算（字符）——追加在类末尾：本类 extra="forbid"，新键必须显式
+    # 声明才能落库（否则运营在管理端保存时直接 422）；缺省 None=不限，行为与
+    # 升级前一致。下限 256：比这更小的预算连一个表格的"表头+一行"都放不下，
+    # 填出这种值一定是笔误——宁可在写入时就 422，也别让它静默把上下文砍成空。
+    context_budget: StrictInt | None = Field(default=None, ge=256)
 
 
 class ConversationCreate(BaseModel):

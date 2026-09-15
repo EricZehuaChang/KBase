@@ -90,7 +90,12 @@
     "role_exists": "Role already exists: {name}",
     "role_builtin": "Built-in roles cannot be created, modified, or deleted",
     "role_in_use": "Still {n} user(s) using this role, please reassign first",
-    "share_password_required": "This share link requires an access password"
+    "share_password_required": "This share link requires an access password",
+    "license_expired": "License expired (including the {grace}-day grace period). Upload a new license.json under Settings → License Status to renew.",
+    "license_feature_denied": "Your license does not include this feature: {feature}",
+    "license_bad_file": "License verification failed (not valid JSON or bad signature). The current file was not replaced.",
+    "license_file_required": "Please choose a license.json file to upload",
+    "license_write_failed": "Failed to write the license file: {msg}"
   },
   "login": {
     "continue": "Log in to continue",
@@ -161,7 +166,10 @@
     "full_text": "View full text",
     "download": "Download original file",
     "located": "Located near page {page}",
-    "preview_title": "Original file preview"
+    "preview_title": "Original file preview",
+    "truncated": "Truncated",
+    "truncated_hint": "Only part of this source was kept (context budget limit) — open the original for the full content",
+    "truncated_note": "Truncation detail: {note}"
   },
   "share": {
     "invalid_title": "Link not found or expired",
@@ -398,7 +406,18 @@
     "banner_expiring": "License expires on {date} ({days} days remaining). Please contact supplier for renewal.",
     "banner_trial": "Trial mode active, all features available. Please import a valid license soon.",
     "banner_expired": "License expired ({date}). Contact admin to update.",
-    "banner_invalid": "Invalid license. Check if license.json is tampered or corrupted."
+    "banner_invalid": "Invalid license. Check if license.json is tampered or corrupted.",
+    "edition": "Edition: {edition}",
+    "seats": "Seats: {seats}",
+    "format": "Format: {format}",
+    "grace_left": "{days} grace days left",
+    "grace_used": "Grace period used up",
+    "enforce_on": "Expiry enforcement is ON",
+    "enforce_off": "Expiry enforcement is OFF",
+    "upload_hint": "Offline renewal: upload the new license.json issued by your supplier (applied only if the signature verifies; a bad file never replaces the current one)",
+    "upload_button": "Upload license",
+    "upload_done": "License updated: {org} (expires {date})",
+    "upload_pick_json": "Please choose a license.json file"
   },
   "provider": {
     "default_badge": "Default",

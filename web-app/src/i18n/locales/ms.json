@@ -90,7 +90,12 @@
     "role_exists": "Peranan sudah wujud: {name}",
     "role_builtin": "Peranan terbina tidak boleh dicipta/diubah/dipadam",
     "role_in_use": "Masih terdapat {n} pengguna menggunakan peranan ini, sila tukar tugasan dahulu",
-    "share_password_required": "Pautan perkongsian ini memerlukan kata laluan akses"
+    "share_password_required": "Pautan perkongsian ini memerlukan kata laluan akses",
+    "license_expired": "Lesen telah tamat tempoh (termasuk tempoh tangguh {grace} hari). Muat naik license.json baharu di Tetapan → Status Lesen untuk perpanjangan.",
+    "license_feature_denied": "Lesen anda tidak merangkumi ciri ini: {feature}",
+    "license_bad_file": "Pengesahan lesen gagal (JSON tidak sah atau tandatangan salah). Fail semasa tidak diganti.",
+    "license_file_required": "Sila pilih fail license.json untuk dimuat naik",
+    "license_write_failed": "Gagal menulis fail lesen: {msg}"
   },
   "login": {
     "continue": "Log masuk untuk meneruskan",
@@ -161,7 +166,10 @@
     "full_text": "Lihat teks penuh dokumen",
     "download": "Muat turun fail asal",
     "located": "Terletak berhampiran halaman {page}",
-    "preview_title": "Pratonton fail asal"
+    "preview_title": "Pratonton fail asal",
+    "truncated": "Dipenggal",
+    "truncated_hint": "Sebahagian sahaja kandungan rujukan ini disimpan (had bajet konteks) — buka fail asal untuk kandungan penuh",
+    "truncated_note": "Butiran pemenggalan: {note}"
   },
   "share": {
     "invalid_title": "Pautan tidak wujud atau telah tamat tempoh",
@@ -398,7 +406,18 @@
     "banner_expiring": "Lesen akan tamat pada {date} (baki {days} hari), sila hubungi pembekal untuk perpanjangan lebih awal",
     "banner_trial": "Kini dalam mod percubaan, fungsi tidak terhad, disarankan untuk mengimport lesen rasmi secepat mungkin",
     "banner_expired": "Lesen telah tamat tempoh ({date}), sila hubungi pentadbir untuk kemas kini",
-    "banner_invalid": "Lesen tidak sah, sila periksa sama ada license.json telah diubah atau rosak"
+    "banner_invalid": "Lesen tidak sah, sila periksa sama ada license.json telah diubah atau rosak",
+    "edition": "Edisi: {edition}",
+    "seats": "Bilangan tempat: {seats}",
+    "format": "Format: {format}",
+    "grace_left": "Baki {days} hari tempoh tangguh",
+    "grace_used": "Tempoh tangguh telah habis",
+    "enforce_on": "Sekatan tamat tempoh dihidupkan",
+    "enforce_off": "Sekatan tamat tempoh dimatikan",
+    "upload_hint": "Perpanjangan luar talian: muat naik license.json baharu daripada pembekal (hanya digunakan jika tandatangan sah; fail rosak tidak akan menggantikan yang semasa)",
+    "upload_button": "Muat naik lesen",
+    "upload_done": "Lesen dikemas kini: {org} (tamat {date})",
+    "upload_pick_json": "Sila pilih fail license.json"
   },
   "provider": {
     "default_badge": "Lalai",

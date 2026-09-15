@@ -127,6 +127,18 @@ watch(() => props.citation, () => {
         >
           {{ t("citation.page_n", { page: citation.page }) }}
         </span>
+        <!-- T17 上下文预算：该引用被裁剪过（表格退化为"表头+命中行"/文本按
+             预算截窗）。必须显式告知——用户看不到全貌就会把"表里没这一项"
+             当成事实；说明行（共 N 行）随载荷下发，作为角标 tooltip。 -->
+        <span
+          v-if="citation.truncated"
+          class="rounded-full bg-[var(--accent-weak)] px-2 py-0.5 font-medium text-[var(--accent-text)]"
+          :title="citation.truncated_note
+            ? t('citation.truncated_note', { note: citation.truncated_note })
+            : t('citation.truncated_hint')"
+        >
+          {{ t("citation.truncated") }}
+        </span>
       </div>
 
       <div v-if="citation.doc_id" class="mt-4 flex flex-wrap items-center gap-2">
