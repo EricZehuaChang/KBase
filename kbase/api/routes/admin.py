@@ -3,7 +3,7 @@ import json
 import secrets as _secrets
 import uuid
 
-from fastapi import BackgroundTasks, Query, Request
+from fastapi import BackgroundTasks, Depends, Query, Request
 
 from kbase import qa_stats
 from kbase import ratelimit
@@ -15,7 +15,7 @@ from kbase.audit import list_audit
 from kbase.auth import security
 from kbase.auth.deps import role_rank
 from kbase.errors import AppError
-from kbase.license import check_license
+from kbase.license import check_license, require_feature
 from kbase.auth import roles as auth_roles
 from kbase.models import (ApiKey, Conversation, KbGrant, Message,
                           MessageFeedback, RoleDef, User)
@@ -23,6 +23,11 @@ from kbase.models import (ApiKey, Conversation, KbGrant, Message,
 
 def register(router, svc: Services, deps: RouteDeps) -> None:
     sf = svc.sf
+    # T16 功能位：API Key 治理（T09 这一族端点）属于 governance 功能位。
+    # enforce=false（本部署默认）时它是无操作依赖——不读文件、不查证书。
+    # GET 列表/用量也一并挂上：功能位是"这套治理能力有没有"的开关，
+    # 只拦写不拦读会留下"看得见却改不动"的半截界面。
+    _governance = Depends(require_feature("governance"))
 
     def _hidden_actors(request: Request) -> set[str] | None:
         """审计分层：非超管查看者需排除的 actor 集合（=全部超管用户名，按
@@ -91,7 +96,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
                 "created_at": r.created_at.isoformat()}
 
     @router.post("/settings/api-keys",
-                 dependencies=[deps.require_admin, deps.audit_mutation])
+                 dependencies=[deps.require_admin, _governance, deps.audit_mutation])
     def create_api_key(body: ApiKeyCreate):
         full_key, prefix, key_hash = security.generate_api_key()
         row = ApiKey(id=str(uuid.uuid4()), name=body.name, prefix=prefix,
@@ -110,7 +115,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
         # key：完整 key 的唯一一次返回（关闭弹窗后永远拿不回来，库里只有哈希）。
         return {**_api_key_out(row), "key": full_key}
 
-    @router.get("/settings/api-keys", dependencies=[deps.require_admin])
+    @router.get("/settings/api-keys", dependencies=[deps.require_admin, _governance])
     def list_api_keys():
         # 完整 key 与 key_hash 都不返回——hash 不该暴露给客户端，完整 key
         # 只在创建的那一刻返回一次（见 create_api_key）。
@@ -119,7 +124,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
             return [_api_key_out(r) for r in rows]
 
     @router.patch("/settings/api-keys/{key_id}",
-                  dependencies=[deps.require_admin, deps.audit_mutation])
+                  dependencies=[deps.require_admin, _governance, deps.audit_mutation])
     def update_api_key(key_id: str, body: ApiKeyUpdate):
         """改 Key 的策略（T09）：启用/停用、改配额、延期、改 IP 白名单。
 
@@ -148,7 +153,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
             return _api_key_out(row)
 
     @router.get("/settings/api-keys/{key_id}/usage",
-                dependencies=[deps.require_admin])
+                dependencies=[deps.require_admin, _governance])
     def api_key_usage(key_id: str, days: int = Query(default=30, ge=1, le=365)):
         """某 Key 近 N 天用量（T09）：逐日请求数 + token 数（含估算口径标记）。
 
@@ -172,7 +177,7 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
                 "tokens_estimated": any(i["tokens_estimated"] for i in items)}
 
     @router.delete("/settings/api-keys/{key_id}",
-                   dependencies=[deps.require_admin, deps.audit_mutation])
+                   dependencies=[deps.require_admin, _governance, deps.audit_mutation])
     def revoke_api_key(key_id: str):
         # 软删除：吊销后 Bearer 通道立即拒绝（get_current_actor 校验 revoked
         # 字段，见 kbase/auth/deps.py），但保留行本身供审计/历史查询。

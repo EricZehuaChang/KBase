@@ -375,12 +375,36 @@ export type LicenseStatus = "trial" | "valid" | "expired" | "invalid";
 
 export interface LicenseInfo {
   status: LicenseStatus;
-  org?: string;
-  expires?: string;
+  org?: string | null;
+  expires?: string | null;
+  /** T16：v2 证书的版本/座位/功能位；v1 老证书这几个字段为 null */
+  edition?: string | null;
+  seats?: number | null;
+  features?: string[] | null;
+  format?: "v1" | "v2" | null;
+  /** 到期后剩余宽限天数（到期日为第 0 天）；未到期/无证书为 null */
+  grace_days_left?: number | null;
+}
+
+/** T16 离线续期结果：服务端验签并原子落盘后返回新证书状态。 */
+export interface LicenseUploadResult {
+  ok: boolean;
+  filename: string;
+  license: LicenseInfo;
 }
 
 export function getLicense(): Promise<LicenseInfo> {
   return req("/api/license");
+}
+
+/** T16 离线续期：管理员上传新的 license.json（multipart，字段名 file）。
+ * 服务端先验签再原子替换，成功后立即生效（不需要重启）；签名不过的文件
+ * 不会落盘，原证书保持可用。 */
+export function uploadLicense(file: File): Promise<LicenseUploadResult> {
+  const form = new FormData();
+  form.append("file", file);
+  // 不手写 Content-Type：multipart 的 boundary 必须由浏览器生成
+  return req("/api/license", { method: "POST", body: form });
 }
 
 // ---- 运营看板（C + M6-4）----

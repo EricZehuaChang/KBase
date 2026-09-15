@@ -94,3 +94,26 @@ evals:
   answer_judge:
     enabled: false
     provider: deepseek-v3
+
+# 许可证（T16）。**enforce 默认 false 是产品负责人明确拍板的结果，不是漏配**：
+# 原话"授权到期，直接拦截，现阶段当前不拦截，留一个开关给我，没有交付客户"
+# ——拦截代码路径真实存在且有测试覆盖（tests/test_license.py 的 enforce=true
+# 用例 + 离线续期全链路用例），但当前交付里先不拦，开关留在他手里随时可开。
+#
+# enforce: false —— 不拦任何业务请求，许可证只用于状态展示（与升级前一致）；
+#          true  —— 授权到期（且超出 grace_days 宽限期）后，业务端点一律
+#          402 license_expired；豁免清单 = /api/license（查状态 + 上传续期）、
+#          /api/auth/*（登录）、/healthz、/metrics，保证管理员仍能登录并上传
+#          新的 license.json 完成离线续期（见 kbase/license.py 的
+#          ALLOWED_EXACT）。
+# grace_days: 到期后仍放行的天数（默认 14），给现场留出上传新证的时间窗；
+#          0 = 到期即拦。仅在 enforce=true 时有意义。
+#
+# features（功能位，见 scripts/gen_license.py --feature）：证书里没有某功能位
+# 时对应端点 402 license_feature_denied（同样只在 enforce=true 时生效）；
+# 证书 features 缺省 = 不限功能（老证书不会因为升级被锁功能）。
+# 可选值：governance / sso / audit_export / ops_attribution / answer_eval /
+# bundle_export。
+license:
+  enforce: false
+  grace_days: 14

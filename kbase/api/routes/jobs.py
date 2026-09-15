@@ -14,6 +14,7 @@ from kbase.jobs.export_docx import markdown_to_docx
 from kbase.jobs.proposal import build_proposal_steps, generate_outline
 from kbase.jobs.runner import run_job
 from kbase.jobs.store import create_job, get_job, list_jobs
+from kbase.license import require_feature
 from kbase.models import KnowledgeBase
 
 _ARTIFACT_FILENAME = {"proposal": "方案.docx", "digest": "汇编.docx"}
@@ -124,6 +125,8 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
                                 filename="artifact.md")
 
         # docx：首次请求时按需转换并缓存在 md 旁边
+        # T16 功能位：docx 成品交付归 bundle_export（md 是在线阅读不拦）。
+        require_feature("bundle_export")()
         docx_path = md_path.with_suffix(".docx")
         if not docx_path.exists():
             markdown_to_docx(md_path.read_text(encoding="utf-8"), docx_path)

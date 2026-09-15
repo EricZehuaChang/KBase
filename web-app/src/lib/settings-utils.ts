@@ -139,11 +139,13 @@ export function healthDot(value: string): StatusDotInfo {
 // ---- 许可证横幅（M4-1 G6）----
 
 /** 与 api.ts LicenseInfo 结构一致但在此模块独立声明——纯函数不依赖 api.ts，
- * 避免 settings-utils（vitest 直测）牵连 fetch 相关的模块副作用。 */
+ * 避免 settings-utils（vitest 直测）牵连 fetch 相关的模块副作用。
+ * org/expires 标成 `string | null`：T16 起后端三种状态的 key 集合一致，
+ * trial/invalid 态这两个字段如实回 null，类型跟着标才能让调用方不漏判。 */
 export interface LicenseLike {
   status: "trial" | "valid" | "expired" | "invalid";
-  org?: string;
-  expires?: string;
+  org?: string | null;
+  expires?: string | null;
 }
 
 export interface LicenseBannerInfo {

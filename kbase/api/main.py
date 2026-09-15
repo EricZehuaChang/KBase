@@ -21,6 +21,8 @@ from kbase.api.static import SPAStaticFiles
 from kbase.errors import register_error_handler
 from kbase.audit import make_mutation_audit_dependency
 from kbase.auth import security
+from kbase.license import configure as configure_license
+from kbase.license import make_license_guard
 from kbase.auth.bootstrap import ensure_admin
 from kbase.auth.deps import (make_get_current_actor, make_origin_guard_middleware,
                              make_synthetic_admin_actor_dependency, require_role)
@@ -118,6 +120,12 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
     # 受限；会话 Cookie 与 auth="off" 的合成 actor 无 key_id → 无操作。同一份
     # 依赖也挂在 /v1 router 上（见下方 openai_routes.register）。
     rate_limit_dependency = make_rate_limit_dependency(svc.sf)
+    # T16 授权到期硬拦截：开关 license.enforce 默认 false（本部署不拦，见
+    # config/kbase.standard.yaml 的 license 段注释）。configure 只记配置路径，
+    # 不读文件；判定结果按文件 mtime 缓存，enforce=false 时每个请求只做一次
+    # 内存开关判断。豁免清单见 kbase/license.py 的 ALLOWED_EXACT。
+    configure_license(config_path)
+    app.middleware("http")(make_license_guard())
     router = APIRouter(prefix="/api", dependencies=[
         Depends(actor_dependency), Depends(rate_limit_dependency)])
 
@@ -163,6 +171,9 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
     # jobs（大纲/长任务/产物）。路径互不重叠，注册顺序不影响匹配。
     auth_routes.register(app, router, svc, deps, secret=secret)
     admin_routes.register(router, svc, deps)
+    # T16 许可证续期：POST /api/license（admin 上传 license.json，离线续期）
+    from kbase.api.routes import license as license_routes
+    license_routes.register(router, svc, deps)
     settings_routes.register(router, svc, deps)
     kb_routes.register(router, svc, deps)
     run_query = query_routes.register(router, svc, deps)

@@ -26,6 +26,7 @@ from kbase.jobs.eval_answer import build_eval_answer_steps
 from kbase.jobs.export_docx import markdown_to_docx
 from kbase.jobs.runner import run_job
 from kbase.jobs.store import create_job
+from kbase.license import require_feature
 
 _REPORT_MEDIA_TYPE = ("application/vnd.openxmlformats-officedocument"
                       ".wordprocessingml.document")
@@ -91,6 +92,10 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
             raise AppError("error.answer_judge_disabled",
                            "答案级评测未启用（需在配置里打开 "
                            "evals.answer_judge.enabled）", status=422)
+        # T16 功能位：答案级评测（T15 的 LLM-judge 路径）属于 answer_eval。
+        # 拦在这里而不是做成路由级依赖——同一端点还承载 retrieval 模式，
+        # 那条路径不含 LLM 判分（老客户照用），只能按 mode 分支判定。
+        require_feature("answer_eval")()
         judge_provider = cfg.evals.answer_judge.provider
         # T15 spec §2：建 job 并**立刻**返回 job id，判分不在请求里同步跑。
         # job 先落库、任务体整段挂到 BackgroundTasks（与 /api/jobs 同一模式），
@@ -167,6 +172,9 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
 
         out_dir = _report_dir(cfg, run_id)
         docx_path = out_dir / "report.docx"
+        # T16 功能位：docx 是"可交付的成品报告导出"，归 bundle_export；
+        # md 是同一份内容的在线预览，不拦（否则连报告都看不了）。
+        require_feature("bundle_export")()
         markdown_to_docx(md, docx_path)
         return FileResponse(docx_path, media_type=_REPORT_MEDIA_TYPE,
                             filename="评测报告.docx")
