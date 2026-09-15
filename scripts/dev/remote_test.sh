@@ -45,10 +45,13 @@ case "${1:-run}" in
     # 全量要 6-7 分钟，SSH 长时间无输出会被中间设备掐断（本会话已踩三次：
     # 看起来"任务结束"，其实远端还在跑）。所以这里 nohup 后台启动 + 轮询日志。
     STAMP="$(date +%Y%m%d-%H%M%S)"
-    ssh "${SSH_OPTS[@]}" "$HOST" "mkdir -p /opt/kbase-test/logs \
+    # 注意：远端命令用单引号包住，$! 才会在远端展开——写成双引号时本机会先
+    # 展开它（本地没有 $!，直接 unbound variable 报错，测试根本没启动）。
+    # 本机唯一的 ${MODE} 用位置参数传进去。
+    ssh "${SSH_OPTS[@]}" "$HOST" 'mkdir -p /opt/kbase-test/logs \
         && cd /opt/kbase-test \
-        && setsid nohup bash run_remote_tests.sh ${MODE} \
-           > /opt/kbase-test/logs/run-${STAMP}.out 2>&1 < /dev/null & echo \\$!"
+        && setsid nohup bash run_remote_tests.sh '"${MODE}"' \
+           > /opt/kbase-test/logs/run-'"${STAMP}"'.out 2>&1 < /dev/null & echo started' 
     echo "已启动，开始轮询日志（Ctrl-C 只退出轮询，不影响远端测试）..."
     while :; do
       sleep 30
