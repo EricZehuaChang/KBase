@@ -386,7 +386,36 @@ _DATA_PLANE = (
     "kbase/api/routes/feishu_bot.py",
     "kbase/api/routes/evals.py",
     "kbase/feishu_bot.py",
+    # 2026-09-15 补漏：下面两处同样能产出"答案/依据"，原名单漏了它们，
+    # 闸门因此有洞——实测往 kbase/jobs/proposal.py 加一行引用标问库，闸门仍绿。
+    # ⚠️ 但**别只靠这张名单**：名单式黑名单永远可能漏下一个新模块，
+    # 真正兜底的是下面按"回答能力"符号判定的那条断言。
+    "kbase/jobs/",
+    "eval/",
 )
+
+# 按"能力"判回答路径：与文件名单互补的兜底规则。名单是黑名单（会漏），
+# 能力是白名单（只要是能检索/生成/产引用的代码，一律不许碰标问库）。
+_CAPABILITY_PATTERNS = (
+    "retriever", "Generator", "answer_stream", "usable_blocks", "retrieve_multi",
+)
+
+# 这些文件**同时**具备回答能力又合法引用标问库，逐个人工裁定过用途：
+#   models.py / schemas.py —— 声明表与请求体，不含任何检索或生成逻辑
+#   standard_answers.py / routes/standard_answers.py —— 策展面本体
+#   api/main.py —— 路由注册
+#   evals.py —— 只做评测集（expected_answer），不产答案
+#   kbase_mcp/server.py —— 单列走函数粒度的 MCP 检查（它同文件里有回答工具）
+# 新增任何一项都必须回答一句"它会不会把标问变成答案"。
+_CAPABILITY_EXEMPT = {
+    "kbase/models.py",
+    "kbase/api/schemas.py",
+    "kbase/standard_answers.py",
+    "kbase/api/routes/standard_answers.py",
+    "kbase/api/main.py",
+    "kbase/evals.py",
+    "kbase_mcp/server.py",
+}
 
 
 def _production_py_files():
@@ -401,6 +430,16 @@ def _production_py_files():
             continue
         out.append((rel, p))
     return out
+
+
+def _production_py_sources() -> dict[str, str]:
+    """{相对路径: 源码文本}——给"按能力判定"那条兜底规则用。
+
+    与 _standard_answer_refs 共用同一份文件枚举，避免两处扫描范围漂移
+    （范围一旦不一致，闸门就会出现"看着在守、其实没扫到"的漏洞）。
+    """
+    return {rel: p.read_text(encoding="utf-8", errors="ignore")
+            for rel, p in _production_py_files()}
 
 
 def _standard_answer_refs():
@@ -486,3 +525,18 @@ def test_standard_answer_references_are_all_registered():
     # 非空校验：扫描本身必须真的扫到了东西（否则上面两条断言是空转的）
     assert {"kbase/models.py", "kbase/standard_answers.py",
             "kbase/api/routes/standard_answers.py"} <= set(refs)
+
+    # ---- 兜底：按"回答能力"判定，而不是按文件名单 ----
+    # 名单式黑名单会漏下新模块（proposal.py 就是这么漏的），所以再加一条
+    # 正向规则：**任何具备检索/生成/引用能力的文件都不许引用标问库**，
+    # 除非它在 _CAPABILITY_EXEMPT 里被人工裁定过。
+    capable = {rel for rel, text in _production_py_sources().items()
+               if any(pat in text for pat in _CAPABILITY_PATTERNS)}
+    offenders = sorted((capable & set(refs)) - _CAPABILITY_EXEMPT)
+    assert offenders == [], (
+        "红线被打破：下列文件具备回答能力（能检索/生成/产引用）却引用了标问库——"
+        f"标问只能进评测集或走正常摄取管道：{offenders}")
+    # 反向非空校验：能力规则必须真的认出东西来，否则上面那条是空转的
+    assert len(capable) >= 15, (
+        f"'回答能力'规则只认出 {len(capable)} 个文件，规则可能已失效"
+        f"（能力符号改名？）——先修规则再信它")
