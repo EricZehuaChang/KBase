@@ -85,3 +85,12 @@ ocr:
   enabled: true
   backend: monkey-http
   endpoint: "http://host.docker.internal:7861"
+
+# 答案级评测（T15）默认关闭。standard 栈里 providers 清单已有 deepseek-v3，
+# 打开时把裁判指到它——判分是"对照参考答案给 0~1 分"的结构化任务，不需要
+# qwen-max 的推理深度，用便宜档评全量用例才跑得起。
+# 关着（默认）时评测集回归只跑检索（hit@k/MRR），零 LLM 调用，与升级前一致。
+evals:
+  answer_judge:
+    enabled: false
+    provider: deepseek-v3

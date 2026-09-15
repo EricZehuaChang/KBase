@@ -224,6 +224,16 @@ class EvalSetCreate(BaseModel):
 
 class EvalRunBody(BaseModel):
     top_k: int = Field(default=5, ge=1, le=50)
+    # T15：mode="retrieval"（默认——老客户端不传即此值，只跑检索、同步返回，
+    # 与改造前完全一致）|"answer"（检索→生成→裁判打分；须开
+    # evals.answer_judge.enabled，否则 422；开了则建 eval_answer 任务、**立刻**
+    # 返回 job id，判分在后台跑完再回查 /api/jobs/{id}）。
+    mode: Literal["retrieval", "answer"] = "retrieval"
+    # provider 只对 mode="answer" 有意义：生成用哪个 provider（与 /query 的
+    # provider 参数同一语义，None=活跃 provider）。**裁判固定走
+    # evals.answer_judge.provider**，不受这个字段影响——否则"用旗舰模型生成、
+    # 用便宜模型判分"的分工就被一次请求打乱了。
+    provider: str | None = None
 
 
 class ChatMessageIn(BaseModel):

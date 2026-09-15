@@ -309,6 +309,14 @@ class EvalRun(Base):
     mrr: Mapped[float] = mapped_column(Float)
     total: Mapped[int] = mapped_column(Integer)
     detail: Mapped[str] = mapped_column(Text)                 # JSON 逐用例
+    # T15 答案级评测三列（迁移已在 kbase/migrations.py 登记）：mode="retrieval"
+    # |"answer"（老库存量行补列后为 NULL，读取端一律按 retrieval 解释，与升级前
+    # 行为一致）；answer_score=逐用例裁判分（0~1）的平均值，NULL=没跑过答案级
+    # 判分；judge_provider 记下当时用的裁判 provider 名，避免"换了裁判模型分数
+    # 变了"无从追查。
+    mode: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    answer_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    judge_provider: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

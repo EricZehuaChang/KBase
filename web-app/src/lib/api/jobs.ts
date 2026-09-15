@@ -65,6 +65,12 @@ export function getJob(id: string): Promise<Job> {
   return req(`/api/jobs/${id}`);
 }
 
+// 终态判定（T15：useJob 与评测面板的答案级任务轮询共用一份——两处各写一遍
+// 迟早会漏掉 done_with_errors 这种"跑完了但个别步骤失败"的终态）。
+export function isTerminalStatus(status: string): boolean {
+  return ["done", "done_with_errors", "failed"].includes(status);
+}
+
 // 直链：md 用于 <pre> 预览 fetch，docx 用于下载按钮 href（浏览器原生下载，
 // 不经 fetch+blob）。
 export function artifactUrl(id: string, format: "md" | "docx"): string {

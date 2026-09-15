@@ -171,6 +171,22 @@ def test_create_job_unknown_type_422(tmp_path, fake_embedder):
     assert r.status_code == 422
 
 
+def test_create_eval_answer_job_at_generic_entry_422(tmp_path, fake_embedder):
+    """T15：eval_answer 虽然在 create_job_endpoint 的类型白名单里（任务表要认
+    这个类型），但**不能**从通用入口裸建——它要 set_id/裁判 provider 和
+    配置开关，步骤组装只有评测域知道。放行会建出一个永挂 pending 的僵尸任务，
+    所以显式拒掉并在报错里指路（POST /api/eval-sets/{id}/run，mode=answer）。"""
+    app, c = _client(tmp_path, fake_embedder)
+    kb_id = _seed_kb_with_doc(c, tmp_path, fake_embedder)
+
+    r = c.post("/api/jobs", json={"type": "eval_answer", "kb_id": kb_id,
+                                  "params": {"set_id": "s1"}})
+    assert r.status_code == 422
+    assert r.json()["detail"]["code"] == "error.eval_answer_use_run_endpoint"
+    # 没有建出任何 job（不是先建后拒）
+    assert c.get(f"/api/jobs?kb_id={kb_id}").json() == []
+
+
 def test_create_proposal_job_missing_params_422(tmp_path, fake_embedder):
     app, c = _client(tmp_path, fake_embedder)
     kb_id = _seed_kb_with_doc(c, tmp_path, fake_embedder)

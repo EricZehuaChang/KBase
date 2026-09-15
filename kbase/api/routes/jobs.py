@@ -45,12 +45,20 @@ def register(router, svc: Services, deps: RouteDeps) -> None:
     @router.post("/jobs", dependencies=[deps.require_editor, deps.audit_mutation])
     def create_job_endpoint(body: JobCreate, request: Request,
                             bg: BackgroundTasks):
-        if body.type not in ("proposal", "digest"):
+        if body.type not in ("proposal", "digest", "eval_answer"):
             raise AppError("error.unknown_job_type", "未知的 job type: {type}", status=422, type=body.type)
         if body.type == "proposal":
             if "topic" not in body.params or "outline" not in body.params:
                 raise AppError("error.proposal_missing_params",
                                "proposal job 缺少必需参数：topic/outline", status=422)
+        if body.type == "eval_answer":
+            # T15：答案级评测任务由 POST /api/eval-sets/{id}/run（mode=answer）
+            # 创建——它要 set_id/裁判 provider 与配置开关，步骤组装只有评测域
+            # 知道。从通用入口建会被放行但不带步骤 → 永挂 pending 的僵尸任务，
+            # 所以显式拒掉，并在报错里指路。
+            raise AppError("error.eval_answer_use_run_endpoint",
+                           "eval_answer 任务请用 POST /api/eval-sets/{set_id}/run"
+                           "（mode=\"answer\"）创建", status=422)
         with sf() as s:
             kb = s.get(KnowledgeBase, body.kb_id)
         if kb is None or not guard.allows(body.kb_id, request):

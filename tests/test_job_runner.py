@@ -120,3 +120,42 @@ def test_job_status_running_during_execution(tmp_path):
 
     run_job(sf, job["id"], [("A", step_a)])
     assert seen_status == ["running"]
+
+
+def test_eval_answer_case_step_failure_does_not_abort_later_cases(tmp_path):
+    """T15：答案级评测等价形状的步骤序列——某条用例的步骤抛异常（检索/生成
+    炸了）时，后续用例步骤与末步（落快照）照常执行，整体 done_with_errors。
+
+    这是"单条用例判分/生成失败不拖垮整批"在 runner 层的契约：失败用例的步骤
+    被标 failed 且不带任何 detail，后续用例不受影响。"""
+    sf = _sf(tmp_path)
+    job = create_job(sf, kb_id="kb1", type="eval_answer", params={}, provider=None)
+    calls = []
+
+    def case_1():
+        calls.append("case1")
+        return "0.80 · 要点齐全"
+
+    def case_2():
+        calls.append("case2")
+        raise RuntimeError("裁判端点 429")
+
+    def case_3():
+        calls.append("case3")
+        return "0.60 · 遗漏金额"
+
+    def snapshot():
+        calls.append("snapshot")
+        return "/tmp/artifact.md"
+
+    run_job(sf, job["id"], [("用例：q1", case_1), ("用例：q2", case_2),
+                            ("用例：q3", case_3), ("落快照", snapshot)])
+
+    assert calls == ["case1", "case2", "case3", "snapshot"]
+    got = get_job(sf, job["id"])
+    assert got["status"] == "done_with_errors"
+    steps = got["progress"]["steps"]
+    assert [s["status"] for s in steps] == ["done", "failed", "done", "done"]
+    assert "429" in steps[1]["detail"]
+    # 失败用例之后的产物步仍写盘（有可用产出）
+    assert steps[3]["detail"] == "/tmp/artifact.md"

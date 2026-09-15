@@ -191,9 +191,34 @@ class LoginGuardConfig(BaseModel):
     backoff_max_seconds: int = Field(default=900, ge=1)
 
 
+class AnswerJudgeConfig(BaseModel):
+    """答案级评测（T15）：是否需要跑"检索→生成→裁判打分"的重回归。
+
+    enabled=False（默认）时**零行为变化**：评测集回归仍只跑检索（hit@k/MRR），
+    一个 LLM 调用都不会发（判分路径整段短路，见 api/routes/evals.py 与
+    jobs/eval_answer.py）——既有部署升级后行为字节级不变，这也正是本开关
+    默认关闭的原因：答案级判分按用例数计费、耗时以分钟计，且它评的是"当前
+    生成配置"而不是"检索配置"，不该被升级悄悄打开。
+
+    provider=None 表示用 llm.active（与 rewrite/enrich 的 provider 语义一致）；
+    生产建议**显式**指一个便宜档模型（如 qwen-turbo/deepseek-v3 这类）——
+    裁判是"读参考答案+模型答案给 0~1 分"的结构化任务，不需要旗舰模型的
+    推理深度，用旗舰评全量用例纯属烧钱（judge_provider 会落进 eval_runs，
+    报告里标明用的哪个模型，避免"换了模型分数变了"无从追查）。"""
+    enabled: bool = False
+    provider: str | None = None
+
+
+class EvalsConfig(BaseModel):
+    """评测域配置。目前只有 answer_judge 一项：答案级判分（T15）。"""
+    answer_judge: AnswerJudgeConfig = Field(default_factory=AnswerJudgeConfig)
+
+
 class AppConfig(BaseModel):
     data_dir: Path = Path("./data")
     sso: SsoConfig = Field(default_factory=SsoConfig)
+    # T15：答案级评测开关（默认关，见 AnswerJudgeConfig）。
+    evals: EvalsConfig = Field(default_factory=EvalsConfig)
     # T11：登录/忘记密码/重置密码的失败锁定（默认值与改造前"只记审计不拦截"
     # 相比是行为变化，阈值给得足够宽，正常使用不会撞上）。
     login_guard: LoginGuardConfig = Field(default_factory=LoginGuardConfig)
@@ -225,6 +250,23 @@ class AppConfig(BaseModel):
             raise ValueError(f"embedders 清单存在重复 id: {ids}")
         if "default" in ids:
             raise ValueError('embedders 清单不得使用保留 id "default"（它指默认 embedder）')
+        return self
+
+    @model_validator(mode="after")
+    def _check_answer_judge_provider(self) -> "AppConfig":
+        """T15：裁判 provider 指到未配置的 provider 上，要在**启动期**报错。
+
+        放到运行期才炸的代价是：任务建出来了、逐用例生成（真金白银的 LLM
+        调用）全部跑完，最后落快照时报"provider 未配置"——白花钱还拿不到分。
+        只在 enabled=True 时校验：关着的时候 provider 字段只是留给部署侧预填
+        的注释性配置，不该因为写了个还没配的模型名导致服务起不来（默认关+
+        provider 预填是最自然的写法，见 config/kbase.standard.yaml）。"""
+        name = self.evals.answer_judge.provider
+        if self.evals.answer_judge.enabled and name is not None:
+            if name not in {p.name for p in self.llm.providers}:
+                raise ValueError(
+                    f"evals.answer_judge.provider 指向未配置的 provider: {name}，"
+                    f"已配置: {sorted(p.name for p in self.llm.providers)}")
         return self
 
 

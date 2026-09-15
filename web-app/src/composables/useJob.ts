@@ -3,13 +3,11 @@
 // 里调用 stopPolling，避免离开页面后定时器继续对已卸载组件的响应式状态写入
 // （与 useKbDocs 同模式）。
 import { shallowRef, ref, type Ref } from "vue";
-import { getJob, type Job } from "@/lib/api";
+import { getJob, isTerminalStatus, type Job } from "@/lib/api";
 
-const TERMINAL_STATUSES = new Set(["done", "done_with_errors", "failed"]);
-
-export function isTerminalStatus(status: string): boolean {
-  return TERMINAL_STATUSES.has(status);
-}
+// 终态判定实现在 lib/api/jobs.ts（T15 起评测面板也用它轮询答案级任务）。
+// 这里 re-export 保持既有调用方（EvalPanel 曾用 / 其他组件）的 import 路径不变。
+export { isTerminalStatus };
 
 export function useJob(jobId: Ref<string | undefined>) {
   // shallowRef：Job 含 params: Record<string, unknown>，深度 UnwrapRef 对泛型
