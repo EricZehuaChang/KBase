@@ -6,12 +6,19 @@
 """
 import uuid
 
+from kbase import qa_outcomes
 from kbase.models import Conversation, Message, MessageFeedback
 
 
 def upsert_feedback(sf, message_id: str, rating: int,
                     note: str | None = None) -> dict:
-    """覆盖式写入。调用方已完成消息存在性与归属校验。"""
+    """覆盖式写入。调用方已完成消息存在性与归属校验。
+
+    T12：同时把 rating 叠加到该消息的归因行（qa_outcomes.feedback）。
+    downvoted 不是独立的桶，就靠这一步把"踩"叠在原本的桶上——否则运营看到的
+    "答砸了"清单与归因报表各说各话，对不上。非会话渠道（/v1、飞书）没有
+    message_id，匹配不到行是正常情况，不是错误。
+    """
     with sf() as s:
         row = (s.query(MessageFeedback)
                .filter(MessageFeedback.message_id == message_id).first())
@@ -25,7 +32,9 @@ def upsert_feedback(sf, message_id: str, rating: int,
             row.rating = rating
             row.note = note
         s.commit()
-        return {"message_id": message_id, "rating": rating, "note": note}
+    # 归因同步放独立会话：反馈本身已落库，归因行匹配不到也不该回滚反馈
+    qa_outcomes.sync_feedback(sf, message_id, rating)
+    return {"message_id": message_id, "rating": rating, "note": note}
 
 
 def feedback_stats(sf) -> dict:

@@ -137,11 +137,17 @@ def build_history(sf, conv_id: str, rounds: int = HISTORY_ROUNDS) -> list[dict]:
 
 
 def append_round(sf, conv_id: str, question: str, answer: str,
-                 citations: list[dict], provider: str) -> None:
+                 citations: list[dict], provider: str) -> tuple[str, str] | None:
+    """落一轮问答（user + assistant 两条消息），返回 (user_msg_id, assistant_msg_id)。
+
+    T12 起返回 id：归因行（qa_outcomes）在生成之前就写好了，助手消息 id 只有
+    到这里才生成，调用方拿到它回填归因行的 message_id，反馈/下钻才连得上。
+    会话不存在（并发删除）时返回 None——老行为是静默不落库，这里保持不抛。
+    """
     with sf() as s:
         conv = s.get(Conversation, conv_id)
         if conv is None:
-            return
+            return None
         if not s.query(Message).filter_by(conv_id=conv_id).first():
             conv.title = question[:20]
         # 显式序列列根治排序：时间戳在 Windows 上刻度粗（0.5~8ms），连续轮次
@@ -150,11 +156,13 @@ def append_round(sf, conv_id: str, question: str, answer: str,
         base = (s.query(func.max(Message.seq))
                 .filter_by(conv_id=conv_id).scalar() or 0)
         now = datetime.utcnow()
-        s.add(Message(id=str(uuid.uuid4()), conv_id=conv_id, role="user",
+        user_id, assistant_id = str(uuid.uuid4()), str(uuid.uuid4())
+        s.add(Message(id=user_id, conv_id=conv_id, role="user",
                       content=question, seq=base + 1, created_at=now))
-        s.add(Message(id=str(uuid.uuid4()), conv_id=conv_id, role="assistant",
+        s.add(Message(id=assistant_id, conv_id=conv_id, role="assistant",
                       content=answer, provider=provider,
                       citations=json.dumps(citations, ensure_ascii=False),
                       seq=base + 2, created_at=now))
         conv.updated_at = now
         s.commit()
+        return user_id, assistant_id

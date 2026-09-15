@@ -27,6 +27,7 @@ from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 
 from kbase import kb_acl
+from kbase import qa_outcomes
 from kbase import ratelimit
 from kbase import retrieval_strategy as rs
 from kbase.api.schemas import ChatCompletionsBody
@@ -154,6 +155,13 @@ def register(app, svc: Services, actor_dependency, rate_limit_dependency) -> Non
                         action="query_refused", resource=f"kb_id={kb_id}",
                         detail=question[:100],
                         ip=(client.host if client else None))
+
+        # T12 归因：/v1 是独立编排（不走 routes/query.py 的 _run_query），
+        # 归因行在这里单独落一行，渠道 v1。actor 取 Key/会话身份名——「集成方
+        # 用哪个 Key 问不出来」与「终端用户在页面上问不出来」是两件事。
+        qa_outcomes.record_query_outcome(
+            sf, channel="v1", kb_id=kb_id, question=question, blocks=blocks,
+            usable=usable, actor=actor.get("name"))
 
         completion_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
         created = int(time.time())

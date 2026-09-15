@@ -11,6 +11,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 
 from kbase import feishu, feishu_bot
+from kbase import qa_outcomes
 from kbase import retrieval_strategy as rs
 from kbase.api.routes import RouteDeps
 from kbase.api.schemas import FeishuBotSettingsBody
@@ -60,6 +61,12 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps) -> None:
                             min_include_score=svc.cfg.retrieval.min_include_score)
             usable = gen.usable_blocks(blocks)
             citations = gen.citations(usable)
+            # T12 归因：IM 入口单独记渠道——同一批问题从群里进来（往往是非
+            # 专业用户的白话提问）与从问答页进来，缺口的含义不一样。actor 用
+            # 机器人标识（群里没有可辨认的提问者身份，与同一路径的审计行一致）。
+            qa_outcomes.record_query_outcome(
+                sf, channel="feishu", kb_id=kb_id, question=question,
+                blocks=blocks, usable=usable, actor="feishu-bot")
             pieces = [p async for p in gen.answer_stream(question, usable, None)]
             answer = "".join(pieces).strip() or "（未能生成回答）"
             app_id, app_secret = feishu.get_credentials(sf)

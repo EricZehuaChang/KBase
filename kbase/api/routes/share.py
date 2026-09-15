@@ -340,4 +340,7 @@ def register(app: FastAPI, router, svc: Services, deps: RouteDeps,
                     detail=body.question[:100],
                     ip=(client.host if client else None))
         return await run_query(link.kb_id, body, request=request,
-                               kb_ids=(live_ids if len(live_ids) > 1 else None))
+                               kb_ids=(live_ids if len(live_ids) > 1 else None),
+                               # T12 归因渠道：免登录入口单独成渠道，与登录态
+                               # 问答（web）、/v1、飞书分开看
+                               channel="share")
