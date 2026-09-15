@@ -1151,10 +1151,10 @@
   },
   "channel": {
     "title": "Channel Identity Mapping",
-    "desc": "Bind an external channel account (Feishu open_id) to a KBase user: after binding, questions from that account are retrieved with that user's KB-level permissions — authorized people get answers, unauthorized ones are refused silently just like on the web. Unbound accounts (or events with no identity) are treated as an anonymous viewer: public KBs are answerable, restricted ones are not; unbinding or disabling the user reverts to that default immediately. Submitting the same external account again rebinds it.",
+    "desc": "Bind an external channel account (Feishu open_id / WeCom userid) to a KBase user: after binding, questions from that account are retrieved with that user's KB-level permissions — authorized people get answers, unauthorized ones are refused silently just like on the web. Unbound accounts (or events with no identity) are treated as an anonymous viewer: public KBs are answerable, restricted ones are not; unbinding or disabling the user reverts to that default immediately. Submitting the same external account again rebinds it.",
     "channel": "Channel",
     "external_id": "External account id",
-    "external_id_ph": "Feishu open_id, e.g. ou_xxxxxxxx",
+    "external_id_ph": "Feishu open_id (ou_xxxxxxxx) or WeCom userid",
     "user": "KBase user",
     "user_ph": "Select a user",
     "bind": "Bind",

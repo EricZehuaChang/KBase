@@ -885,6 +885,160 @@ KBase 首页且已登录。新用户首次登录会自动建号，角色为 `def
 模式的容器、数据在容器卷里，**不属于生产部署形态**，不要照搬到客户现场；
 生产请用 IdP 方自己的高可用部署。
 
+### 7.5 企业微信智能机器人（长连接）
+
+企业微信侧的智能机器人支持两种 API 接入模式：**回调地址**与**长连接**。KBase
+接的是**长连接**，与飞书机器人（回调模式）在架构上完全不同，对接前先把这点看明白：
+
+| | 飞书机器人（回调） | 企业微信机器人（长连接） |
+|---|---|---|
+| 谁发起连接 | 飞书打 KBase 的 HTTP 回调 | **KBase 主动连** `wss://openws.work.weixin.qq.com` |
+| 公网要求 | 需要公网可访问的回调地址 | **不需要**，内网部署即可（服务器只要能出网） |
+| 鉴权 | Verification Token + Encrypt Key（+ 签名） | **只有 BotID + Secret 两项** |
+| 消息加解密 | 需要（AES-256-CBC 信封） | **通道消息明文**；只有媒体文件（图片/文件/视频）下载后用 `aeskey` 解密 |
+| 运行形态 | 随 web 进程（HTTP 端点） | **独立常驻进程**（`python -m kbase.channels.wecom`） |
+| 流式 | 无 | 平台不提供流式刷新回调，由**我们主动推送**中间帧直到 `finish=true`（默认关） |
+
+> **模式互斥**：企微后台的「回调地址」与「长连接」二选一，**切换会让另一个模式失效**。
+> 如果你的企微机器人此前配过回调地址，切到长连接后原回调立即不再生效。
+
+#### 7.5.1 企微管理后台：拿到 BotID 与 Secret
+
+1. 企业微信管理后台 → 「应用管理」→「智能机器人」→ 选中（或新建）你的机器人；
+2. 打开「API 模式」，接入方式选 **长连接**；
+3. 页面会给出 **BotID** 与 **Secret**。把它俩记下来：
+   - BotID 填进 KBase 配置的 `wecom.bot_id`（可直接写在配置文件里，它不是密钥）；
+   - Secret 是**长连接专用密钥**，与「回调地址」模式的 Token/EncodingAESKey
+     **不是同一个东西**，不要混填。它**只放环境变量**，绝不写进配置文件。
+
+#### 7.5.2 KBase 侧配置
+
+`config/kbase.yaml`：
+
+```yaml
+wecom:
+  enabled: true
+  bot_id: "你的 BotID"                     # 管理后台「智能机器人」页可见
+  secret_env: KBASE_WECOM_BOT_SECRET       # 环境变量**名**，不是密钥值
+  heartbeat_seconds: 30                    # 官方建议 30 秒
+  reconnect_min_seconds: 1
+  reconnect_max_seconds: 60
+  streaming: false                         # 见 §7.5.5
+  # provider: glm-5-turbo                 # 留空=用 llm.active
+```
+
+密钥注入（compose 写 `.env`，K8s 写 Secret，systemd 写 `EnvironmentFile`）：
+
+```bash
+export KBASE_WECOM_BOT_SECRET="管理后台给你的 Secret"
+```
+
+变量没注入时进程**启动就报错**（不静默降级）——静默失败的现场表现是"订阅被拒"，
+排查时根本分不清是密钥没配还是密钥错了。
+
+#### 7.5.3 启动与运维
+
+长连接**必须独立起一个进程**，不要塞进 web 进程：
+
+```bash
+# lite 部署（进程内向量化）
+python -m kbase.channels.wecom --config config/kbase.yaml
+
+# Docker 部署：在 app 容器里另起一个进程（或单独一个 service）
+docker compose exec app python -m kbase.channels.wecom --config config/kbase.yaml
+```
+
+systemd 单元示意（自动重启是必须的——长连接掉了不重启就永远收不到消息）：
+
+```ini
+[Unit]
+Description=KBase WeCom long-connection bot
+After=network-online.target
+
+[Service]
+WorkingDirectory=/opt/kbase
+EnvironmentFile=/opt/kbase/.env
+ExecStart=/opt/kbase/.venv/bin/python -m kbase.channels.wecom --config config/kbase.yaml
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**运维必知的三条**：
+
+1. **一个 BotID 只能有一条连接**。企微规定每个机器人同一时间只允许 1 条有效长连接，
+   **新连接会踢掉旧连接**。所以：
+   - 不要给同一个 BotID 起两个进程（K8s 多副本、compose scale 都会踩这个坑）；
+   - **高可用只能做主备切换**（备的不连、由编排决定谁持有连接），不能两个都连；
+   - 程序自己也会挡：同一进程里第二次建连会直接报错（避免"自己踢自己"，那表现为
+     消息随机丢一半、两边日志都健康，极难查）。
+2. **心跳 30 秒**，由本进程主动发应用层 ping（不是 WebSocket 协议级 ping，企微不认那个）。
+   调小白烧调用，调大有被判"连接不活跃"的风险。
+3. **不需要公网 IP、不需要回调 URL**——运维不用为它开任何入向端口，只要服务器能出网
+   访问 `openws.work.weixin.qq.com`（走代理的部署记得把 `wecom.url` 或全局代理配上）。
+
+连接断开（网络抖动、对面关闭、被别处的新连接顶掉）时进程会**按指数退避重连**
+（1s 起、上限 60s、带随机抖动），每次重连都会**重新订阅**。日志里能看到
+`企微长连接断开，X.Xs 后重连（第 N 次）: 原因`——`N` 一直涨说明对面或网络有问题，
+需要人看。
+
+#### 7.5.4 谁能问什么：身份绑定
+
+机器人不会以"机器人自己"的身份查库，而是把企微里提问的人映射成 KBase 用户：
+
+1. 管理后台 → 「智能机器人」区块 → 渠道身份绑定（与飞书共用同一张绑定表）；
+2. 渠道选「企业微信」，外部账号填回调用到的 `userid`，选一个 KBase 用户；
+3. 绑定后，这个人在企微里问到的内容与他登录 KBase 网页看到的一致（**同一套库级权限**）。
+
+关于 `userid` 有个必须知道的限制：**机器人创建者是超级管理员时回调里是明文
+`userid`，否则是加密串**。两种都支持——绑定页填"回调里实际看到的那串"即可（加密串
+原样保存、原样匹配），KBase **不做解密**。要拿到明文，按企微官方建议用自建应用对接转换。
+
+未绑定的人**不是"什么都看不到"**：公开知识库照常能问，被收紧过的库一律拒答
+（与网页端同一条规则、同一句拒答文案）。所有渠道问答都会落一行归因
+（`channel=wecom`），运营在归因面板里能看出"这句话是谁问的、问的是哪个库"。
+
+#### 7.5.5 流式回复（`streaming`，默认关）
+
+长连接模式下企微**没有流式刷新回调**：要不要"逐段出字"完全取决于开发者是否主动推送
+中间帧直到 `finish=true`。KBase 把这个动作放在 `wecom.streaming` 开关后面，**默认关**：
+
+- `streaming: false`（默认）：只推一帧完整答案（`finish=true`）。IM 场景本来也没有
+  逐字刷新的位置，且能避开企微对同一消息的更新频率限制；
+- `streaming: true`：先推若干中间帧（`status=streaming`，内容是**累积全文**——企微的
+  流式更新是**替换**语义，推增量只会让卡片上只剩最后几个字），最后推完整答案收尾。
+
+打开前请先确认企微侧对消息更新频率的限制（官方未给出具体数值），并从少量用户试起。
+
+#### 7.5.6 常见问题排查
+
+| 现象 | 可能原因 |
+|---|---|
+| 进程启动即报"密钥环境变量未设置" | `wecom.secret_env` 指定的变量没注入 |
+| 日志反复 `订阅被拒` | BotID/Secret 不对；或**同一 BotID 已在别处连着**（新连接要等对面让位） |
+| 日志反复 `订阅应答超时` | 网络到 `openws.work.weixin.qq.com` 不通（防火墙/代理），或 BotID/Secret 不对 |
+| 进程起不来，报"已有一条企微长连接" | 同一进程里建了第二条连接（编程/部署错误） |
+| 消息随机丢一半 | **同一个 BotID 有两个进程在抢连接**（互相踢），只保留一个 |
+| 群里 @机器人 没反应 | 该机器人在企微后台被切成了「回调地址」模式（模式互斥） |
+| 图片/文件/视频消息只回"暂不支持" | 当前版本只吃文本类消息（图文混排、富文本支持），媒体识别是后续能力 |
+
+#### 7.5.7 两条明确不做的事
+
+1. **不做微盘 / 企微文档同步**。技术上可行（管理后台点两下即可调用 API、无接口费），
+   但免费企业的微盘 API 有 **1000 次/月**配额，超限后**直接不可用**（报
+   `errcode 640035`，不是转入计费）——它在 KBase 里是"从微盘同步文档"这个独立产品
+   决策，与机器人接入无关，需要单独评估。
+2. **不拿企微机器人的输出去做评测集或调优检索**。《企业微信人工智能服务使用规则》
+   4.3.2 明确禁止"使用本服务输出内容来研发可能与腾讯竞争的服务、功能、模型、
+   应用程序"，KBase 的评测集一律用自有文档构建，渠道问答只用于归因与运营。
+
+#### 7.5.8 相关配置项
+
+见 §8.1 的 `wecom` 小节；协议实现与全部边界情况见 `kbase/channels/wecom.py`
+的模块注释（订阅帧、心跳帧、回复帧的报文形状与取舍都写在那里）。
+
 ---
 
 ## 8. 附录
@@ -1009,6 +1163,23 @@ KBase 首页且已登录。新用户首次登录会自动建号，角色为 `def
 | `sso.client_secret_env` | `KBASE_OIDC_CLIENT_SECRET` | **secret 只走环境变量**，不进配置文件；此项是两个名字的对应关系 |
 | `sso.default_role` | `viewer` | 首次 SSO 登录自动建号时给的角色（已有账号的角色不变） |
 | `sso.allow_existing_users` | `false` | 是否允许 IdP 身份落到已存在、但未绑定过 SSO 的同名本地账号上。默认关：否则 IdP 里叫 `admin` 的用户登录一次即取得 KBase 超管。升级/预置账号场景见 §7.4.6 |
+
+#### `wecom`（企业微信智能机器人·长连接）
+
+对接步骤、部署方式与排查见 §7.5。两个要点先写在表前：**密钥只走环境变量**
+（`secret_env` 是变量名）；**默认关**，不配就不建立任何连接。
+
+| 字段 | 默认值 | 说明 |
+|---|---|---|
+| `wecom.enabled` | `false` | 是否允许长连接进程建立连接（`python -m kbase.channels.wecom` 见 false 时直接退出） |
+| `wecom.bot_id` | `""` | 企微管理后台「智能机器人」页的 BotID |
+| `wecom.secret_env` | `KBASE_WECOM_BOT_SECRET` | **Secret 所在环境变量名**（密钥本身不进配置文件）；变量缺失时进程启动即报错 |
+| `wecom.url` | `wss://openws.work.weixin.qq.com` | 长连接地址；官方只有一个，留可配仅为走代理/联调 |
+| `wecom.heartbeat_seconds` | `30.0` | 应用层心跳间隔（秒），官方建议 30 |
+| `wecom.reconnect_min_seconds` | `1.0` | 重连退避下界（秒） |
+| `wecom.reconnect_max_seconds` | `60.0` | 重连退避上限（秒）；带 0.5~1.0 随机抖动，避免主备同时重连互踢 |
+| `wecom.streaming` | `false` | 是否主动推送流式更新直到 `finish=true`（默认关，见 §7.5.5） |
+| `wecom.provider` | `null` | 回答用模型；不填用 `llm.active` |
 
 > **注意**：`rewrite.mode` 配置为字符串时必须加引号（如 `mode: "off"`），否则 `off` 会被 YAML 解析为布尔值 `False` 而在启动时报校验错误。
 

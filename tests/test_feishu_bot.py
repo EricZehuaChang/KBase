@@ -319,8 +319,11 @@ def test_channel_identity_admin_api(client):
     uid_a = _new_user(client, "chan-a")
     uid_b = _new_user(client, "chan-b")
 
-    assert client.get("/api/channels").json()["items"] == [
-        {"channel": "feishu", "label": "飞书"}]
+    # 注册表是"在册渠道"的唯一事实源，T20 起多了 wecom（企业微信长连接）。
+    # 这里只钉"飞书在册且中文名正确"，不钉完整清单——加渠道不该改这个用例
+    # （渠道清单本身由 tests/test_wecom_bot.py::test_channel_registered_in_registry 钉）。
+    assert {"channel": "feishu", "label": "飞书"} \
+        in client.get("/api/channels").json()["items"]
     assert client.get("/api/channels/identities").json()["items"] == []
 
     first = client.post("/api/channels/identities",

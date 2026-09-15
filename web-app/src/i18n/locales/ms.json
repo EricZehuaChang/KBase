@@ -1151,10 +1151,10 @@
   },
   "channel": {
     "title": "Pemetaan Identiti Saluran",
-    "desc": "Ikat akaun saluran luaran (open_id Feishu) pada pengguna KBase: selepas diikat, soalan daripada akaun itu dicari mengikut kebenaran peringkat pangkalan pengguna tersebut — yang dibenarkan mendapat jawapan, yang tidak dibenarkan ditolak secara senyap sama seperti di web. Akaun tidak diikat (atau peristiwa tanpa identiti) dianggap sebagai viewer tanpa nama: pangkalan awam boleh ditanya, pangkalan terhad tidak; nyahikat atau lumpuhkan pengguna akan kembali kepada dasar lalai ini serta-merta. Menghantar akaun luaran yang sama sekali lagi bermakna ikat semula.",
+    "desc": "Ikat akaun saluran luaran (open_id Feishu / userid WeCom) pada pengguna KBase: selepas diikat, soalan daripada akaun itu dicari mengikut kebenaran peringkat pangkalan pengguna tersebut — yang dibenarkan mendapat jawapan, yang tidak dibenarkan ditolak secara senyap sama seperti di web. Akaun tidak diikat (atau peristiwa tanpa identiti) dianggap sebagai viewer tanpa nama: pangkalan awam boleh ditanya, pangkalan terhad tidak; nyahikat atau lumpuhkan pengguna akan kembali kepada dasar lalai ini serta-merta. Menghantar akaun luaran yang sama sekali lagi bermakna ikat semula.",
     "channel": "Saluran",
     "external_id": "Id akaun luaran",
-    "external_id_ph": "open_id Feishu, cth. ou_xxxxxxxx",
+    "external_id_ph": "open_id Feishu (ou_xxxxxxxx) atau userid WeCom",
     "user": "Pengguna KBase",
     "user_ph": "Pilih pengguna",
     "bind": "Ikat",

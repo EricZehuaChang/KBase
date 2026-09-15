@@ -217,3 +217,40 @@ sso:
   # 默认 false：否则 IdP 里一个叫 admin 的用户登录一次就能拿到 KBase 超管。
   # 需要"管理员先建号、再让 SSO 登录进来"的部署再打开。
   allow_existing_users: false
+
+# 企业微信智能机器人·长连接（T20）。**默认关**——不配就不起长连接进程，
+# 与改造前完全一致。对接步骤见 docs/manual/KBase-完整手册.md 的「企业微信智能
+# 机器人（长连接）」一节。
+#
+# 与飞书机器人（回调模式）的**根本差别**：长连接是 **KBase 主动连出去**
+# （wss://openws.work.weixin.qq.com），不需要公网 IP、不需要回调 URL、没有
+# 验签/解密环节；鉴权只有 BotID + Secret 两项，其中 Secret 是**长连接专用密钥**
+# （与"接收消息回调地址"模式的 Token/EncodingAESKey 不是一个东西）。
+# 通道消息明文传输，唯一要解密的是 image/file/video 下载回来的多媒体资源
+# （用回调体里的 aeskey）。
+#
+# **硬约束（决定了怎么部署）**：每个机器人同一时间只允许 1 条有效长连接，
+# 新连接踢掉旧连接；心跳官方建议 30 秒；长连接与"回调地址"模式**互斥**，
+# 在管理后台切换会让另一个模式失效。所以本进程必须独立拉起、每 BotID 只跑一份：
+#     python -m kbase.channels.wecom --config config/kbase.yaml
+wecom:
+  enabled: false
+  # 管理后台「智能机器人」页看到的机器人 ID（BotID）
+  bot_id: ""
+  # Secret 只走环境变量（这里写变量名，不写值——与 llm.providers[].api_key_env、
+  # sso.client_secret_env 同一规矩）；变量缺失时进程**启动即报错**，不静默降级。
+  secret_env: KBASE_WECOM_BOT_SECRET
+  # 官方长连接地址（只有一个；留可配是为了走代理或联调指向自建服务）
+  url: wss://openws.work.weixin.qq.com
+  # 心跳间隔（秒）。官方建议 30：调小只会白烧调用，调大有被判"不活跃"的风险。
+  heartbeat_seconds: 30
+  # 重连退避上下界（秒）：指数退避 + 0.5~1.0 随机抖动。抖动不是装饰——主备两个
+  # 进程同时掉线时，固定间隔会让它们同时重连然后互相踢，退避错不开就没意义。
+  reconnect_min_seconds: 1
+  reconnect_max_seconds: 60
+  # 流式推送开关。**默认关**：长连接模式下企微不提供流式刷新回调，打开就是由
+  # 我们主动推送中间帧直到 finish=true。关着时只推一帧完整答案（IM 场景本来
+  # 也没有逐字刷新的位置，与飞书卡片一致），也避开企微对同一消息的更新频率限制。
+  streaming: false
+  # 回答用模型；留空/不写=用 llm.active（与飞书机器人的 provider 同义）
+  # provider: glm-5-turbo

@@ -181,6 +181,38 @@ class SsoConfig(BaseModel):
     allow_existing_users: bool = False
 
 
+class WeComConfig(BaseModel):
+    """企业微信智能机器人·长连接（T20）。**默认关**，且**不跑在 web 进程里**：
+    长连接是出站常驻连接，由 `python -m kbase.channels.wecom` 单独拉起
+    （理由见 kbase/channels/wecom.py 的模块 docstring：每个机器人同一时间只允许
+    1 条有效长连接，多 worker/滚动重启会互相踢）。
+
+    secret 走环境变量（`secret_env` 是**变量名**，密钥本身永不进配置文件，
+    与 ProviderConfig.api_key_env、SsoConfig.client_secret_env 同一条规矩）。
+    鉴权只有 BotID + Secret 两项——长连接的 Secret 与"接收消息回调地址"模式的
+    Token/EncodingAESKey 不是一个东西，本模块没有加解密/验签环节。
+    """
+    enabled: bool = False
+    # 管理后台「智能机器人」页可见的机器人 ID
+    bot_id: str = ""
+    # 环境变量名（不是密钥值）
+    secret_env: str = "KBASE_WECOM_BOT_SECRET"
+    # 官方长连接地址。官方只有一个，做成可配只是为了走代理/联调时能改。
+    url: str = "wss://openws.work.weixin.qq.com"
+    # 心跳间隔（秒）。官方建议 30；调小只会白烧配额，调大要小心被判不活跃。
+    heartbeat_seconds: float = Field(default=30.0, gt=0)
+    # 重连退避上下界（秒）：指数退避 + 抖动，避免主备同时掉线后一起重连互踢。
+    reconnect_min_seconds: float = Field(default=1.0, gt=0)
+    reconnect_max_seconds: float = Field(default=60.0, gt=0)
+    # 流式推送开关。**默认关**：长连接模式下没有流式刷新回调，打开意味着由我们
+    # 主动推送中间帧直到 finish=true（官方要求开发者侧动作）。默认关的原因与
+    # AnswerJudgeConfig 同类——新开关不该被一次升级动作悄悄打开；这里还多一层
+    # 现实约束：企微对同一消息的更新频率有限制。
+    streaming: bool = False
+    # 回答用模型；None=llm.active（与飞书机器人同义）
+    provider: str | None = None
+
+
 class LoginGuardConfig(BaseModel):
     """登录/口令端点的人机闸（T11）：窗口内失败次数达阈值 → 429 + Retry-After，
     退避时长随失败档位指数增长。
@@ -230,6 +262,9 @@ class EvalsConfig(BaseModel):
 class AppConfig(BaseModel):
     data_dir: Path = Path("./data")
     sso: SsoConfig = Field(default_factory=SsoConfig)
+    # T20：企业微信智能机器人·长连接（默认关；独立进程运行，见
+    # kbase/channels/wecom.py 与 WeComConfig 的说明）。
+    wecom: WeComConfig = Field(default_factory=WeComConfig)
     # T15：答案级评测开关（默认关，见 AnswerJudgeConfig）。
     evals: EvalsConfig = Field(default_factory=EvalsConfig)
     # T11：登录/忘记密码/重置密码的失败锁定（默认值与改造前"只记审计不拦截"

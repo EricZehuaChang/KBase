@@ -30,6 +30,13 @@ dependencies = [
     "jieba>=0.42",
     "pypdf>=4.0",
     "httpx>=0.27",
+    # 企微长连接智能机器人（T20，kbase/channels/wecom.py）的传输层。此前它只是被
+    # uvicorn[standard] 间接拉进来的：uvicorn 一旦不再带 websockets（上游改过一次
+    # 实现），企微长连接会在**运行期** ImportError——而这条路径只在运维真的起了
+    # 长连接进程时才走到，CI 与 web 进程都发现不了。下界 12：wecom.py 用到
+    # websockets.connect 的 ping_interval（应用层心跳由我们自己发，建连时必须
+    # 显式关掉协议级 ping）、open_timeout/close_timeout 与 ConnectionClosed 语义。
+    "websockets>=12",
     "python-docx>=1.1",
     # 多模态插图（提取/尺寸过滤/演示流程图生成）必须在主依赖——曾只在
     # dev extra，生产镜像装不上会让插图功能静默失效（提图 try/except 吞掉）

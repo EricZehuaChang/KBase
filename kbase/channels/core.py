@@ -38,7 +38,10 @@ from kbase.rag.generator import Generator, refusal_for
 # 现役渠道注册表：取值写死在这里（不是自由文本），管理端下拉与校验共用同一份。
 # 加新渠道时：这里加一项 + 迁移对应机器人 → 归因表的 channel 列自动多一种取值
 # （qa_outcomes 的 channel 不做白名单，历史行不会因为新增渠道而失效）。
-CHANNELS = {"feishu": "飞书"}
+# T20 加了 wecom（企业微信长连接智能机器人，见 kbase/channels/wecom.py）：
+# 归因行的 channel 会开始出现 "wecom"，运营按渠道切片时能分出"这句话是从
+# 企微来的还是飞书来的"——两个渠道的追问习惯不一样，缺口含义也不一样。
+CHANNELS = {"feishu": "飞书", "wecom": "企业微信"}
 DEFAULT_CHANNEL = "feishu"
 
 # 未映射身份的角色：与渠道无关的**最低**权限档（viewer）。渠道入口拿不到登录态
