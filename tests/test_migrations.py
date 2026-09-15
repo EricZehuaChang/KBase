@@ -17,6 +17,9 @@ def test_migrations_add_columns_and_tables(tmp_path):
         assert "ocr_confidence" in doc_cols
         tables = set(insp.get_table_names())
         assert {"conversations", "messages", "providers", "app_settings"} <= tables
+        # T18 导入批次是新表：create_all 自动建（不需要 _COLUMN_MIGRATIONS 登记），
+        # 这里钉住"老库升级后也有这张表"——没有它，批次接口在老部署上直接 500。
+        assert "import_batches" in tables
         assert s.execute(text(
             "SELECT name FROM sqlite_master WHERE name='chunks_fts'"
         )).scalar() == "chunks_fts"

@@ -8,6 +8,7 @@
 //   evals.ts    评测回归（B）
 //   settings.ts Provider/模型目录/向量密钥/用户/APIKey/许可证/运营看板
 //   jobs.ts     大纲与长任务生成
+//   importBatches.ts  T18 批量导入批次（只读：清单/明细/CSV 导出）
 //
 // 新端点加到对应域文件；跨域共用的只有 core 的 req/jsonInit。
 // 声明式代码不单测（由使用它的组件测试间接覆盖）。
@@ -17,5 +18,6 @@ export * from "./api/chat";
 export * from "./api/evals";
 export * from "./api/settings";
 export * from "./api/jobs";
+export * from "./api/importBatches";
 export * from "./api/share";
 export * from "./api/i18n";

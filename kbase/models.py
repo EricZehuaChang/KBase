@@ -462,3 +462,49 @@ class StandardAnswer(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     reviewed_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class ImportBatch(Base):
+    """批量导入批次（T18）：一次 CLI 灌库运行在数据库里留一行。
+
+    为什么要有这张表：`kbase/bulk_import.py` 是清单驱动（JSONL 追加）的 CLI，
+    它的续传状态只在**服务器本地文件**里——交付后现场问"昨天那轮灌库跑了没、
+    成功多少、哪些文件失败"，只能登机器 tail 清单文件；清单文件会被重跑追加、
+    会被误删，不是可审计的记录。本表把"哪次运行、谁发起、什么时候开始/结束、
+    最终计数"落库，管理端知识库详情页的只读「导入记录」tab 直接读它。
+
+    只有 CLI 会写本表（`kbase/bulk_import.py`），HTTP 侧**只读**：刻意不提供
+    任何"从网页触发导入"的端点——BackgroundTasks 进程内任务重启即丢，
+    万级文件的首轮灌库必须能断点续传（理由见 bulk_import.py 的文件头）。
+
+    状态机（取值写死在 kbase/bulk_import.py 的模块常量里，不是自由文本）：
+    running -> done | done_with_errors | failed | interrupted。
+    前四者由 CLI 正常收尾时写入；interrupted 是"进程没能自己收尾"的现场
+    （Ctrl-C/被杀/掉电），由下一次启动同一清单的运行或读接口的一致性回收
+    写入——否则批次会永久停在 running，变成"看着在跑其实早就死了"的支持负担。
+    """
+    __tablename__ = "import_batches"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    kb_id: Mapped[str] = mapped_column(String(36), index=True)
+    # 相对 data_dir 的清单路径（如 import-kb1.jsonl）。**不存绝对路径**：
+    # 读接口按 data_dir 做包含性校验后才会打开它，绝对路径会让"路径穿越"
+    # 无从设防（见 bulk_import.resolve_manifest_path）。
+    manifest_path: Mapped[str] = mapped_column(String(500))
+    # 发起人（CLI 上的操作系统用户名；取不到时 NULL，不阻塞导入）
+    started_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # 冗余列（counts 里也有 status）：列表页按它排序/过滤，不让读接口为了
+    # 一个状态把每行的 JSON 都解析一遍；写侧两个地方同时写，不会漂移。
+    status: Mapped[str] = mapped_column(String(20), default="running", index=True)
+    # NULL=这一行还在 running（收尾时写入）。崩溃残留的 running 行由
+    # reconcile_stale_running 回收成 interrupted。
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # 存活心跳（运行中每 ~60 秒写一次，见 bulk_import._heartbeat）。判"这行是
+    # 不是死了"必须用**心跳**而不是 started_at：大目录（数万文件）跑几小时很
+    # 正常，拿起始时间判久会把正在跑的批次误判成崩溃。NULL=老库补列或还没跳。
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # JSON：{status, total, pending, done, failed, elapsed_s, workers,
+    # parse_mode, dir, interrupted, exit_code, error}——运行结束才完整；
+    # 逐文件明细不在这里（那在清单文件里，本表只做批次汇总，避免万行级
+    # JSON 撑爆一行）。
+    counts: Mapped[str | None] = mapped_column(Text, nullable=True)

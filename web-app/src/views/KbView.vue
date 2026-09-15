@@ -15,6 +15,10 @@ import {
 } from "@/components/ui/dialog";
 import UploadZone from "@/components/UploadZone.vue";
 import DocumentTable from "@/components/DocumentTable.vue";
+import ImportBatchesTab from "@/components/ImportBatchesTab.vue";
+import {
+  Tabs, TabsContent, TabsList, TabsTrigger,
+} from "@/components/ui/tabs";
 import KbConfigDialog from "@/components/KbConfigDialog.vue";
 import ChunkManagerDialog from "@/components/ChunkManagerDialog.vue";
 import ReviewDialog from "@/components/ReviewDialog.vue";
@@ -281,6 +285,10 @@ onBeforeUnmount(stopPolling);
 
 const configOpen = ref(false);
 
+// T18 详情页两个只读/管理视角：文档（默认）与「导入记录」（CLI 灌库批次，
+// 只读——触发导入只有命令行入口，见 components/ImportBatchesTab.vue）。
+const detailTab = ref("documents");
+
 onMounted(loadKbs);
 </script>
 
@@ -381,61 +389,75 @@ onMounted(loadKbs);
         </div>
       </div>
 
-      <!-- 解析模式（F）：复杂图（概念图/时序图/PPT截图）选深度识别 -->
-      <div v-if="canManage" class="mb-2 flex items-center gap-2">
-        <span class="text-sm text-[var(--text-2)]">{{ t("kb.parse_mode") }}</span>
-        <Select v-model="parseMode">
-          <SelectTrigger class="w-64"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="auto">{{ t("kb.parse_auto") }}</SelectItem>
-            <SelectItem value="ocr">{{ t("kb.parse_ocr") }}</SelectItem>
-            <SelectItem value="vlm">{{ t("kb.parse_vlm") }}</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      <UploadZone v-if="canManage" class="mb-4" data-tour="upload-zone" @files-selected="handleFilesSelected" />
+      <Tabs v-model="detailTab">
+        <TabsList class="mb-4">
+          <TabsTrigger value="documents" data-tour="kb-tab-documents">{{ t("kb.tab_documents") }}</TabsTrigger>
+          <TabsTrigger value="imports" data-tour="kb-tab-imports">{{ t("kb.tab_imports") }}</TabsTrigger>
+        </TabsList>
 
-      <!-- M6-7 URL 导入：内网 wiki/门户页面直接进库 -->
-      <div v-if="canManage" class="mb-4 flex items-center gap-2">
-        <input
-          v-model="importUrlText"
-          type="url"
-          :placeholder="t('kb.url_placeholder')"
-          class="flex-1 rounded-[var(--radius-ctl)] border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
-          :aria-label="t('kb.url_label')"
-          @keydown.enter="handleImportUrl"
-        />
-        <Button variant="outline" size="sm" :disabled="importing || !importUrlText.trim()" @click="handleImportUrl">
-          {{ importing ? t("kb.importing") : t("kb.import_url") }}
-        </Button>
-        <Button variant="outline" size="sm" @click="feishuOpen = true">
-          {{ t("kb.import_feishu") }}
-        </Button>
-      </div>
-
-      <!-- E 上传进度条：仅传输阶段显示；解析/向量化进度看文档状态列 -->
-      <div v-if="uploadPercent !== null" class="mb-4">
-        <div class="mb-1 flex justify-between text-xs text-[var(--text-3)]">
-          <span>{{ t("kb.uploading") }}</span>
-          <span>{{ uploadPercent }}%</span>
+        <TabsContent value="documents">
+        <!-- 解析模式（F）：复杂图（概念图/时序图/PPT截图）选深度识别 -->
+        <div v-if="canManage" class="mb-2 flex items-center gap-2">
+          <span class="text-sm text-[var(--text-2)]">{{ t("kb.parse_mode") }}</span>
+          <Select v-model="parseMode">
+            <SelectTrigger class="w-64"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="auto">{{ t("kb.parse_auto") }}</SelectItem>
+              <SelectItem value="ocr">{{ t("kb.parse_ocr") }}</SelectItem>
+              <SelectItem value="vlm">{{ t("kb.parse_vlm") }}</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-        <div class="h-1.5 overflow-hidden rounded-full bg-[var(--surface-2)]">
-          <div
-            class="h-full rounded-full bg-[var(--accent)] transition-[width] duration-200"
-            :style="{ width: `${uploadPercent}%` }"
+        <UploadZone v-if="canManage" class="mb-4" data-tour="upload-zone" @files-selected="handleFilesSelected" />
+
+        <!-- M6-7 URL 导入：内网 wiki/门户页面直接进库 -->
+        <div v-if="canManage" class="mb-4 flex items-center gap-2">
+          <input
+            v-model="importUrlText"
+            type="url"
+            :placeholder="t('kb.url_placeholder')"
+            class="flex-1 rounded-[var(--radius-ctl)] border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
+            :aria-label="t('kb.url_label')"
+            @keydown.enter="handleImportUrl"
           />
+          <Button variant="outline" size="sm" :disabled="importing || !importUrlText.trim()" @click="handleImportUrl">
+            {{ importing ? t("kb.importing") : t("kb.import_url") }}
+          </Button>
+          <Button variant="outline" size="sm" @click="feishuOpen = true">
+            {{ t("kb.import_feishu") }}
+          </Button>
         </div>
-      </div>
 
-      <DocumentTable
-        :docs="docs"
-        :loading="docsLoading"
-        :can-manage="canManage"
-        @retry="handleRetry"
-        @delete="(doc) => (deleteTarget = doc)"
-        @chunks="openChunks"
-        @review="openReview"
-      />
+        <!-- E 上传进度条：仅传输阶段显示；解析/向量化进度看文档状态列 -->
+        <div v-if="uploadPercent !== null" class="mb-4">
+          <div class="mb-1 flex justify-between text-xs text-[var(--text-3)]">
+            <span>{{ t("kb.uploading") }}</span>
+            <span>{{ uploadPercent }}%</span>
+          </div>
+          <div class="h-1.5 overflow-hidden rounded-full bg-[var(--surface-2)]">
+            <div
+              class="h-full rounded-full bg-[var(--accent)] transition-[width] duration-200"
+              :style="{ width: `${uploadPercent}%` }"
+            />
+          </div>
+        </div>
+
+        <DocumentTable
+          :docs="docs"
+          :loading="docsLoading"
+          :can-manage="canManage"
+          @retry="handleRetry"
+          @delete="(doc) => (deleteTarget = doc)"
+          @chunks="openChunks"
+          @review="openReview"
+        />
+        </TabsContent>
+
+        <!-- T18 导入记录：只读（CLI 灌库批次台账，无触发导入的入口） -->
+        <TabsContent value="imports">
+          <ImportBatchesTab v-if="kbId" :kb-id="kbId" />
+        </TabsContent>
+      </Tabs>
     </template>
   </div>
 

@@ -194,6 +194,12 @@ def create_app(config_path="config/kbase.yaml", *, embedder=None,
     # T14 MCP 扩展：单块详情 + 文档章节树（MCP get_chunk / get_document_outline 的数据源）
     from kbase.api.routes import mcp_extras as mcp_extras_routes
     mcp_extras_routes.register(router, svc, deps)
+    # T18 批量导入批次：只读（清单/明细/CSV）。触发导入只有命令行，无 HTTP 入口。
+    from kbase.api.routes import import_batches as import_batches_routes
+    import_batches_routes.register(router, svc, deps)
+    # T12 问答归因：清单 / 下钻 / CSV 导出（admin 门槛，含超管审计分层）
+    from kbase.api.routes import stats_outcomes as stats_outcomes_routes
+    stats_outcomes_routes.register(router, svc, deps)
     app.include_router(router)
 
     # 连接器定时同步调度器（对标#3）：startup 起 daemon 线程（TestClient
