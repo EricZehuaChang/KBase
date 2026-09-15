@@ -290,6 +290,9 @@ docker compose -f docker-compose.lite.yml logs app
 
 系统有一条硬性保护：**不允许把最后一个启用中的 admin 账号禁用或降级**，避免管理员自锁出系统。尝试这样做会被服务端拒绝并给出中文提示。
 
+企业统一身份（SSO）登录进来的用户同样出现在这张表里，角色以本地为准。SSO 的对接与
+"预置账号/同名账号"的处理见 §7.4。
+
 ### 4.2 API Key 生命周期
 
 API Key 用于集成方（如 MCP Server、外部脚本）以 `Authorization: Bearer` 方式调用 KBase API，无需走浏览器 Cookie 会话。
@@ -756,6 +759,132 @@ data:
 
 客户端实现建议：以 `event:` 字段区分事件类型分别处理；网络中断导致提前结束时（未收到 `done`）应向用户提示"回答中断，请重试"，而不是当作已完整完成。
 
+### 7.4 对接真实 IdP（企业 SSO）
+
+KBase 用标准 **OIDC 授权码流** 接企业统一身份。Keycloak、Azure AD（Entra ID）、
+Okta、Authing、钉钉企业内应用等只要支持标准 OIDC 都能对接，不需要为某家 IdP 改代码。
+
+不配置时 SSO 完全关闭（`/api/auth/sso/*` 返回 404，登录页不显示入口），
+所以"没配"不等于"配错了"。
+
+#### 7.4.1 先定一件事：KBase 对外的访问地址
+
+回调地址是**推导出来的**，不是配出来的：
+
+```
+redirect_uri = {用户浏览器访问 KBase 用的地址}/api/auth/sso/callback
+```
+
+所以对接前必须先确定最终访问地址（例如 `https://kbase.corp.com`）。**这个地址必须
+与实际访问完全一致**：协议、主机名、端口、路径都不能差，末尾不能多斜杠。走反向代理
+时，代理必须把 `Host` 与 `X-Forwarded-Proto` 原样透给后端（标准 nginx
+`proxy_set_header Host $host;` + `X-Forwarded-Proto $scheme;`），否则 KBase 会拿内网
+地址去拼回调，IdP 侧就是 `invalid_redirect_uri`。详见 §5.5。
+
+#### 7.4.2 在 IdP 侧建客户端
+
+以 Keycloak 为例（其他 IdP 的字段名不同、语义一样）：
+
+| IdP 侧字段 | 取值 | 说明 |
+|---|---|---|
+| Client ID | 自定，如 `kbase` | 与 KBase 的 `sso.client_id` 一致 |
+| Client 类型 | **confidential**（机密客户端） | KBase 在服务端用 secret 换 token，不是纯前端应用 |
+| 标准授权码流 | 开启 | KBase 不用密码模式、不用隐式流 |
+| Valid redirect URIs | `https://kbase.corp.com/api/auth/sso/callback` | 见 §7.4.1，**精确匹配**，不要写通配符 |
+| PKCE | 可以要求（S256） | KBase 已支持并始终发送（见 §7.4.5） |
+| 需要的 scope | `openid` `profile` `email` | KBase 固定请求这三个 |
+
+IdP 侧**必须**保证用户能拿到 `sub`（OIDC 里是必填，标准实现都有）和一个人类可读的
+用户名 `preferred_username`。若要给用户起名用邮箱，让 IdP 把 `email` 映射上。
+
+#### 7.4.3 KBase 侧配置
+
+`config/kbase.yaml`：
+
+```yaml
+sso:
+  enabled: true
+  issuer: https://idp.corp.com/realms/main   # 必须与 IdP discovery 的 issuer 逐字节一致
+  client_id: kbase
+  client_secret_env: KBASE_OIDC_CLIENT_SECRET
+  default_role: viewer                       # 首次 SSO 登录自动建号时给的角色
+  allow_existing_users: false                # 见 §7.4.6，除非你要预置账号
+```
+
+- `issuer` 自己去 `{issuer}/.well-known/openid-configuration` 对一下 issuer 字段：
+  Keycloak 通常是 `https://idp.corp.com/realms/<realm>`（**没有**末尾斜杠，**要**带
+  `/realms/<realm>`）；Azure AD 是 `https://login.microsoftonline.com/<tenant>/v2.0`。
+  填错的表现是登录页打不开或 discovery 404。
+- **`client_secret` 不写进配置文件**，只放环境变量（默认名
+  `KBASE_OIDC_CLIENT_SECRET`，可用 `client_secret_env` 改名）。compose 部署写进
+  `.env`/密钥管理，K8s 写 Secret。改 secret 后必须重启后端才生效。
+
+#### 7.4.4 验证
+
+点登录页的「使用企业账号登录（SSO）」，应当：跳转到 IdP 登录页 → 登录 → 自动回到
+KBase 首页且已登录。新用户首次登录会自动建号，角色为 `default_role`（默认 `viewer`），
+之后在「用户管理」里调整角色——**KBase 的角色始终以本地为准，不回读 IdP 的组/角色**
+（IdP 侧组/角色映射当前未实现，这是有意为之：单一权限事实源）。
+
+排障入口：
+- 运维侧看审计日志 `action=login_failed`、`detail` 里带 `idp_error:` / `oidc_exchange:`
+  的行，IdP 的原话都在里面；
+- 后端日志里 `SSO 换取用户信息失败: ...` 后面会带上 IdP 的
+  `error`/`error_description`。
+
+自建真 IdP 复现整套流程（开发/验收用）：
+`scripts/dev/provision_keycloak_sso.sh` 起一个只绑 127.0.0.1 的 Keycloak，
+`scripts/dev/verify_sso_real_idp.sh` 跑完整授权码流并逐条断言。
+
+#### 7.4.5 对接时会踩的坑（实测记录）
+
+1. **回调地址差一个字符就失败**。Keycloak/Azure AD 对 redirect URI 是精确匹配。
+   表现：IdP 直接报 `Invalid parameter: redirect_uri`，KBase 这边什么都收不到。
+   反代没透 `Host`/`X-Forwarded-Proto` 是最常见的原因（§7.4.1）。
+2. **IdP 要求 PKCE**。Azure AD、Okta、Authing 等的生产配置常强制 `code_challenge`。
+   KBase 已固定发送 `S256` 挑战，不需要你配置；若你手工拼 authorize URL 调试，
+   记得带上 `code_challenge` 与 `code_challenge_method=S256`，否则会被
+   `error=invalid_request&error_description=Missing parameter: code_challenge_method`
+   打回。
+3. **纯 HTTP 环境登录跳不回来**。Keycloak 会给会话 Cookie 打 `Secure; SameSite=None`，
+   浏览器只在安全上下文里回传它。`http://localhost` / `http://127.0.0.1` 被浏览器当
+   安全上下文，本机调试没问题；但用 `http://192.168.x.x` 这种地址访问就会一直
+   跳回登录页。**生产必须 HTTPS**。
+4. **secret 没设/设错**。表现是回调时 502，正文里是 IdP 的
+   `unauthorized_client / Invalid client or Invalid client credentials`。检查
+   `client_secret_env` 指的那个环境变量在后端进程里到底有没有值（`docker compose exec`
+   进去 `env | grep KBASE_OIDC` 看一眼最省事）。
+5. **ID token 的 nonce KBase 目前不校验**（只走 userinfo 取身份）。对授权码流 +
+   机密客户端这个组合不构成漏洞，但若客户的 IdP 强制要求 nonce 校验，需要另外提。
+6. **`sub` vs 用户名**。KBase 把身份绑在 `sub` 上：IdP 侧给用户改名不会在 KBase 里
+   拆出第二个账号。但反过来，同一个人在两个不同 issuer（比如换了 IdP 域名）下会被
+   当成两个人——迁移 IdP 域名时要一并处理历史账号（§7.4.6）。
+
+#### 7.4.6 升级与预置账号（`allow_existing_users`）
+
+**`allow_existing_users` 默认 `false`，这是相对旧版本的行为变化。**
+
+- `false`（默认，推荐）：SSO 身份只能落到"由 SSO 建出来的账号"上。如果 KBase 里
+  已经有一个同名的本地账号（例如超管 `admin`）且它没绑定过 SSO，首次用同名 IdP 账号
+  登录会被**拒绝**（403），并记审计 `detail=sso_account_conflict`。
+  这是为了防止：IdP 里（或 IdP 开了自助注册后）有人取名叫 `admin`，登录一次就直接
+  拿到 KBase 超管权限。
+- `true`：允许 IdP 身份落到已存在的同名本地账号上，即"管理员先在 KBase 建号、
+  再让用户用 SSO 登录进来"的预置账号做法。风险是 KBase 的权限完全跟随 IdP 的
+  **用户名空间**——只有在你信任 IdP 侧的用户名不会被随意占用时才打开。
+
+**从旧版本升级**：旧版本没有绑定记录，所有存量 SSO 账号第一次登录都会撞上这条拒绝。
+两种处理方式：临时把 `allow_existing_users` 设为 `true`，让每个用户正常登录一次
+（登录成功即完成绑定），确认都绑上后再改回 `false`；或者干脆让用户走 `default_role`
+重新建号后由管理员调角色。
+
+#### 7.4.7 与本机模拟 IdP 的说明
+
+`config/kbase.yaml` 里 `sso.enabled: false` 是出厂默认。若你用
+`scripts/dev/provision_keycloak_sso.sh` 起的 Keycloak 做联调，注意它是 `start-dev`
+模式的容器、数据在容器卷里，**不属于生产部署形态**，不要照搬到客户现场；
+生产请用 IdP 方自己的高可用部署。
+
 ---
 
 ## 8. 附录
@@ -867,6 +996,19 @@ data:
 | 字段 | 默认值 | 说明 |
 |---|---|---|
 | `server.threadpool_size` | `40` | AnyIO/Starlette 线程池容量，检索等同步操作经此线程池执行；仅当部署机 vCPU 充裕（≥16）且经压测验证有收益时才建议调大，否则保持默认 |
+
+#### `sso`（企业 SSO，OIDC 授权码流）
+
+对接步骤与实测踩坑见 §7.4。
+
+| 字段 | 默认值 | 说明 |
+|---|---|---|
+| `sso.enabled` | `false` | 关闭时 `/api/auth/sso/*` 返回 404、登录页不显示 SSO 入口 |
+| `sso.issuer` | `""` | IdP issuer，须与 discovery 文档的 `issuer` 逐字节一致（如 `https://idp.corp.com/realms/main`，无末尾斜杠） |
+| `sso.client_id` | `""` | IdP 侧登记的 client id |
+| `sso.client_secret_env` | `KBASE_OIDC_CLIENT_SECRET` | **secret 只走环境变量**，不进配置文件；此项是两个名字的对应关系 |
+| `sso.default_role` | `viewer` | 首次 SSO 登录自动建号时给的角色（已有账号的角色不变） |
+| `sso.allow_existing_users` | `false` | 是否允许 IdP 身份落到已存在、但未绑定过 SSO 的同名本地账号上。默认关：否则 IdP 里叫 `admin` 的用户登录一次即取得 KBase 超管。升级/预置账号场景见 §7.4.6 |
 
 > **注意**：`rewrite.mode` 配置为字符串时必须加引号（如 `mode: "off"`），否则 `off` 会被 YAML 解析为布尔值 `False` 而在启动时报校验错误。
 

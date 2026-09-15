@@ -1,0 +1,67 @@
+{
+  "_source": "真 Keycloak 26.0 实拍（scripts/dev/verify_sso_real_idp.sh）",
+  "discovery_subset": {
+    "authorization_endpoint": "http://127.0.0.1:8090/realms/kbase/protocol/openid-connect/auth",
+    "code_challenge_methods_supported": [
+      "plain",
+      "S256"
+    ],
+    "issuer": "http://127.0.0.1:8090/realms/kbase",
+    "jwks_uri": "http://127.0.0.1:8090/realms/kbase/protocol/openid-connect/certs",
+    "token_endpoint": "http://127.0.0.1:8090/realms/kbase/protocol/openid-connect/token",
+    "token_endpoint_auth_methods_supported": [
+      "private_key_jwt",
+      "client_secret_basic",
+      "client_secret_post",
+      "tls_client_auth",
+      "client_secret_jwt"
+    ],
+    "userinfo_endpoint": "http://127.0.0.1:8090/realms/kbase/protocol/openid-connect/userinfo"
+  },
+  "id_token_claims": {
+    "acr": "1",
+    "aud": "kbase",
+    "azp": "kbase",
+    "email": "zhang.san@corp.example",
+    "email_verified": true,
+    "family_name": "Zhang",
+    "given_name": "San",
+    "iss": "http://127.0.0.1:8090/realms/kbase",
+    "name": "San Zhang",
+    "preferred_username": "zhang.san",
+    "sub": "<SUB_UUID>",
+    "typ": "ID"
+  },
+  "issuer": "http://127.0.0.1:8090/realms/kbase",
+  "token_response": {
+    "access_token": "<ACCESS_TOKEN>",
+    "expires_in": 300,
+    "id_token": "<ID_TOKEN>",
+    "not-before-policy": 0,
+    "refresh_expires_in": 1800,
+    "refresh_token": "<REFRESH_TOKEN>",
+    "scope": "openid email profile",
+    "session_state": "<SESSION_STATE>",
+    "token_type": "Bearer"
+  },
+  "token_response_keys": [
+    "access_token",
+    "expires_in",
+    "id_token",
+    "not-before-policy",
+    "refresh_expires_in",
+    "refresh_token",
+    "scope",
+    "session_state",
+    "token_type"
+  ],
+  "userinfo": {
+    "email": "zhang.san@corp.example",
+    "email_verified": true,
+    "family_name": "Zhang",
+    "given_name": "San",
+    "name": "San Zhang",
+    "preferred_username": "zhang.san",
+    "sub": "<SUB_UUID>"
+  }
+}

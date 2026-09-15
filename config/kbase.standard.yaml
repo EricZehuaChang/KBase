@@ -117,3 +117,23 @@ evals:
 license:
   enforce: false
   grace_days: 14
+
+# 企业 SSO（M6-8，OIDC 授权码流）。**默认关**——不配置就完全不暴露 SSO 端点
+# （/api/auth/sso/* 返回 404），登录页也不会显示"企业账号登录"按钮。
+# 对接真 IdP 的完整步骤、要登记的 redirect URI、踩过的坑，见
+# docs/manual/KBase-完整手册.md 的「对接真实 IdP（SSO）」一节。
+# client_secret 不写在这里，走环境变量（见 client_secret_env）。
+sso:
+  enabled: false
+  # issuer 必须与 IdP discovery 文档里的 issuer 字段**逐字节**一致
+  # （如 https://idp.corp.com/realms/main），末尾不要多余的斜杠。
+  issuer: ""
+  client_id: ""
+  client_secret_env: KBASE_OIDC_CLIENT_SECRET
+  # 首次 SSO 登录自动建号时给的角色（viewer/editor/admin/superadmin）。
+  # 已有账号的角色不受影响，仍在 KBase 用户管理页调整。
+  default_role: viewer
+  # 是否允许 IdP 身份落到 KBase 里已存在、但从未绑定过 SSO 的同名账号上。
+  # 默认 false：否则 IdP 里一个叫 admin 的用户登录一次就能拿到 KBase 超管。
+  # 需要"管理员先建号、再让 SSO 登录进来"的部署再打开。
+  allow_existing_users: false
